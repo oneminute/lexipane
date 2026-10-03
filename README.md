@@ -135,10 +135,13 @@ The launcher:
 
 1. checks Node.js and npm;
 2. requires Node.js 22 or newer;
-3. runs `npm install --no-audit --no-fund`;
-4. installs missing dependencies and synchronizes `node_modules`;
-5. starts the desktop app with `npm run tauri dev`;
-6. keeps the console open if startup fails.
+3. checks Rust/Cargo before desktop startup;
+4. automatically adds `%USERPROFILE%\\.cargo\\bin` to the current PATH when Rust is already installed;
+5. validates the Tauri Rust workspace with `cargo metadata`;
+6. runs `npm install --no-audit --no-fund`;
+7. installs missing JavaScript dependencies and synchronizes `node_modules`;
+8. starts the desktop app with `npm run tauri dev`;
+9. keeps the console open with a targeted diagnostic if startup fails.
 
 Optional modes:
 
@@ -152,6 +155,10 @@ Optional modes:
 # Skip npm dependency synchronization
 .\start-lexipane.cmd -SkipInstall
 ~~~
+
+`-Bootstrap` uses Windows Package Manager to install the official Rustup package, then configures the stable Rust toolchain. It is explicit rather than automatic so the normal launcher never installs system-level developer tooling without being asked.
+
+If Rust was installed separately but the current terminal still says `cargo` is missing, open a new PowerShell window. Cargo normally lives in `%USERPROFILE%\\.cargo\\bin`.
 
 Breaking major dependency upgrades remain deliberate project changes rather than happening silently at startup.
 
