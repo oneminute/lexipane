@@ -95,7 +95,6 @@ export function PdfDocumentView({
         <PdfPageView
           key={pageNumber}
           document={document}
-          session={session}
           pageNumber={pageNumber}
           scale={scale}
           onVisible={onCurrentPageChange}
