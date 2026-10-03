@@ -32,6 +32,12 @@ export function isEpubPath(path: string | null): boolean {
   return Boolean(path && getBookExtension(path) === "epub");
 }
 
+export function isKindlePath(path: string | null): boolean {
+  if (!path) return false;
+  const extension = getBookExtension(path);
+  return extension === "mobi" || extension === "azw" || extension === "azw3";
+}
+
 export async function chooseBookFile(): Promise<string | null> {
   if (!isTauri()) {
     console.info("Native file picker is available when running inside Tauri.");

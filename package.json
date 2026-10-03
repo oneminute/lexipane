@@ -20,7 +20,8 @@
     "pdfjs-dist": "6.3.289",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "epubjs": "0.3.93"
+    "epubjs": "0.3.93",
+    "@lingo-reader/mobi-parser": "0.4.6"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

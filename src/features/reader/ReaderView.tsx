@@ -8,6 +8,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
+  createKindleHighlight,
+  listKindleHighlights,
+  removeKindleHighlight,
+  type KindleTextAnnotation,
+} from "../../core/annotations/kindleAnnotations";
+import {
   createEpubHighlight,
   listEpubHighlights,
   removeEpubHighlight,
@@ -35,6 +41,7 @@ import {
 } from "../../core/ai/readingService";
 import {
   isEpubPath,
+  isKindlePath,
   isPdfPath,
 } from "../../core/books/openBook";
 import { updateBookMetadata } from "../../core/books/library";
@@ -56,6 +63,10 @@ import {
   saveEpubReadingPosition,
 } from "../../core/books/epubPosition";
 import {
+  loadKindleReadingPosition,
+  saveKindleReadingPosition,
+} from "../../core/books/kindlePosition";
+import {
   loadPdfReadingPosition,
   savePdfReadingPosition,
 } from "../../core/books/readingPosition";
@@ -65,6 +76,12 @@ import {
   type EpubOutlineEntry,
   type EpubSelection,
 } from "./EpubDocumentView";
+import {
+  MobiDocumentView,
+  type KindleMetadataSummary,
+  type KindleOutlineEntry,
+  type KindleSelection,
+} from "./MobiDocumentView";
 import { PdfDocumentView } from "./PdfDocumentView";
 import { getPdfPageText, locatePdfTextRects } from "./pdfTextDom";
 import {
@@ -169,9 +186,35 @@ export function ReaderView({
   const [epubDifficultyBusy, setEpubDifficultyBusy] = useState(false);
   const [epubDifficultyError, setEpubDifficultyError] =
     useState<string | null>(null);
+  const [kindleInitialChapterId, setKindleInitialChapterId] =
+    useState<string | null>(null);
+  const [kindleProgress, setKindleProgress] = useState<number | null>(null);
+  const [kindleMetadata, setKindleMetadata] =
+    useState<KindleMetadataSummary>({
+      title: null,
+      author: null,
+    });
+  const [kindleOutline, setKindleOutline] =
+    useState<KindleOutlineEntry[]>([]);
+  const [kindleNavigationChapterId, setKindleNavigationChapterId] =
+    useState<string | null>(null);
+  const [kindleAnnotations, setKindleAnnotations] =
+    useState<KindleTextAnnotation[]>([]);
+  const [kindleSelectionChapterId, setKindleSelectionChapterId] =
+    useState<string | null>(null);
+  const [kindleContext, setKindleContext] = useState("");
+  const [kindleContextKey, setKindleContextKey] = useState("");
+  const [kindleAnalyzedContextKey, setKindleAnalyzedContextKey] =
+    useState("");
+  const [kindleAutoTerms, setKindleAutoTerms] =
+    useState<DifficultTerm[]>([]);
+  const [kindleDifficultyBusy, setKindleDifficultyBusy] = useState(false);
+  const [kindleDifficultyError, setKindleDifficultyError] =
+    useState<string | null>(null);
 
   const isPdf = isPdfPath(bookPath);
   const isEpub = isEpubPath(bookPath);
+  const isKindle = isKindlePath(bookPath);
 
   useEffect(() => {
     void loadOllamaConfig()
@@ -219,6 +262,19 @@ export function ReaderView({
     setEpubAutoTerms([]);
     setEpubDifficultyBusy(false);
     setEpubDifficultyError(null);
+    setKindleInitialChapterId(null);
+    setKindleProgress(null);
+    setKindleMetadata({ title: null, author: null });
+    setKindleOutline([]);
+    setKindleNavigationChapterId(null);
+    setKindleAnnotations([]);
+    setKindleSelectionChapterId(null);
+    setKindleContext("");
+    setKindleContextKey("");
+    setKindleAnalyzedContextKey("");
+    setKindleAutoTerms([]);
+    setKindleDifficultyBusy(false);
+    setKindleDifficultyError(null);
 
     if (!bookPath) {
       setPositionLoaded(true);
@@ -254,6 +310,21 @@ export function ReaderView({
         })
         .catch((error) => {
           console.error("Unable to restore EPUB reading position", error);
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setPositionLoaded(true);
+          }
+        });
+    } else if (isKindlePath(bookPath)) {
+      void loadKindleReadingPosition(bookPath)
+        .then((position) => {
+          if (cancelled) return;
+          setKindleInitialChapterId(position?.chapterId ?? null);
+          setKindleProgress(position?.progress ?? null);
+        })
+        .catch((error) => {
+          console.error("Unable to restore Kindle reading position", error);
         })
         .finally(() => {
           if (!cancelled) {
@@ -310,6 +381,30 @@ export function ReaderView({
       .catch((error) => {
         console.error("Unable to load EPUB annotations", error);
         if (!cancelled) setEpubAnnotations([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!bookPath || !isKindlePath(bookPath)) {
+      setKindleAnnotations([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void listKindleHighlights(bookPath)
+      .then((items) => {
+        if (!cancelled) setKindleAnnotations(items);
+      })
+      .catch((error) => {
+        console.error("Unable to load Kindle annotations", error);
+        if (!cancelled) setKindleAnnotations([]);
       });
 
     return () => {
@@ -460,6 +555,62 @@ export function ReaderView({
     readingLevel,
   ]);
 
+  useEffect(() => {
+    if (
+      !bookPath ||
+      !isKindle ||
+      !kindleContext ||
+      kindleContext.length < 80 ||
+      !kindleContextKey ||
+      kindleContextKey === kindleAnalyzedContextKey ||
+      kindleDifficultyBusy
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const analysisKey = kindleContextKey;
+
+    setKindleAnalyzedContextKey(analysisKey);
+    setKindleDifficultyBusy(true);
+    setKindleDifficultyError(null);
+
+    void detectDifficultTerms(kindleContext, readingLevel)
+      .then((result) => {
+        if (cancelled) return;
+
+        setConfiguredModel((current) => result.model || current);
+        setKindleAutoTerms(result.items);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Unable to detect Kindle difficult terms", error);
+        setKindleAutoTerms([]);
+        setKindleDifficultyError(
+          error instanceof Error
+            ? error.message
+            : "Automatic Kindle difficulty analysis failed.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setKindleDifficultyBusy(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bookPath,
+    isKindle,
+    kindleAnalyzedContextKey,
+    kindleContext,
+    kindleContextKey,
+    kindleDifficultyBusy,
+    readingLevel,
+  ]);
+
   const zoomLabel = useMemo(
     () => Math.round(scale * 100) + "%",
     [scale],
@@ -477,7 +628,9 @@ export function ReaderView({
 
   const currentAutoTerms = isEpub
     ? epubAutoTerms
-    : autoTermsByPage[currentPage] ?? [];
+    : isKindle
+      ? kindleAutoTerms
+      : autoTermsByPage[currentPage] ?? [];
 
   const zoomOut = useCallback(() => {
     setScale((value) => Math.max(0.5, Math.round((value - 0.1) * 10) / 10));
@@ -589,6 +742,88 @@ export function ReaderView({
         setEpubContext(normalizedContext);
         setEpubContextKey(stableHash(normalizedContext));
       }
+      setSelection({
+        text: selected.text,
+        context: selected.context,
+        page: 0,
+        rects: [],
+      });
+      setAiResult(null);
+      setAiError(null);
+      setQuestion("");
+      setNoteStatus("idle");
+      setHighlightStatus("idle");
+    },
+    [],
+  );
+
+  const handleKindleMetadataReady = useCallback(
+    (metadata: KindleMetadataSummary) => {
+      setKindleMetadata(metadata);
+      if (bookPath) {
+        void updateBookMetadata(
+          bookPath,
+          metadata.title,
+          metadata.author,
+        ).catch((error) => {
+          console.error("Unable to persist Kindle metadata", error);
+        });
+      }
+    },
+    [bookPath],
+  );
+
+  const handleKindleOutlineReady = useCallback(
+    (items: KindleOutlineEntry[]) => {
+      setKindleOutline(items);
+    },
+    [],
+  );
+
+  const handleKindleRelocated = useCallback(
+    (chapterId: string, progress: number | null) => {
+      setKindleProgress(progress);
+      if (!bookPath) return;
+
+      void saveKindleReadingPosition(
+        bookPath,
+        chapterId,
+        progress,
+      ).catch((error) => {
+        console.error("Unable to save Kindle reading position", error);
+      });
+    },
+    [bookPath],
+  );
+
+  const handleKindleContextReady = useCallback(
+    (_chapterId: string, context: string) => {
+      const normalized = normalizedText(context).slice(0, 9000);
+      if (!normalized) return;
+
+      const key = stableHash(normalized);
+      setKindleContext((current) =>
+        current === normalized ? current : normalized,
+      );
+      setKindleContextKey((current) =>
+        current === key ? current : key,
+      );
+    },
+    [],
+  );
+
+  const handleKindleSelection = useCallback(
+    (selected: KindleSelection) => {
+      setKindleSelectionChapterId(selected.chapterId);
+
+      const normalizedContext = normalizedText(
+        selected.context,
+      ).slice(0, 9000);
+      if (normalizedContext) {
+        setKindleContext(normalizedContext);
+        setKindleContextKey(stableHash(normalizedContext));
+      }
+
       setSelection({
         text: selected.text,
         context: selected.context,
@@ -1050,6 +1285,34 @@ export function ReaderView({
         return;
       }
 
+      if (isKindle) {
+        if (!kindleSelectionChapterId) {
+          setHighlightStatus("idle");
+          return;
+        }
+
+        const created = await createKindleHighlight(
+          bookPath,
+          kindleSelectionChapterId,
+          selection.text,
+          selection.context ?? "",
+        );
+
+        if (created) {
+          await recordTermFeedback(selection.text, "difficult");
+          setKindleAnnotations((items) => [
+            ...items.filter((item) => item.id !== created.id),
+            created,
+          ]);
+          setHighlightStatus("saved");
+          window.setTimeout(() => setHighlightStatus("idle"), 1500);
+          return;
+        }
+
+        setHighlightStatus("idle");
+        return;
+      }
+
       if (!isPdf || selection.rects.length === 0) {
         setHighlightStatus("idle");
         return;
@@ -1102,6 +1365,17 @@ export function ReaderView({
     }
   }
 
+  async function removeKindleSavedHighlight(annotationId: string) {
+    try {
+      await removeKindleHighlight(annotationId);
+      setKindleAnnotations((items) =>
+        items.filter((annotation) => annotation.id !== annotationId),
+      );
+    } catch (error) {
+      console.error("Unable to remove Kindle highlight", error);
+    }
+  }
+
   async function setAutoTermFeedback(
     term: DifficultTerm,
     status: "known" | "suppressed",
@@ -1112,6 +1386,15 @@ export function ReaderView({
 
     if (isEpub) {
       setEpubAutoTerms((items) =>
+        items.filter(
+          (item) => normalizeTerm(item.text) !== normalized,
+        ),
+      );
+      return;
+    }
+
+    if (isKindle) {
+      setKindleAutoTerms((items) =>
         items.filter(
           (item) => normalizeTerm(item.text) !== normalized,
         ),
@@ -1158,6 +1441,22 @@ export function ReaderView({
       };
 
       setEpubSelectionCfi(null);
+      setSelection(nextSelection);
+      setAiResult(null);
+      setAiError(null);
+      void runAi("explain", undefined, nextSelection);
+      return;
+    }
+
+    if (isKindle) {
+      const nextSelection: ActiveReaderSelection = {
+        text: term.text,
+        context: kindleContext,
+        page: 0,
+        rects: [],
+      };
+
+      setKindleSelectionChapterId(null);
       setSelection(nextSelection);
       setAiResult(null);
       setAiError(null);
@@ -1215,12 +1514,23 @@ export function ReaderView({
           <span className="toolbar-divider" />
           <div>
             <strong>
-              {(isEpub ? epubMetadata.title : pdfMetadata.title) ||
-                fileName(bookPath)}
+              {(isEpub
+                ? epubMetadata.title
+                : isKindle
+                  ? kindleMetadata.title
+                  : pdfMetadata.title) || fileName(bookPath)}
             </strong>
             <small>
-              {(isEpub ? epubMetadata.author : pdfMetadata.author)
-                ? (isEpub ? epubMetadata.author : pdfMetadata.author) + " · "
+              {(isEpub
+                ? epubMetadata.author
+                : isKindle
+                  ? kindleMetadata.author
+                  : pdfMetadata.author)
+                ? (isEpub
+                    ? epubMetadata.author
+                    : isKindle
+                      ? kindleMetadata.author
+                      : pdfMetadata.author) + " · "
                 : ""}
               {isPdf
                 ? pageCount > 0
@@ -1230,7 +1540,11 @@ export function ReaderView({
                   ? epubProgress !== null
                     ? Math.round(epubProgress * 100) + "% read"
                     : "EPUB"
-                  : bookPath
+                  : isKindle
+                    ? kindleProgress !== null
+                      ? Math.round(kindleProgress * 100) + "% read"
+                      : "MOBI / Kindle"
+                    : bookPath
                     ? "Format saved · reader engine pending"
                     : "Open a book to begin"}
             </small>
@@ -1238,25 +1552,26 @@ export function ReaderView({
         </div>
 
         <div className="reader-actions">
-          {(isPdf || isEpub) && (
+          {(isPdf || isEpub || isKindle) && (
             <div className="zoom-control">
               <button
-                onClick={isEpub ? epubFontDown : zoomOut}
-                aria-label={isEpub ? "Decrease font size" : "Zoom out"}
+                onClick={isEpub || isKindle ? epubFontDown : zoomOut}
+                aria-label={isEpub || isKindle ? "Decrease font size" : "Zoom out"}
               >
                 −
               </button>
-              <span>{isEpub ? epubFontLabel : zoomLabel}</span>
+              <span>{isEpub || isKindle ? epubFontLabel : zoomLabel}</span>
               <button
-                onClick={isEpub ? epubFontUp : zoomIn}
-                aria-label={isEpub ? "Increase font size" : "Zoom in"}
+                onClick={isEpub || isKindle ? epubFontUp : zoomIn}
+                aria-label={isEpub || isKindle ? "Increase font size" : "Zoom in"}
               >
                 +
               </button>
             </div>
           )}
           {((isPdf && outline.length > 0) ||
-            (isEpub && epubOutline.length > 0)) && (
+            (isEpub && epubOutline.length > 0) ||
+            (isKindle && kindleOutline.length > 0)) && (
             <button
               className={tocOpen ? "ghost-button active" : "ghost-button"}
               onClick={() => setTocOpen((value) => !value)}
@@ -1341,6 +1656,36 @@ export function ReaderView({
               </div>
             </aside>
           )}
+          {tocOpen && isKindle && kindleOutline.length > 0 && (
+            <aside className="toc-panel">
+              <header>
+                <div>
+                  <span className="eyebrow">Contents</span>
+                  <strong>{kindleOutline.length} sections</strong>
+                </div>
+                <button onClick={() => setTocOpen(false)}>×</button>
+              </header>
+              <div className="toc-list">
+                {kindleOutline.map((item) => (
+                  <button
+                    key={item.id}
+                    disabled={!item.chapterId}
+                    className="toc-item"
+                    style={{ paddingLeft: 12 + item.depth * 14 }}
+                    onClick={() => {
+                      if (item.chapterId) {
+                        setKindleNavigationChapterId(item.chapterId);
+                      }
+                      setTocOpen(false);
+                    }}
+                  >
+                    <span>{item.title}</span>
+                  </button>
+                ))}
+              </div>
+            </aside>
+          )}
+
           <div
             className={regionMode ? "document-stage region-mode" : "document-stage"}
             onMouseUp={captureSelection}
@@ -1415,21 +1760,37 @@ export function ReaderView({
               />
             )}
 
-            {bookPath && (isPdf || isEpub) && !positionLoaded && (
+            {bookPath && isKindle && positionLoaded && (
+              <MobiDocumentView
+                path={bookPath}
+                fontScale={epubFontScale}
+                initialChapterId={kindleInitialChapterId}
+                navigationChapterId={kindleNavigationChapterId}
+                annotations={kindleAnnotations}
+                autoTerms={kindleAutoTerms}
+                onMetadataReady={handleKindleMetadataReady}
+                onOutlineReady={handleKindleOutlineReady}
+                onRelocated={handleKindleRelocated}
+                onContextReady={handleKindleContextReady}
+                onSelection={handleKindleSelection}
+              />
+            )}
+
+            {bookPath && (isPdf || isEpub || isKindle) && !positionLoaded && (
               <div className="pdf-state-card">
                 <span className="pdf-spinner" />
                 <strong>Restoring reading position…</strong>
               </div>
             )}
 
-            {bookPath && !isPdf && !isEpub && (
+            {bookPath && !isPdf && !isEpub && !isKindle && (
               <div className="reader-empty-state">
                 <span className="eyebrow">Document engine</span>
                 <h1>This book is in your library.</h1>
                 <p>
-                  PDF is the first live engine. EPUB, MOBI and AZW/AZW3 will
-                  attach to this exact reader shell without changing the
-                  annotation, notebook or AI architecture.
+                  PDF, EPUB, MOBI and AZW/AZW3 use their own format-native
+                  document engines behind the same annotation, notebook and
+                  AI architecture.
                 </p>
               </div>
             )}
@@ -1441,13 +1802,19 @@ export function ReaderView({
                 ? epubProgress !== null
                   ? Math.round(epubProgress * 100) + "% read"
                   : "EPUB"
-                : "Page " +
+                : isKindle
+                  ? kindleProgress !== null
+                    ? Math.round(kindleProgress * 100) + "% read"
+                    : "Kindle"
+                  : "Page " +
                   (pageCount ? currentPage : "—") +
                   " / " +
                   (pageCount || "—")}
             </span>
-            <span>{isEpub ? epubFontLabel : zoomLabel}</span>
-            <span>{isEpub ? "EPUB CFI" : "Continuous"}</span>
+            <span>{isEpub || isKindle ? epubFontLabel : zoomLabel}</span>
+            <span>
+              {isEpub ? "EPUB CFI" : isKindle ? "Chapter" : "Continuous"}
+            </span>
             <span>{selection ? "Selection ready" : "Select text for AI"}</span>
           </footer>
         </section>
@@ -1519,29 +1886,57 @@ export function ReaderView({
                 <div>
                   <span className="assist-type yellow">Auto reading help</span>
                   <h3>
-                    {isEpub ? "Current EPUB section" : "Page " + currentPage}
+                    {isEpub
+                      ? "Current EPUB section"
+                      : isKindle
+                        ? "Current Kindle chapter"
+                        : "Page " + currentPage}
                   </h3>
                 </div>
                 <small>{readingLevel}</small>
               </div>
 
-              {(isEpub ? epubDifficultyBusy : difficultyBusyPage === currentPage) && (
+              {(isEpub
+                ? epubDifficultyBusy
+                : isKindle
+                  ? kindleDifficultyBusy
+                  : difficultyBusyPage === currentPage) && (
                 <div className="auto-difficulty-loading">
                   <span className="pdf-spinner" />
                   <span>Finding words and phrases that may slow you down…</span>
                 </div>
               )}
 
-              {(isEpub ? epubDifficultyError : difficultyError) &&
-                (isEpub ? !epubDifficultyBusy : difficultyBusyPage === null) && (
+              {(isEpub
+                ? epubDifficultyError
+                : isKindle
+                  ? kindleDifficultyError
+                  : difficultyError) &&
+                (isEpub
+                  ? !epubDifficultyBusy
+                  : isKindle
+                    ? !kindleDifficultyBusy
+                    : difficultyBusyPage === null) && (
                   <p className="auto-difficulty-error">
-                    {isEpub ? epubDifficultyError : difficultyError}
+                    {isEpub
+                      ? epubDifficultyError
+                      : isKindle
+                        ? kindleDifficultyError
+                        : difficultyError}
                   </p>
                 )}
 
-              {(isEpub ? !epubDifficultyBusy : difficultyBusyPage !== currentPage) &&
+              {(isEpub
+                ? !epubDifficultyBusy
+                : isKindle
+                  ? !kindleDifficultyBusy
+                  : difficultyBusyPage !== currentPage) &&
                 currentAutoTerms.length === 0 &&
-                !(isEpub ? epubDifficultyError : difficultyError) && (
+                !(isEpub
+                  ? epubDifficultyError
+                  : isKindle
+                    ? kindleDifficultyError
+                    : difficultyError) && (
                   <p className="muted">
                     No high-value reading obstacles were found in the current
                     reading context.
@@ -1614,7 +2009,9 @@ export function ReaderView({
                       aiBusy ||
                       (isEpub
                         ? !epubSelectionCfi
-                        : selection.rects.length === 0) ||
+                        : isKindle
+                          ? !kindleSelectionChapterId
+                          : selection.rects.length === 0) ||
                       highlightStatus === "saving"
                     }
                     onClick={() => void saveCurrentHighlight()}
@@ -1644,6 +2041,7 @@ export function ReaderView({
                       setNoteStatus("idle");
                       setHighlightStatus("idle");
                       setEpubSelectionCfi(null);
+                      setKindleSelectionChapterId(null);
                     }}
                   >
                     Clear
@@ -1730,6 +2128,27 @@ export function ReaderView({
                       <button
                         onClick={() =>
                           void removeEpubSavedHighlight(annotation.id)
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {isKindle && kindleAnnotations.length > 0 && (
+              <section className="assist-card page-highlights-card">
+                <span className="assist-type blue">Kindle highlights</span>
+                <h3>{kindleAnnotations.length} saved in this book</h3>
+                <div className="page-highlight-list">
+                  {kindleAnnotations.slice(-12).reverse().map((annotation) => (
+                    <div key={annotation.id}>
+                      <span>{annotation.selectedText}</span>
+                      <button
+                        onClick={() =>
+                          void removeKindleSavedHighlight(annotation.id)
                         }
                       >
                         Remove
