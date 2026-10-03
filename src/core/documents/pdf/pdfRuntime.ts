@@ -13,7 +13,7 @@ GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 export interface LoadedPdfDocument {
   document: PDFDocumentProxy;
   createEmptyTextLayerImages(
-    viewport: Parameters<TextLayerImages["constructor"]>[2],
+    viewport: ConstructorParameters<typeof TextLayerImages>[2],
     canvas: HTMLCanvasElement,
   ): TextLayerImages;
   destroy(): Promise<void>;
