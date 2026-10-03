@@ -2207,3 +2207,81 @@ button { cursor: pointer; }
   object-fit: cover;
   border-radius: inherit;
 }
+
+
+/* Library filters, progress, favorites, and finished state */
+
+.book-card {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.book-card-open {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 54px 12px 12px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.book-card-actions {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: grid;
+  gap: 6px;
+}
+
+.book-card-actions button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  font-size: 16px;
+  color: #8d91a0;
+  background: rgba(246, 247, 250, 0.94);
+  border: 1px solid #e3e5ea;
+  border-radius: 9px;
+}
+
+.book-card-actions button:hover,
+.book-card-actions button.active {
+  color: #5f54c7;
+  background: #efedff;
+  border-color: #d6d1f4;
+}
+
+.book-progress-row {
+  display: grid;
+  grid-template-columns: auto minmax(40px, 1fr);
+  gap: 7px;
+  align-items: center;
+  margin-top: 9px;
+}
+
+.book-progress-row > span {
+  margin: 0;
+  font-size: 8px;
+  color: #999dab;
+}
+
+.book-progress-track {
+  overflow: hidden;
+  height: 4px;
+  background: #eceef2;
+  border-radius: 999px;
+}
+
+.book-progress-track i {
+  display: block;
+  height: 100%;
+  background: #8b80df;
+  border-radius: inherit;
+}
