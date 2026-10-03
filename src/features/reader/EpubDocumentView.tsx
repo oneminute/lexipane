@@ -33,6 +33,7 @@ export interface EpubSelection {
 
 interface Props {
   path: string;
+  fontScale?: number;
   initialCfi?: string | null;
   navigationTarget?: string | null;
   annotations?: EpubTextAnnotation[];
@@ -120,6 +121,7 @@ function syncHighlights(
 
 export function EpubDocumentView({
   path,
+  fontScale = 100,
   initialCfi,
   navigationTarget,
   annotations = [],
@@ -187,7 +189,6 @@ export function EpubDocumentView({
         body: {
           "font-family":
             "Georgia, 'Times New Roman', serif !important",
-          "font-size": "18px !important",
           "line-height": "1.75 !important",
           color: "#282725 !important",
           padding: "24px 32px !important",
@@ -199,6 +200,8 @@ export function EpubDocumentView({
           background: "rgba(101, 88, 219, 0.25)",
         },
       });
+
+      rendition.themes.fontSize(fontScale + "%");
 
       rendition.on(
         "relocated",
@@ -288,6 +291,10 @@ export function EpubDocumentView({
     if (!navigationTarget || !renditionRef.current) return;
     void renditionRef.current.display(navigationTarget);
   }, [navigationTarget]);
+
+  useEffect(() => {
+    renditionRef.current?.themes.fontSize(fontScale + "%");
+  }, [fontScale]);
 
   return (
     <div className="epub-reader-shell">

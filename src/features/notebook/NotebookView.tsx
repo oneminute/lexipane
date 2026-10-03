@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { exportNotesAsMarkdown } from "../../core/notes/exportMarkdown";
 import {
   deleteReaderNote,
   listReaderNotes,
@@ -149,6 +150,8 @@ export function NotebookView({ onOpenBook }: Props) {
   const [notes, setNotes] = useState<ReaderNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -189,6 +192,30 @@ export function NotebookView({ onOpenBook }: Props) {
     });
   }, [notes, query]);
 
+  async function exportNotebook() {
+    if (filteredNotes.length === 0 || exporting) return;
+
+    setExporting(true);
+    setExportMessage("");
+
+    try {
+      const destination = await exportNotesAsMarkdown(filteredNotes);
+      setExportMessage(
+        destination
+          ? "Exported to " + destination
+          : "",
+      );
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to export notebook.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <section className="page notebook-page">
       <header className="page-header notebook-header">
@@ -200,13 +227,26 @@ export function NotebookView({ onOpenBook }: Props) {
             separate from your own editable notes.
           </p>
         </div>
-        <input
-          className="search-input notebook-search"
-          value={query}
-          placeholder="Search notes, books, or tags"
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="notebook-header-actions">
+          <input
+            className="search-input notebook-search"
+            value={query}
+            placeholder="Search notes, books, or tags"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <button
+            className="primary-button"
+            disabled={filteredNotes.length === 0 || exporting}
+            onClick={() => void exportNotebook()}
+          >
+            {exporting ? "Exporting…" : "Export Markdown"}
+          </button>
+        </div>
       </header>
+
+      {exportMessage && (
+        <p className="notebook-export-message">{exportMessage}</p>
+      )}
 
       {loading ? (
         <div className="library-empty">

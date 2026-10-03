@@ -115,6 +115,7 @@ export function ReaderView({
   onBackToLibrary,
 }: Props) {
   const [scale, setScale] = useState(1.1);
+  const [epubFontScale, setEpubFontScale] = useState(100);
   const [pageCount, setPageCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [initialPage, setInitialPage] = useState<number | null>(null);
@@ -394,6 +395,8 @@ export function ReaderView({
     [scale],
   );
 
+  const epubFontLabel = epubFontScale + "%";
+
   const currentPageAnnotations = useMemo(
     () =>
       annotations.filter(
@@ -410,6 +413,14 @@ export function ReaderView({
 
   const zoomIn = useCallback(() => {
     setScale((value) => Math.min(2.5, Math.round((value + 0.1) * 10) / 10));
+  }, []);
+
+  const epubFontDown = useCallback(() => {
+    setEpubFontScale((value) => Math.max(70, value - 10));
+  }, []);
+
+  const epubFontUp = useCallback(() => {
+    setEpubFontScale((value) => Math.min(180, value + 10));
   }, []);
 
   const handleDocumentLoaded = useCallback((count: number) => {
@@ -1109,13 +1120,19 @@ export function ReaderView({
         </div>
 
         <div className="reader-actions">
-          {isPdf && (
+          {(isPdf || isEpub) && (
             <div className="zoom-control">
-              <button onClick={zoomOut} aria-label="Zoom out">
+              <button
+                onClick={isEpub ? epubFontDown : zoomOut}
+                aria-label={isEpub ? "Decrease font size" : "Zoom out"}
+              >
                 −
               </button>
-              <span>{zoomLabel}</span>
-              <button onClick={zoomIn} aria-label="Zoom in">
+              <span>{isEpub ? epubFontLabel : zoomLabel}</span>
+              <button
+                onClick={isEpub ? epubFontUp : zoomIn}
+                aria-label={isEpub ? "Increase font size" : "Zoom in"}
+              >
                 +
               </button>
             </div>
@@ -1267,6 +1284,7 @@ export function ReaderView({
             {bookPath && isEpub && positionLoaded && (
               <EpubDocumentView
                 path={bookPath}
+                fontScale={epubFontScale}
                 initialCfi={epubInitialCfi}
                 navigationTarget={epubNavigationTarget}
                 annotations={epubAnnotations}
@@ -1308,7 +1326,7 @@ export function ReaderView({
                   " / " +
                   (pageCount || "—")}
             </span>
-            <span>{isEpub ? "Reflowable" : zoomLabel}</span>
+            <span>{isEpub ? epubFontLabel : zoomLabel}</span>
             <span>{isEpub ? "EPUB CFI" : "Continuous"}</span>
             <span>{selection ? "Selection ready" : "Select text for AI"}</span>
           </footer>

@@ -2088,3 +2088,29 @@ button { cursor: pointer; }
     border-radius: 0;
   }
 }
+
+
+/* Notebook export */
+
+.notebook-header-actions {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+.notebook-export-message {
+  padding: 9px 12px;
+  margin: -18px 0 18px;
+  font-size: 10px;
+  color: #565c69;
+  background: #eef0f5;
+  border-radius: 9px;
+}
+
+@media (max-width: 760px) {
+  .notebook-header-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
