@@ -3,6 +3,12 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
 import type { PdfTextAnnotation } from "../../core/annotations/pdfAnnotations";
 import {
+  readPdfMetadata,
+  readPdfOutline,
+  type PdfMetadataSummary,
+  type PdfOutlineEntry,
+} from "../../core/documents/pdf/pdfInfo";
+import {
   loadPdfFromPath,
   type LoadedPdfDocument,
 } from "../../core/documents/pdf/pdfRuntime";
@@ -16,6 +22,8 @@ interface Props {
   onDocumentLoaded?: (pageCount: number) => void;
   onCurrentPageChange?: (pageNumber: number) => void;
   onPageTextReady?: (pageNumber: number, text: string) => void;
+  onMetadataReady?: (metadata: PdfMetadataSummary) => void;
+  onOutlineReady?: (outline: PdfOutlineEntry[]) => void;
 }
 
 export function PdfDocumentView({
@@ -26,6 +34,8 @@ export function PdfDocumentView({
   onDocumentLoaded,
   onCurrentPageChange,
   onPageTextReady,
+  onMetadataReady,
+  onOutlineReady,
 }: Props) {
   const [session, setSession] = useState<LoadedPdfDocument | null>(null);
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
@@ -42,10 +52,10 @@ export function PdfDocumentView({
     setError(null);
 
     void loadPdfFromPath(path)
-      .then((nextSession) => {
+      .then(async (nextSession) => {
         loadedSession = nextSession;
         if (cancelled) {
-          void nextSession.destroy();
+          await nextSession.destroy();
           return;
         }
 
@@ -53,6 +63,21 @@ export function PdfDocumentView({
         setDocument(nextSession.document);
         setLoading(false);
         onDocumentLoaded?.(nextSession.document.numPages);
+
+        const [metadataResult, outlineResult] = await Promise.allSettled([
+          readPdfMetadata(nextSession.document),
+          readPdfOutline(nextSession.document),
+        ]);
+
+        if (cancelled) return;
+
+        if (metadataResult.status === "fulfilled") {
+          onMetadataReady?.(metadataResult.value);
+        }
+
+        if (outlineResult.status === "fulfilled") {
+          onOutlineReady?.(outlineResult.value);
+        }
       })
       .catch((loadError) => {
         if (cancelled) return;
@@ -70,30 +95,29 @@ export function PdfDocumentView({
         void loadedSession.destroy();
       }
     };
-  }, [onDocumentLoaded, path]);
+  }, [
+    onDocumentLoaded,
+    onMetadataReady,
+    onOutlineReady,
+    path,
+  ]);
 
   useEffect(() => {
     if (!document || !initialPage || initialPage <= 1) return;
 
     const page = Math.min(initialPage, document.numPages);
-    let frame1 = 0;
-    let frame2 = 0;
-
-    frame1 = requestAnimationFrame(() => {
-      frame2 = requestAnimationFrame(() => {
-        const element = window.document.querySelector<HTMLElement>(
-          '[data-pdf-page="' + page + '"]',
-        );
-        element?.scrollIntoView({
-          block: "start",
-          behavior: "auto",
-        });
+    const timeout = window.setTimeout(() => {
+      const element = window.document.querySelector<HTMLElement>(
+        '[data-pdf-page="' + page + '"]',
+      );
+      element?.scrollIntoView({
+        block: "start",
+        behavior: "auto",
       });
-    });
+    }, 220);
 
     return () => {
-      cancelAnimationFrame(frame1);
-      cancelAnimationFrame(frame2);
+      window.clearTimeout(timeout);
     };
   }, [document, initialPage]);
 
@@ -101,6 +125,19 @@ export function PdfDocumentView({
     if (!document) return [];
     return Array.from({ length: document.numPages }, (_, index) => index + 1);
   }, [document]);
+
+  const annotationsByPage = useMemo(() => {
+    const map = new Map<number, PdfTextAnnotation[]>();
+
+    for (const annotation of annotations) {
+      const page = annotation.anchor.page;
+      const current = map.get(page) ?? [];
+      current.push(annotation);
+      map.set(page, current);
+    }
+
+    return map;
+  }, [annotations]);
 
   if (loading) {
     return (
@@ -127,9 +164,7 @@ export function PdfDocumentView({
         <PdfPageView
           key={pageNumber}
           document={document}
-          annotations={annotations.filter(
-            (annotation) => annotation.anchor.page === pageNumber,
-          )}
+          annotations={annotationsByPage.get(pageNumber) ?? []}
           pageNumber={pageNumber}
           scale={scale}
           onVisible={onCurrentPageChange}

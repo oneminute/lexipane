@@ -25,7 +25,12 @@ import {
   type ReadingSelection,
 } from "../../core/ai/readingService";
 import { isPdfPath } from "../../core/books/openBook";
+import { updateBookMetadata } from "../../core/books/library";
 import { createReaderNote } from "../../core/notes/notes";
+import type {
+  PdfMetadataSummary,
+  PdfOutlineEntry,
+} from "../../core/documents/pdf/pdfInfo";
 import {
   recordTermFeedback,
   normalizeTerm,
@@ -96,6 +101,12 @@ export function ReaderView({
   const [difficultyBusyPage, setDifficultyBusyPage] =
     useState<number | null>(null);
   const [difficultyError, setDifficultyError] = useState<string | null>(null);
+  const [pdfMetadata, setPdfMetadata] = useState<PdfMetadataSummary>({
+    title: null,
+    author: null,
+  });
+  const [outline, setOutline] = useState<PdfOutlineEntry[]>([]);
+  const [tocOpen, setTocOpen] = useState(false);
 
   const isPdf = isPdfPath(bookPath);
 
@@ -126,6 +137,9 @@ export function ReaderView({
     setAutoTermsByPage({});
     setDifficultyBusyPage(null);
     setDifficultyError(null);
+    setPdfMetadata({ title: null, author: null });
+    setOutline([]);
+    setTocOpen(false);
 
     if (!bookPath || !isPdfPath(bookPath)) {
       setPositionLoaded(true);
@@ -303,6 +317,37 @@ export function ReaderView({
     },
     [],
   );
+
+  const handleMetadataReady = useCallback(
+    (metadata: PdfMetadataSummary) => {
+      setPdfMetadata(metadata);
+      if (bookPath) {
+        void updateBookMetadata(
+          bookPath,
+          metadata.title,
+          metadata.author,
+        ).catch((error) => {
+          console.error("Unable to persist PDF metadata", error);
+        });
+      }
+    },
+    [bookPath],
+  );
+
+  const handleOutlineReady = useCallback((items: PdfOutlineEntry[]) => {
+    setOutline(items);
+  }, []);
+
+  const jumpToPage = useCallback((page: number) => {
+    const element = window.document.querySelector<HTMLElement>(
+      '[data-pdf-page="' + page + '"]',
+    );
+    element?.scrollIntoView({
+      block: "start",
+      behavior: "smooth",
+    });
+    setTocOpen(false);
+  }, []);
 
   const handleCurrentPageChange = useCallback(
     (page: number) => {
@@ -658,8 +703,11 @@ export function ReaderView({
           </button>
           <span className="toolbar-divider" />
           <div>
-            <strong>{fileName(bookPath)}</strong>
+            <strong>{pdfMetadata.title || fileName(bookPath)}</strong>
             <small>
+              {pdfMetadata.author
+                ? pdfMetadata.author + " · "
+                : ""}
               {isPdf
                 ? pageCount > 0
                   ? pageCount + " pages"
@@ -683,6 +731,14 @@ export function ReaderView({
               </button>
             </div>
           )}
+          {isPdf && outline.length > 0 && (
+            <button
+              className={tocOpen ? "ghost-button active" : "ghost-button"}
+              onClick={() => setTocOpen((value) => !value)}
+            >
+              Contents
+            </button>
+          )}
           <button className="ghost-button">Region select</button>
           <button className="ghost-button">Notes</button>
           <button className="primary-button compact" onClick={onOpenBook}>
@@ -693,6 +749,35 @@ export function ReaderView({
 
       <div className="split-reader">
         <section className="document-pane">
+          {tocOpen && outline.length > 0 && (
+            <aside className="toc-panel">
+              <header>
+                <div>
+                  <span className="eyebrow">Contents</span>
+                  <strong>{outline.length} sections</strong>
+                </div>
+                <button onClick={() => setTocOpen(false)}>×</button>
+              </header>
+              <div className="toc-list">
+                {outline.map((item) => (
+                  <button
+                    key={item.id}
+                    disabled={!item.page}
+                    className={
+                      item.page === currentPage
+                        ? "toc-item current"
+                        : "toc-item"
+                    }
+                    style={{ paddingLeft: 12 + item.depth * 14 }}
+                    onClick={() => item.page && jumpToPage(item.page)}
+                  >
+                    <span>{item.title}</span>
+                    {item.page && <small>{item.page}</small>}
+                  </button>
+                ))}
+              </div>
+            </aside>
+          )}
           <div
             className="document-stage"
             onMouseUp={captureSelection}
@@ -721,6 +806,8 @@ export function ReaderView({
                 onDocumentLoaded={handleDocumentLoaded}
                 onCurrentPageChange={handleCurrentPageChange}
                 onPageTextReady={handlePageTextReady}
+                onMetadataReady={handleMetadataReady}
+                onOutlineReady={handleOutlineReady}
               />
             )}
 

@@ -60,3 +60,23 @@ export async function listLibraryBooks(): Promise<LibraryBook[]> {
       "FROM books ORDER BY COALESCE(last_opened_at, added_at) DESC",
   );
 }
+
+
+export async function updateBookMetadata(
+  path: string,
+  title: string | null,
+  author: string | null,
+): Promise<void> {
+  if (!isTauri()) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  await db.execute(
+    "UPDATE books SET " +
+      "title = CASE WHEN $2 IS NOT NULL AND TRIM($2) <> '' THEN $2 ELSE title END, " +
+      "author = CASE WHEN $3 IS NOT NULL AND TRIM($3) <> '' THEN $3 ELSE author END " +
+      "WHERE file_path = $1",
+    [path, title, author],
+  );
+}

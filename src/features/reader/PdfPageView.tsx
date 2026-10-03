@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
+import type {
+  PDFDocumentProxy,
+  PDFPageProxy,
+  RenderTask,
+} from "pdfjs-dist";
 import { TextLayerBuilder } from "pdfjs-dist/web/pdf_viewer.mjs";
 import type { PdfTextAnnotation } from "../../core/annotations/pdfAnnotations";
 
@@ -34,8 +38,64 @@ export function PdfPageView({
   const shellRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerHostRef = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState<PDFPageProxy | null>(null);
   const [size, setSize] = useState<PageSize | null>(null);
+  const [nearViewport, setNearViewport] = useState(pageNumber <= 2);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void document
+      .getPage(pageNumber)
+      .then((nextPage) => {
+        if (!cancelled) {
+          setPage(nextPage);
+        }
+      })
+      .catch((pageError) => {
+        if (!cancelled) {
+          setError(
+            pageError instanceof Error
+              ? pageError.message
+              : "Unable to prepare this PDF page.",
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      setPage(null);
+    };
+  }, [document, pageNumber]);
+
+  useEffect(() => {
+    if (!page) return;
+    const viewport = page.getViewport({ scale });
+    setSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+  }, [page, scale]);
+
+  useEffect(() => {
+    const element = shellRef.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setNearViewport(Boolean(entry?.isIntersecting));
+      },
+      {
+        rootMargin: "1200px 0px",
+        threshold: 0,
+      },
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const element = shellRef.current;
@@ -58,6 +118,20 @@ export function PdfPageView({
   }, [onVisible, pageNumber]);
 
   useEffect(() => {
+    const canvas = canvasRef.current;
+    const textLayerHost = textLayerHostRef.current;
+
+    if (!nearViewport) {
+      if (canvas) {
+        canvas.width = 1;
+        canvas.height = 1;
+      }
+      textLayerHost?.replaceChildren();
+      return;
+    }
+
+    if (!page || !canvas || !textLayerHost) return;
+
     let cancelled = false;
     let renderTask: RenderTask | null = null;
     let textLayer: TextLayerBuilder | null = null;
@@ -66,21 +140,9 @@ export function PdfPageView({
       try {
         setError(null);
 
-        const page = await document.getPage(pageNumber);
-        if (cancelled) return;
-
         const viewport = page.getViewport({ scale });
-        const nextSize = {
-          width: viewport.width,
-          height: viewport.height,
-        };
-        setSize(nextSize);
-
-        const canvas = canvasRef.current;
-        const textLayerHost = textLayerHostRef.current;
-        if (!canvas || !textLayerHost) return;
-
         const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+
         canvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
         canvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
         canvas.style.width = viewport.width + "px";
@@ -109,8 +171,6 @@ export function PdfPageView({
           },
         });
 
-        // PDF.js' own viewer passes null when image placeholders are disabled.
-        // The generated type currently marks the property as non-nullable.
         await textLayer.render({
           viewport,
           images: NO_TEXT_LAYER_IMAGES,
@@ -149,7 +209,7 @@ export function PdfPageView({
       renderTask?.cancel();
       textLayer?.cancel();
     };
-  }, [document, onTextReady, pageNumber, scale]);
+  }, [nearViewport, onTextReady, page, pageNumber, scale]);
 
   return (
     <div
@@ -166,6 +226,9 @@ export function PdfPageView({
       }
     >
       {!size && !error && (
+        <div className="pdf-page-loading">Preparing page {pageNumber}…</div>
+      )}
+      {size && nearViewport && !error && !page && (
         <div className="pdf-page-loading">Loading page {pageNumber}…</div>
       )}
       {error && (
