@@ -114,7 +114,7 @@ function findExactRange(
   const target = exact.toLocaleLowerCase("en-US");
   const walker = contents.document.createTreeWalker(
     body,
-    contents.window.NodeFilter.SHOW_TEXT,
+    4,
   );
 
   let node = walker.nextNode();

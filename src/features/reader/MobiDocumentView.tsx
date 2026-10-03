@@ -201,7 +201,7 @@ function markFirstExact(
   const target = exact.toLocaleLowerCase("en-US");
   const walker = document.createTreeWalker(
     body,
-    document.defaultView?.NodeFilter.SHOW_TEXT ?? 4,
+    4,
   );
 
   let node = walker.nextNode();
