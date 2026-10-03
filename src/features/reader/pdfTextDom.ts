@@ -51,9 +51,92 @@ function buildSpanRecords(textLayer: HTMLElement): {
   return { text, records };
 }
 
+function commonSuffixLength(a: string, b: string): number {
+  let count = 0;
+  const limit = Math.min(a.length, b.length);
+
+  while (
+    count < limit &&
+    a[a.length - 1 - count] === b[b.length - 1 - count]
+  ) {
+    count += 1;
+  }
+
+  return count;
+}
+
+function commonPrefixLength(a: string, b: string): number {
+  let count = 0;
+  const limit = Math.min(a.length, b.length);
+
+  while (count < limit && a[count] === b[count]) {
+    count += 1;
+  }
+
+  return count;
+}
+
+export function findBestQuoteOccurrence(
+  pageText: string,
+  exact: string,
+  prefix = "",
+  suffix = "",
+): number {
+  const page = normalizePdfText(pageText).toLocaleLowerCase("en-US");
+  const quote = normalizePdfText(exact).toLocaleLowerCase("en-US");
+  const quotePrefix = normalizePdfText(prefix).toLocaleLowerCase("en-US");
+  const quoteSuffix = normalizePdfText(suffix).toLocaleLowerCase("en-US");
+
+  if (!page || !quote) return -1;
+
+  const occurrences: number[] = [];
+  let searchFrom = 0;
+
+  while (searchFrom <= page.length - quote.length) {
+    const index = page.indexOf(quote, searchFrom);
+    if (index < 0) break;
+    occurrences.push(index);
+    searchFrom = index + Math.max(1, quote.length);
+  }
+
+  if (occurrences.length === 0) return -1;
+  if (occurrences.length === 1) return occurrences[0];
+
+  let bestIndex = occurrences[0];
+  let bestScore = -1;
+
+  for (const index of occurrences) {
+    const before = page.slice(
+      Math.max(0, index - Math.max(quotePrefix.length, 120)),
+      index,
+    );
+    const after = page.slice(
+      index + quote.length,
+      index + quote.length + Math.max(quoteSuffix.length, 120),
+    );
+
+    const prefixScore = quotePrefix
+      ? commonSuffixLength(before, quotePrefix)
+      : 0;
+    const suffixScore = quoteSuffix
+      ? commonPrefixLength(after, quoteSuffix)
+      : 0;
+    const score = prefixScore * 2 + suffixScore * 2;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  }
+
+  return bestIndex;
+}
+
 export function locatePdfTextRects(
   page: number,
   exact: string,
+  prefix = "",
+  suffix = "",
 ): NormalizedRect[] {
   const shell = pageShell(page);
   const textLayer = shell?.querySelector<HTMLElement>(".textLayer");
@@ -63,9 +146,12 @@ export function locatePdfTextRects(
   const normalizedExact = normalizePdfText(exact);
   if (!text || !normalizedExact) return [];
 
-  const start = text
-    .toLocaleLowerCase("en-US")
-    .indexOf(normalizedExact.toLocaleLowerCase("en-US"));
+  const start = findBestQuoteOccurrence(
+    text,
+    normalizedExact,
+    prefix,
+    suffix,
+  );
   if (start < 0) return [];
 
   const end = start + normalizedExact.length;

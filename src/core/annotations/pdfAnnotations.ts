@@ -274,3 +274,35 @@ export async function removePdfTextAnnotation(
     [annotationId, new Date().toISOString()],
   );
 }
+
+
+export async function updatePdfAnnotationRects(
+  annotationId: string,
+  rects: NormalizedRect[],
+): Promise<void> {
+  if (!isTauri() || rects.length === 0) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  const rows = await db.select<Array<{ anchor_json: string }>>(
+    "SELECT anchor_json FROM annotations WHERE id = $1 LIMIT 1",
+    [annotationId],
+  );
+  const anchor = rows[0]
+    ? parsePdfTextAnchor(rows[0].anchor_json)
+    : null;
+  if (!anchor) return;
+
+  await db.execute(
+    "UPDATE annotations SET anchor_json = $2, updated_at = $3 WHERE id = $1",
+    [
+      annotationId,
+      JSON.stringify({
+        ...anchor,
+        rects,
+      }),
+      new Date().toISOString(),
+    ],
+  );
+}

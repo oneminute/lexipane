@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
@@ -24,6 +25,7 @@ import {
   createUserPdfHighlight,
   listPdfTextAnnotations,
   removePdfTextAnnotation,
+  updatePdfAnnotationRects,
   type NormalizedRect,
   type PdfTextAnnotation,
 } from "../../core/annotations/pdfAnnotations";
@@ -135,6 +137,24 @@ function normalizedText(value: string | null | undefined): string {
   return (value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function rectsApproximatelyEqual(
+  a: NormalizedRect[],
+  b: NormalizedRect[],
+): boolean {
+  if (a.length !== b.length) return false;
+
+  const tolerance = 0.0025;
+  return a.every((rect, index) => {
+    const other = b[index];
+    return (
+      Math.abs(rect.x - other.x) <= tolerance &&
+      Math.abs(rect.y - other.y) <= tolerance &&
+      Math.abs(rect.width - other.width) <= tolerance &&
+      Math.abs(rect.height - other.height) <= tolerance
+    );
+  });
+}
+
 export function ReaderView({
   bookPath,
   navigationTarget = null,
@@ -159,6 +179,7 @@ export function ReaderView({
   const [highlightStatus, setHighlightStatus] =
     useState<"idle" | "saving" | "saved">("idle");
   const [annotations, setAnnotations] = useState<PdfTextAnnotation[]>([]);
+  const annotationsRef = useRef<PdfTextAnnotation[]>([]);
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>("B2");
   const [pageTexts, setPageTexts] = useState<Record<number, string>>({});
   const [autoTermsByPage, setAutoTermsByPage] =
@@ -360,6 +381,10 @@ export function ReaderView({
       cancelled = true;
     };
   }, [bookPath, navigationTarget]);
+
+  useEffect(() => {
+    annotationsRef.current = annotations;
+  }, [annotations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -678,6 +703,53 @@ export function ReaderView({
       setPageTexts((current) =>
         current[page] === text ? current : { ...current, [page]: text },
       );
+
+      const pageAnnotations = annotationsRef.current.filter(
+        (annotation) => annotation.anchor.page === page,
+      );
+      if (pageAnnotations.length === 0) return;
+
+      const repaired = new Map<string, NormalizedRect[]>();
+
+      for (const annotation of pageAnnotations) {
+        const rects = locatePdfTextRects(
+          page,
+          annotation.anchor.exact,
+          annotation.anchor.prefix,
+          annotation.anchor.suffix,
+        );
+
+        if (
+          rects.length > 0 &&
+          !rectsApproximatelyEqual(rects, annotation.anchor.rects)
+        ) {
+          repaired.set(annotation.id, rects);
+          void updatePdfAnnotationRects(annotation.id, rects).catch(
+            (error) => {
+              console.error("Unable to repair PDF annotation anchor", error);
+            },
+          );
+        }
+      }
+
+      if (repaired.size > 0) {
+        setAnnotations((current) => {
+          const next = current.map((annotation) => {
+            const rects = repaired.get(annotation.id);
+            return rects
+              ? {
+                  ...annotation,
+                  anchor: {
+                    ...annotation.anchor,
+                    rects,
+                  },
+                }
+              : annotation;
+          });
+          annotationsRef.current = next;
+          return next;
+        });
+      }
     },
     [],
   );
