@@ -289,6 +289,15 @@ export function AiSettingsView() {
 
     if (slot === "primary" && !target) return;
 
+    const implicitPrimary: TaskRouteTarget | null =
+      current.primary ??
+      (selectedModel
+        ? {
+            kind: "ollama",
+            model: selectedModel,
+          }
+        : null);
+
     const nextFallbacks = [...current.fallbacks];
 
     if (slot === "primary") {
@@ -308,7 +317,7 @@ export function AiSettingsView() {
     }
 
     const next: TaskRoutePlan = {
-      primary: current.primary,
+      primary: implicitPrimary,
       fallbacks: nextFallbacks.filter(Boolean).slice(0, 2),
     };
     setRoutePlans((plans) => ({ ...plans, [task]: next }));
