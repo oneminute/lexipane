@@ -1331,3 +1331,268 @@ button { cursor: pointer; }
   border: 0;
   border-radius: 7px;
 }
+
+
+/* Automatic reading assistance and adaptive routing */
+
+.ai-pane-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ai-pane-meta > span {
+  font-size: 8px;
+  font-weight: 700;
+  color: #8d91a0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.auto-difficulty-card {
+  border-color: #e8e1bf;
+  background:
+    linear-gradient(180deg, rgba(255, 248, 216, 0.42), transparent 52%),
+    white;
+}
+
+.auto-difficulty-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.auto-difficulty-heading h3 {
+  margin: 7px 0 0;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.auto-difficulty-heading small {
+  padding: 3px 6px;
+  font-size: 8px;
+  font-weight: 800;
+  color: #756625;
+  background: #fff4bd;
+  border-radius: 999px;
+}
+
+.auto-difficulty-loading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0 3px;
+  font-size: 10px;
+  color: #7f7b6a;
+}
+
+.auto-difficulty-loading .pdf-spinner {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+}
+
+.auto-difficulty-error {
+  padding: 9px;
+  color: #8c4a50;
+  background: #fff1f2;
+  border-radius: 8px;
+}
+
+.auto-term-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.auto-term {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid #ece7cf;
+  border-radius: 10px;
+}
+
+.auto-term.phrase {
+  border-color: #efdcc8;
+  background: #fffaf4;
+}
+
+.auto-term-copy > div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.auto-term-copy strong {
+  font-family: Georgia, serif;
+  font-size: 14px;
+  color: #363a47;
+}
+
+.auto-term-copy > div > span {
+  flex: 0 0 auto;
+  font-size: 8px;
+  color: #9b9170;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.auto-term-copy p {
+  margin: 5px 0 0;
+  color: #505666;
+}
+
+.auto-term-copy small {
+  display: block;
+  margin-top: 4px;
+  color: #9296a2;
+  line-height: 1.45;
+}
+
+.auto-term-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.auto-term-actions button {
+  padding: 5px 7px;
+  font-size: 8px;
+  color: #626776;
+  background: #f1f2f5;
+  border: 0;
+  border-radius: 7px;
+}
+
+.auto-term-actions button:first-child {
+  color: #4f478c;
+  background: #eeebff;
+}
+
+.pdf-highlight.auto.word {
+  background: rgba(255, 224, 92, 0.34);
+  box-shadow: inset 0 -1px 0 rgba(190, 154, 32, 0.24);
+}
+
+.pdf-highlight.auto.phrase {
+  background: rgba(255, 181, 100, 0.30);
+  box-shadow: inset 0 -1px 0 rgba(190, 111, 35, 0.22);
+}
+
+.settings-select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  color: #343846;
+  background: #f8f8fa;
+  border: 1px solid #dfe1e7;
+  border-radius: 10px;
+  outline: none;
+}
+
+.settings-help {
+  display: block;
+  margin-top: 8px;
+  color: #8a8f9d;
+  line-height: 1.45;
+}
+
+.routing-card {
+  grid-column: span 2;
+}
+
+.task-route-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.task-route-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+  gap: 16px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid #eff0f3;
+}
+
+.task-route-row > span strong,
+.task-route-row > span small {
+  display: block;
+}
+
+.task-route-row > span strong {
+  font-size: 11px;
+}
+
+.task-route-row > span small {
+  margin-top: 3px;
+  color: #9296a2;
+}
+
+.task-route-row select {
+  width: 100%;
+  padding: 7px 9px;
+  color: #454a58;
+  background: #f7f8fa;
+  border: 1px solid #dfe1e7;
+  border-radius: 9px;
+}
+
+.usage-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.usage-metrics > div {
+  padding: 12px;
+  background: #f7f8fa;
+  border-radius: 10px;
+}
+
+.usage-metrics strong,
+.usage-metrics span {
+  display: block;
+}
+
+.usage-metrics strong {
+  font-size: 14px;
+  color: #343845;
+}
+
+.usage-metrics span {
+  margin-top: 3px;
+  font-size: 8px;
+  color: #9599a5;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.mode-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 760px) {
+  .routing-card {
+    grid-column: auto;
+  }
+
+  .task-route-row {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .usage-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-pane-meta > span {
+    display: none;
+  }
+}
