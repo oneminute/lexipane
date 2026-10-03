@@ -7,6 +7,7 @@ import type {
   TextGenerationRequest,
   TextGenerationResponse,
   TextStreamEvent,
+  VisionGenerationRequest,
 } from "../types";
 
 interface OpenAIModelList {
@@ -139,6 +140,57 @@ export class OpenAICompatibleProvider implements AIProvider {
       const detail = await response.text().catch(() => "");
       throw new Error(
         "Text generation failed: HTTP " +
+          response.status +
+          (detail ? " · " + detail.slice(0, 300) : ""),
+      );
+    }
+
+    const payload = (await response.json()) as OpenAIChatResponse;
+
+    return {
+      text: payload.choices?.[0]?.message?.content ?? "",
+      model: payload.model || request.model,
+      usage: {
+        inputTokens: payload.usage?.prompt_tokens,
+        outputTokens: payload.usage?.completion_tokens,
+      },
+    };
+  }
+
+  async generateVision(
+    request: VisionGenerationRequest,
+  ): Promise<TextGenerationResponse> {
+    const response = await appFetch(this.baseUrl + "/chat/completions", {
+      method: "POST",
+      headers: this.headers(),
+      signal: request.signal,
+      body: JSON.stringify({
+        model: request.model,
+        stream: false,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: request.prompt,
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: request.imageDataUrl,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        "Vision generation failed: HTTP " +
           response.status +
           (detail ? " · " + detail.slice(0, 300) : ""),
       );

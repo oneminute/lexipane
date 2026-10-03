@@ -52,6 +52,13 @@ export interface TextGenerationRequest {
   signal?: AbortSignal;
 }
 
+export interface VisionGenerationRequest {
+  model: string;
+  prompt: string;
+  imageDataUrl: string;
+  signal?: AbortSignal;
+}
+
 export interface AIUsage {
   inputTokens?: number;
   outputTokens?: number;

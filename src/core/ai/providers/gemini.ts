@@ -8,6 +8,7 @@ import type {
   TextGenerationRequest,
   TextGenerationResponse,
   TextStreamEvent,
+  VisionGenerationRequest,
 } from "../types";
 
 interface GeminiModelsResponse {
@@ -175,6 +176,63 @@ export class GeminiProvider implements AIProvider {
       const detail = await response.text().catch(() => "");
       throw new Error(
         "Gemini generation failed: HTTP " +
+          response.status +
+          (detail ? " · " + detail.slice(0, 300) : ""),
+      );
+    }
+
+    const payload = (await response.json()) as GeminiGenerateResponse;
+
+    return {
+      text: responseText(payload),
+      model: payload.modelVersion || request.model,
+      usage: {
+        inputTokens: payload.usageMetadata?.promptTokenCount,
+        outputTokens: payload.usageMetadata?.candidatesTokenCount,
+      },
+    };
+  }
+
+  async generateVision(
+    request: VisionGenerationRequest,
+  ): Promise<TextGenerationResponse> {
+    const match = request.imageDataUrl.match(
+      /^data:([^;,]+);base64,(.+)$/s,
+    );
+    if (!match) {
+      throw new Error("Gemini vision requires a base64 data URL.");
+    }
+
+    const model = normalizeModelPath(request.model);
+    const response = await appFetch(
+      this.baseUrl + "/" + model + ":generateContent",
+      {
+        method: "POST",
+        headers: this.headers(),
+        signal: request.signal,
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: request.prompt },
+                {
+                  inlineData: {
+                    mimeType: match[1],
+                    data: match[2],
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        "Gemini vision failed: HTTP " +
           response.status +
           (detail ? " · " + detail.slice(0, 300) : ""),
       );

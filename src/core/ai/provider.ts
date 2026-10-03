@@ -5,6 +5,7 @@ import type {
   TextGenerationRequest,
   TextGenerationResponse,
   TextStreamEvent,
+  VisionGenerationRequest,
 } from "./types";
 
 export interface AIProvider {
@@ -14,4 +15,7 @@ export interface AIProvider {
   listModels(): Promise<ModelInfo[]>;
   generateText(request: TextGenerationRequest): Promise<TextGenerationResponse>;
   streamText?(request: TextGenerationRequest): AsyncIterable<TextStreamEvent>;
+  generateVision?(
+    request: VisionGenerationRequest,
+  ): Promise<TextGenerationResponse>;
 }

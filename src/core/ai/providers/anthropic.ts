@@ -8,6 +8,7 @@ import type {
   TextGenerationRequest,
   TextGenerationResponse,
   TextStreamEvent,
+  VisionGenerationRequest,
 } from "../types";
 
 interface AnthropicModelsResponse {
@@ -177,6 +178,70 @@ export class AnthropicProvider implements AIProvider {
       const detail = await response.text().catch(() => "");
       throw new Error(
         "Anthropic generation failed: HTTP " +
+          response.status +
+          (detail ? " · " + detail.slice(0, 300) : ""),
+      );
+    }
+
+    const payload = (await response.json()) as AnthropicMessageResponse;
+    const text = (payload.content ?? [])
+      .filter((block) => block.type === "text")
+      .map((block) => block.text ?? "")
+      .join("");
+
+    return {
+      text,
+      model: payload.model || request.model,
+      usage: {
+        inputTokens: payload.usage?.input_tokens,
+        outputTokens: payload.usage?.output_tokens,
+      },
+    };
+  }
+
+  async generateVision(
+    request: VisionGenerationRequest,
+  ): Promise<TextGenerationResponse> {
+    const match = request.imageDataUrl.match(
+      /^data:([^;,]+);base64,(.+)$/s,
+    );
+    if (!match) {
+      throw new Error("Anthropic vision requires a base64 data URL.");
+    }
+
+    const response = await appFetch(this.baseUrl + "/messages", {
+      method: "POST",
+      headers: this.headers(),
+      signal: request.signal,
+      body: JSON.stringify({
+        model: request.model,
+        max_tokens: 4096,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: match[1],
+                  data: match[2],
+                },
+              },
+              {
+                type: "text",
+                text: request.prompt,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        "Anthropic vision failed: HTTP " +
           response.status +
           (detail ? " · " + detail.slice(0, 300) : ""),
       );

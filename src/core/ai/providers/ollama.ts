@@ -7,6 +7,7 @@ import type {
   TextGenerationRequest,
   TextGenerationResponse,
   TextStreamEvent,
+  VisionGenerationRequest,
 } from "../types";
 
 interface OllamaTagsResponse {
@@ -112,24 +113,34 @@ export class OllamaProvider implements AIProvider {
     return payload.capabilities ?? [];
   }
 
-  async generateVisionText(
-    model: string,
-    prompt: string,
-    imageDataUrl: string,
+  async generateVision(
+    request: VisionGenerationRequest,
   ): Promise<TextGenerationResponse> {
-    const comma = imageDataUrl.indexOf(",");
-    const base64 = comma >= 0 ? imageDataUrl.slice(comma + 1) : imageDataUrl;
+    const capabilities = await this.getCapabilities(request.model);
+    if (!capabilities.includes("vision")) {
+      throw new Error(
+        'Ollama model "' +
+          request.model +
+          '" does not report vision capability.',
+      );
+    }
+
+    const comma = request.imageDataUrl.indexOf(",");
+    const base64 =
+      comma >= 0
+        ? request.imageDataUrl.slice(comma + 1)
+        : request.imageDataUrl;
 
     const response = await appFetch(this.baseUrl + "/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model,
+        model: request.model,
         stream: false,
         messages: [
           {
             role: "user",
-            content: prompt,
+            content: request.prompt,
             images: [base64],
           },
         ],
@@ -137,6 +148,7 @@ export class OllamaProvider implements AIProvider {
           temperature: 0.2,
         },
       }),
+      signal: request.signal,
     });
 
     if (!response.ok) {
@@ -148,7 +160,7 @@ export class OllamaProvider implements AIProvider {
     const payload = (await response.json()) as OllamaChatResponse;
     return {
       text: payload.message?.content ?? "",
-      model: payload.model || model,
+      model: payload.model || request.model,
       usage: {
         inputTokens: payload.prompt_eval_count,
         outputTokens: payload.eval_count,

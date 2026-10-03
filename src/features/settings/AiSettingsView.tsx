@@ -68,7 +68,7 @@ const taskRoutes: Array<{
   {
     id: "region",
     label: "Region / image",
-    description: "Local Ollama vision model",
+    description: "Charts, scanned text, formulas, and illustrations",
   },
 ];
 
@@ -277,15 +277,7 @@ export function AiSettingsView() {
     const target = routes[task];
 
     if (target) {
-      if (
-        target.kind === "provider" &&
-        task === "region"
-      ) {
-        // Region cloud adapters need provider-specific multimodal request
-        // support. Until then, keep image routing on Ollama.
-      } else {
-        return encodeRoute(target);
-      }
+      return encodeRoute(target);
     }
 
     return selectedModel
@@ -297,11 +289,21 @@ export function AiSettingsView() {
   }
 
   function cloudRouteOptions(task: ReadingTaskType) {
-    if (task === "region") return [];
+    return providerConfigs.filter((config) => {
+      if (!config.settings.model) return false;
 
-    return providerConfigs.filter(
-      (config) => Boolean(config.settings.model),
-    );
+      if (task !== "region") return true;
+
+      const descriptor = providerCatalog.find(
+        (provider) => provider.id === config.providerId,
+      );
+
+      return (
+        descriptor?.adapter === "openai-compatible" ||
+        descriptor?.adapter === "anthropic-native" ||
+        descriptor?.adapter === "gemini-native"
+      );
+    });
   }
 
   return (
@@ -311,9 +313,9 @@ export function AiSettingsView() {
           <span className="eyebrow">AI Platform</span>
           <h1>One reader, any model.</h1>
           <p>
-            LexiPane can route each text-reading task to a local Ollama model
-            or a securely configured OpenAI-compatible provider. Region/image
-            analysis currently stays on a vision-capable Ollama model.
+            LexiPane can route reading tasks to local Ollama or securely
+            configured cloud providers. Text responses stream as they arrive,
+            and region/image analysis can use local or cloud multimodal models.
           </p>
         </div>
       </header>
