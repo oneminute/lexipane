@@ -12,7 +12,6 @@ export async function loadPdfFromPath(path: string): Promise<PDFDocumentProxy> {
   const bytes = await readFile(path);
   const loadingTask = getDocument({
     data: bytes,
-    isEvalSupported: false,
   });
 
   return loadingTask.promise;

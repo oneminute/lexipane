@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { TextLayerBuilder } from "pdfjs-dist/web/pdf_viewer.mjs";
 
 interface Props {
@@ -48,7 +48,7 @@ export function PdfPageView({
 
   useEffect(() => {
     let cancelled = false;
-    let renderTask: { cancel: () => void; promise: Promise<void> } | null = null;
+    let renderTask: RenderTask | null = null;
     let textLayer: TextLayerBuilder | null = null;
 
     async function renderPage() {
@@ -69,11 +69,6 @@ export function PdfPageView({
         const textLayerHost = textLayerHostRef.current;
         if (!canvas || !textLayerHost) return;
 
-        const context = canvas.getContext("2d", { alpha: false });
-        if (!context) {
-          throw new Error("Unable to create a 2D canvas context.");
-        }
-
         const outputScale = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
         canvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
@@ -81,7 +76,7 @@ export function PdfPageView({
         canvas.style.height = viewport.height + "px";
 
         renderTask = page.render({
-          canvasContext: context,
+          canvas,
           viewport,
           transform:
             outputScale === 1
@@ -103,7 +98,10 @@ export function PdfPageView({
           },
         });
 
-        await textLayer.render({ viewport });
+        await textLayer.render({
+          viewport,
+          images: null,
+        });
       } catch (renderError) {
         if (cancelled) return;
 
