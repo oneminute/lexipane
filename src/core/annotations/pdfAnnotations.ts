@@ -81,7 +81,10 @@ function quoteContext(
   exact: string,
   context: string,
 ): { prefix: string; suffix: string } {
-  const index = context.indexOf(exact);
+  const lowerContext = context.toLocaleLowerCase("en-US");
+  const lowerExact = exact.toLocaleLowerCase("en-US");
+  const index = lowerContext.indexOf(lowerExact);
+
   if (index < 0) {
     return { prefix: "", suffix: "" };
   }
@@ -92,8 +95,11 @@ function quoteContext(
   };
 }
 
-export async function createUserPdfHighlight(
+async function createPdfTextAnnotation(
   bookPath: string,
+  source: "user" | "auto",
+  type: string,
+  color: string,
   page: number,
   exact: string,
   context: string,
@@ -108,6 +114,35 @@ export async function createUserPdfHighlight(
 
   const db = await initializeDatabase();
   if (!db) return null;
+
+  if (source === "auto") {
+    const rows = await db.select<AnnotationRow[]>(
+      "SELECT a.id, a.source, a.type, a.selected_text, a.status, a.color, a.anchor_json " +
+        "FROM annotations a WHERE a.book_id = $1 AND a.source = 'auto' " +
+        "AND a.status = 'active' AND a.selected_text = $2",
+      [book.id, exact],
+    );
+
+    const existing = rows.find((row) => {
+      const anchor = parsePdfTextAnchor(row.anchor_json);
+      return anchor?.page === page;
+    });
+
+    if (existing) {
+      const anchor = parsePdfTextAnchor(existing.anchor_json);
+      if (anchor) {
+        return {
+          id: existing.id,
+          source: "auto",
+          type: existing.type,
+          selectedText: existing.selected_text ?? anchor.exact,
+          status: existing.status,
+          color: existing.color,
+          anchor,
+        };
+      }
+    }
+  }
 
   const { prefix, suffix } = quoteContext(exact, context);
   const anchor: PdfTextAnchor = {
@@ -130,12 +165,12 @@ export async function createUserPdfHighlight(
     [
       id,
       book.id,
-      "user",
-      "text",
+      source,
+      type,
       JSON.stringify(anchor),
       exact,
       "active",
-      "blue",
+      color,
       now,
       now,
     ],
@@ -143,13 +178,52 @@ export async function createUserPdfHighlight(
 
   return {
     id,
-    source: "user",
-    type: "text",
+    source,
+    type,
     selectedText: exact,
     status: "active",
-    color: "blue",
+    color,
     anchor,
   };
+}
+
+export async function createUserPdfHighlight(
+  bookPath: string,
+  page: number,
+  exact: string,
+  context: string,
+  rects: NormalizedRect[],
+): Promise<PdfTextAnnotation | null> {
+  return createPdfTextAnnotation(
+    bookPath,
+    "user",
+    "text",
+    "blue",
+    page,
+    exact,
+    context,
+    rects,
+  );
+}
+
+export async function createAutoPdfHighlight(
+  bookPath: string,
+  page: number,
+  exact: string,
+  context: string,
+  rects: NormalizedRect[],
+  type: "word" | "phrase",
+): Promise<PdfTextAnnotation | null> {
+  return createPdfTextAnnotation(
+    bookPath,
+    "auto",
+    type,
+    type === "phrase" ? "orange" : "yellow",
+    page,
+    exact,
+    context,
+    rects,
+  );
 }
 
 export async function listPdfTextAnnotations(

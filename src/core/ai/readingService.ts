@@ -1,9 +1,15 @@
+import { createAiCacheKey, getCachedAiValue, putCachedAiValue } from "./cache";
 import {
   choosePreferredOllamaModel,
   loadOllamaConfig,
   saveOllamaModel,
 } from "./ollamaConfig";
 import { OllamaProvider } from "./providers/ollama";
+import {
+  resolveOllamaModelForTask,
+  type ReadingTaskType,
+} from "./taskRouting";
+import { recordAiUsage } from "./usage";
 
 export type ReadingAnalysisMode = "explain" | "grammar" | "ask";
 
@@ -16,6 +22,7 @@ export interface ReadingSelection {
 export interface ReadingAnalysisResult {
   text: string;
   model: string;
+  cached?: boolean;
 }
 
 function trimContext(context: string | undefined): string {
@@ -55,6 +62,10 @@ function taskInstruction(
   ].join(" ");
 }
 
+function taskTypeForMode(mode: ReadingAnalysisMode): ReadingTaskType {
+  return mode;
+}
+
 export async function analyzeReadingSelection(
   selection: ReadingSelection,
   mode: ReadingAnalysisMode,
@@ -64,23 +75,46 @@ export async function analyzeReadingSelection(
   const provider = new OllamaProvider(config.baseUrl);
   const models = await provider.listModels();
 
-  const model = choosePreferredOllamaModel(models, config.model);
+  const taskType = taskTypeForMode(mode);
+  const model =
+    (await resolveOllamaModelForTask(taskType, models, config.model)) ??
+    choosePreferredOllamaModel(models, config.model);
+
   if (!model) {
     throw new Error(
       "Ollama is running, but no local model is installed. Pull a model first.",
     );
   }
 
-  if (model !== config.model) {
+  if (!config.model) {
     await saveOllamaModel(model);
   }
 
   const context = trimContext(selection.context);
+  const input = {
+    text: selection.text.slice(0, 4000),
+    context,
+    page: selection.page ?? null,
+    question: question?.trim() ?? "",
+    mode,
+    promptVersion: 2,
+  };
+
+  const cacheKey = createAiCacheKey(taskType, model, input);
+  const cached = await getCachedAiValue<{ text: string }>(cacheKey);
+  if (cached?.text) {
+    return {
+      text: cached.text,
+      model,
+      cached: true,
+    };
+  }
+
   const userContent = [
     taskInstruction(mode, question),
     "",
     "Selected text:",
-    selection.text.slice(0, 4000),
+    input.text,
     "",
     context ? "Surrounding page context:" : "",
     context,
@@ -88,6 +122,7 @@ export async function analyzeReadingSelection(
     .filter(Boolean)
     .join("\n");
 
+  const started = Date.now();
   const response = await provider.generateText({
     model,
     temperature: 0.2,
@@ -106,9 +141,18 @@ export async function analyzeReadingSelection(
       },
     ],
   });
+  const latencyMs = Date.now() - started;
+
+  const text = response.text.trim();
+
+  await Promise.all([
+    recordAiUsage(model, taskType, response.usage, latencyMs),
+    putCachedAiValue(cacheKey, taskType, model, { text }),
+  ]);
 
   return {
-    text: response.text.trim(),
+    text,
     model: response.model,
+    cached: false,
   };
 }
