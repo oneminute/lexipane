@@ -26,9 +26,11 @@ The current desktop build now includes PDF, EPUB, and Kindle-family reading flow
 - automatic difficult-word and phrase detection with A2/B1/B2/C1 reader levels
 - Known / Remove / Difficult feedback and the first personalized reading profile
 - automatic preference for an installed Qwen 3.5/Qwen model when no model was chosen
-- contextual explanation of selected PDF text
-- grammar/structure analysis of selected text
-- questions about selected text with surrounding page context
+- contextual explanation of selected text with structured reading-result cards
+- structured grammar/structure analysis
+- structured reader questions with key points and text-grounded evidence
+- ordered Primary → Fallback 1 → Fallback 2 routing per AI task
+- per-book AI privacy override that can inherit or override the global policy
 - double-click sentence selection with automatic grammar/structure analysis
 - persistent Notebook entries containing source text, AI explanation, and editable user notes
 - provider registry covering major local, global-cloud, and China-cloud AI families
