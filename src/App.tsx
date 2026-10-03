@@ -8,6 +8,7 @@ import {
 } from "./core/books/openBook";
 import { initializeDatabase } from "./core/db/database";
 import { LibraryView } from "./features/library/LibraryView";
+import { NotebookView } from "./features/notebook/NotebookView";
 import { ReaderView } from "./features/reader/ReaderView";
 import { AiSettingsView } from "./features/settings/AiSettingsView";
 
@@ -76,19 +77,7 @@ export default function App() {
           />
         )}
         {view === "notebook" && (
-          <section className="page page-centered">
-            <div className="empty-card">
-              <span className="eyebrow">Notebook</span>
-              <h1>Your reading knowledge, in one place.</h1>
-              <p>
-                Vocabulary, phrases, sentence analyses, region captures, AI
-                explanations, and your own notes will appear here.
-              </p>
-              <span className="status-chip">
-                Foundation ready · persistence next
-              </span>
-            </div>
-          </section>
+          <NotebookView onOpenBook={openBookPath} />
         )}
         {view === "ai" && <AiSettingsView />}
       </main>

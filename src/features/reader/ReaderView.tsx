@@ -12,6 +12,7 @@ import {
   type ReadingSelection,
 } from "../../core/ai/readingService";
 import { isPdfPath } from "../../core/books/openBook";
+import { createReaderNote } from "../../core/notes/notes";
 import {
   loadPdfReadingPosition,
   savePdfReadingPosition,
@@ -55,6 +56,7 @@ export function ReaderView({
   const [aiBusy, setAiBusy] = useState(false);
   const [question, setQuestion] = useState("");
   const [configuredModel, setConfiguredModel] = useState<string | null>(null);
+  const [noteStatus, setNoteStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   const isPdf = isPdfPath(bookPath);
 
@@ -75,6 +77,7 @@ export function ReaderView({
     setAiResult(null);
     setAiError(null);
     setQuestion("");
+    setNoteStatus("idle");
 
     if (!bookPath || !isPdfPath(bookPath)) {
       setPositionLoaded(true);
@@ -165,6 +168,7 @@ export function ReaderView({
     setAiResult(null);
     setAiError(null);
     setQuestion("");
+    setNoteStatus("idle");
   }
 
   async function runAi(
@@ -203,6 +207,24 @@ export function ReaderView({
       );
     } finally {
       setAiBusy(false);
+    }
+  }
+
+  async function saveCurrentNote() {
+    if (!bookPath || !selection || noteStatus === "saving") return;
+
+    setNoteStatus("saving");
+    try {
+      await createReaderNote(
+        bookPath,
+        selection.text,
+        aiResult?.text ?? null,
+      );
+      setNoteStatus("saved");
+      window.setTimeout(() => setNoteStatus("idle"), 1500);
+    } catch (error) {
+      console.error("Unable to save reading note", error);
+      setNoteStatus("idle");
     }
   }
 
@@ -344,13 +366,23 @@ export function ReaderView({
                   >
                     Analyze grammar
                   </button>
-                  <button disabled={aiBusy}>Save note</button>
+                  <button
+                    disabled={aiBusy || noteStatus === "saving"}
+                    onClick={() => void saveCurrentNote()}
+                  >
+                    {noteStatus === "saving"
+                      ? "Saving…"
+                      : noteStatus === "saved"
+                        ? "Saved"
+                        : "Save note"}
+                  </button>
                   <button
                     disabled={aiBusy}
                     onClick={() => {
                       setSelection(null);
                       setAiResult(null);
                       setAiError(null);
+                      setNoteStatus("idle");
                     }}
                   >
                     Clear
