@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const schemaStatements = [
   "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -11,4 +11,7 @@ export const schemaStatements = [
   "CREATE TABLE IF NOT EXISTS ai_provider_configs (id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, display_name TEXT NOT NULL, base_url TEXT, enabled INTEGER NOT NULL DEFAULT 1, settings_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
   "CREATE TABLE IF NOT EXISTS ai_task_routes (task_type TEXT PRIMARY KEY, provider_config_id TEXT, model_id TEXT, fallback_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL, FOREIGN KEY(provider_config_id) REFERENCES ai_provider_configs(id) ON DELETE SET NULL)",
   "CREATE TABLE IF NOT EXISTS ai_usage (id TEXT PRIMARY KEY, provider_config_id TEXT, model_id TEXT NOT NULL, task_type TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER, estimated_cost REAL, latency_ms INTEGER, created_at TEXT NOT NULL, FOREIGN KEY(provider_config_id) REFERENCES ai_provider_configs(id) ON DELETE SET NULL)",
+  "CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at)",
+  "CREATE TABLE IF NOT EXISTS ai_cache (cache_key TEXT PRIMARY KEY, task_type TEXT NOT NULL, model_id TEXT NOT NULL, content_json TEXT NOT NULL, created_at TEXT NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS idx_ai_cache_task ON ai_cache(task_type)",
 ];
