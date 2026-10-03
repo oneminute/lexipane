@@ -113,6 +113,7 @@ export const providerCatalog: ProviderDescriptor[] = [
     adapter: "openai-compatible",
     status: "core",
     description: "Mistral cloud models through the shared compatible adapter.",
+    defaultBaseUrl: "https://api.mistral.ai/v1",
   },
   {
     id: "custom-cloud",
@@ -141,6 +142,7 @@ export const providerCatalog: ProviderDescriptor[] = [
     adapter: "openai-compatible",
     status: "core",
     description: "DeepSeek models through the shared compatible adapter.",
+    defaultBaseUrl: "https://api.deepseek.com",
   },
   {
     id: "kimi",

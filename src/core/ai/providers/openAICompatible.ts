@@ -1,3 +1,4 @@
+import { appFetch } from "../../http/appFetch";
 import type { AIProvider } from "../provider";
 import type {
   ConnectionResult,
@@ -56,7 +57,7 @@ export class OpenAICompatibleProvider implements AIProvider {
 
   async testConnection(): Promise<ConnectionResult> {
     try {
-      const response = await fetch(this.baseUrl + "/models", {
+      const response = await appFetch(this.baseUrl + "/models", {
         headers: this.headers(),
       });
 
@@ -67,7 +68,11 @@ export class OpenAICompatibleProvider implements AIProvider {
           }
         : {
             ok: false,
-            message: "Provider returned HTTP " + response.status + ".",
+            message:
+              this.descriptor.name +
+              " returned HTTP " +
+              response.status +
+              ".",
           };
     } catch (error) {
       return {
@@ -79,7 +84,7 @@ export class OpenAICompatibleProvider implements AIProvider {
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    const response = await fetch(this.baseUrl + "/models", {
+    const response = await appFetch(this.baseUrl + "/models", {
       headers: this.headers(),
     });
 
@@ -104,7 +109,7 @@ export class OpenAICompatibleProvider implements AIProvider {
   async generateText(
     request: TextGenerationRequest,
   ): Promise<TextGenerationResponse> {
-    const response = await fetch(this.baseUrl + "/chat/completions", {
+    const response = await appFetch(this.baseUrl + "/chat/completions", {
       method: "POST",
       headers: this.headers(),
       signal: request.signal,
@@ -117,7 +122,12 @@ export class OpenAICompatibleProvider implements AIProvider {
     });
 
     if (!response.ok) {
-      throw new Error("Text generation failed: HTTP " + response.status);
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        "Text generation failed: HTTP " +
+          response.status +
+          (detail ? " · " + detail.slice(0, 300) : ""),
+      );
     }
 
     const payload = (await response.json()) as OpenAIChatResponse;

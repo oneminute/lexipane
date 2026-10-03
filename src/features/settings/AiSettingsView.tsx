@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ProviderConnections } from "./ProviderConnections";
 import {
   choosePreferredOllamaModel,
   loadOllamaConfig,
@@ -256,6 +257,8 @@ export function AiSettingsView() {
           model.
         </small>
       </section>
+
+      <ProviderConnections />
 
       <div className="settings-grid">
         <section className="settings-card">
