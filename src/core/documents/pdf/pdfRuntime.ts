@@ -30,7 +30,10 @@ export async function loadPdfFromPath(
   let cancelledPassword = false;
 
   if (passwordProvider) {
-    loadingTask.onPassword = (updatePassword, reason) => {
+    loadingTask.onPassword = (
+      updatePassword: (password: string) => void,
+      reason: number,
+    ) => {
       void passwordProvider(reason)
         .then((password) => {
           if (password === null) {
