@@ -106,13 +106,17 @@ export function findBestQuoteOccurrence(
   let bestScore = -1;
 
   for (const index of occurrences) {
-    const before = page.slice(
-      Math.max(0, index - Math.max(quotePrefix.length, 120)),
-      index,
+    const before = normalizePdfText(
+      page.slice(
+        Math.max(0, index - Math.max(quotePrefix.length, 120)),
+        index,
+      ),
     );
-    const after = page.slice(
-      index + quote.length,
-      index + quote.length + Math.max(quoteSuffix.length, 120),
+    const after = normalizePdfText(
+      page.slice(
+        index + quote.length,
+        index + quote.length + Math.max(quoteSuffix.length, 120),
+      ),
     );
 
     const prefixScore = quotePrefix
