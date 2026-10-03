@@ -28,6 +28,10 @@ import {
   type AiUsageSummary,
 } from "../../core/ai/usage";
 import {
+  getReadingProfileSummary,
+  type ReadingProfileSummary,
+} from "../../core/reading/knownTerms";
+import {
   loadReadingLevel,
   readingLevels,
   saveReadingLevel,
@@ -80,6 +84,13 @@ const emptyUsage: AiUsageSummary = {
   outputTokens: 0,
   totalTokens: 0,
   averageLatencyMs: 0,
+};
+
+const emptyReadingProfile: ReadingProfileSummary = {
+  known: 0,
+  difficult: 0,
+  suppressed: 0,
+  totalSignals: 0,
 };
 
 function encodeRoute(target: TaskRouteTarget): string {
@@ -148,6 +159,8 @@ export function AiSettingsView() {
   const [privacyMode, setPrivacyMode] =
     useState<AiPrivacyMode>("prefer-local");
   const [usage, setUsage] = useState<AiUsageSummary>(emptyUsage);
+  const [readingProfile, setReadingProfile] =
+    useState<ReadingProfileSummary>(emptyReadingProfile);
 
   async function refreshProviderConfigs() {
     setProviderConfigs(
@@ -161,18 +174,21 @@ export function AiSettingsView() {
       usageSummary,
       privacy,
       configuredProviders,
+      profileSummary,
       ...routeValues
     ] = await Promise.all([
       loadReadingLevel(),
       getAiUsageSummary(),
       loadAiPrivacyMode(),
       listProviderConfigs(),
+      getReadingProfileSummary(),
       ...taskRoutes.map((task) => loadTaskRouteTarget(task.id)),
     ]);
 
     setReadingLevel(level);
     setUsage(usageSummary);
     setPrivacyMode(privacy);
+    setReadingProfile(profileSummary);
     setProviderConfigs(
       configuredProviders.filter((config) => config.enabled),
     );
@@ -532,6 +548,29 @@ export function AiSettingsView() {
                 </label>
               );
             })}
+          </div>
+        </section>
+
+        <section className="settings-card reading-profile-card">
+          <span className="eyebrow">Personal reading model</span>
+          <h2>{readingProfile.totalSignals.toLocaleString()} feedback signals</h2>
+          <p>
+            LexiPane uses Known, Remove, and manually highlighted difficult
+            terms to personalize future automatic reading assistance.
+          </p>
+          <div className="usage-metrics">
+            <div>
+              <strong>{readingProfile.known.toLocaleString()}</strong>
+              <span>known</span>
+            </div>
+            <div>
+              <strong>{readingProfile.difficult.toLocaleString()}</strong>
+              <span>difficult</span>
+            </div>
+            <div>
+              <strong>{readingProfile.suppressed.toLocaleString()}</strong>
+              <span>removed</span>
+            </div>
           </div>
         </section>
 

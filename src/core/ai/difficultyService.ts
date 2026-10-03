@@ -8,6 +8,7 @@ import { extractJsonObject } from "./structured";
 import { recordAiUsage } from "./usage";
 import type { ReadingLevel } from "../reading/preferences";
 import {
+  listDifficultTermHints,
   listSuppressedTerms,
   normalizeTerm,
 } from "../reading/knownTerms";
@@ -123,7 +124,10 @@ export async function detectDifficultTerms(
   );
   const cached =
     await getCachedAiValue<{ items: DifficultTerm[] }>(cacheKey);
-  const suppressed = await listSuppressedTerms();
+  const [suppressed, difficultHints] = await Promise.all([
+    listSuppressedTerms(),
+    listDifficultTermHints(40),
+  ]);
 
   if (cached) {
     return {
@@ -149,6 +153,10 @@ export async function detectDifficultTerms(
     "Return at most 12 high-value items total. Avoid names, transparent compounds, easy words, and duplicate forms.",
     "For phrases, prefer real idioms, phrasal verbs, collocations, or context-dependent expressions rather than arbitrary adjacent words.",
     "Every text value MUST be copied exactly from the supplied page.",
+    difficultHints.length > 0
+      ? "The reader has previously marked these as difficult. Give extra attention to similar vocabulary or expressions when they actually appear in the page: " +
+        difficultHints.join(", ")
+      : "",
     "Return ONLY valid JSON with this shape:",
     '{"items":[{"text":"exact text","type":"word|phrase","cefr":"B2|C1|C2|unknown","meaning":"short Simplified Chinese meaning in this context","reason":"short reason it may block reading","confidence":0.0}]}',
     "",
