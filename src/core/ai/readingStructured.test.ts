@@ -34,20 +34,18 @@ describe("structured reading analysis", () => {
 
   it("parses grammar analysis and formats it for notes", () => {
     const result = parseStructuredReadingAnalysis(
-      ```json
-      {
-        "kind":"grammar",
-        "naturalChinese":"尽管下着雨，他还是出门了。",
-        "meaning":"让步关系。",
-        "structure":[
-          {"part":"Although it was raining","role":"让步状语从句","explanation":"提供让步背景"}
-        ],
-        "grammarPoints":[
-          {"name":"although","explanation":"引导让步状语从句"}
-        ],
-        "difficultExpressions":[]
-      }
-      ```,
+      [
+        "```json",
+        "{",
+        '  "kind":"grammar",',
+        '  "naturalChinese":"尽管下着雨，他还是出门了。",',
+        '  "meaning":"让步关系。",',
+        '  "structure":[{"part":"Although it was raining","role":"让步状语从句","explanation":"提供让步背景"}],',
+        '  "grammarPoints":[{"name":"although","explanation":"引导让步状语从句"}],',
+        '  "difficultExpressions":[]',
+        "}",
+        "```",
+      ].join("\n"),
       "grammar",
     );
 
