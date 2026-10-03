@@ -1,15 +1,16 @@
-import { createAiCacheKey, getCachedAiValue, putCachedAiValue } from "./cache";
 import {
-  choosePreferredOllamaModel,
-  loadOllamaConfig,
-  saveOllamaModel,
-} from "./ollamaConfig";
-import { OllamaProvider } from "./providers/ollama";
+  createAiCacheKey,
+  getCachedAiValue,
+  putCachedAiValue,
+} from "./cache";
+import { resolveTextTaskRuntime } from "./runtimeRouter";
 import { extractJsonObject } from "./structured";
-import { resolveOllamaModelForTask } from "./taskRouting";
 import { recordAiUsage } from "./usage";
 import type { ReadingLevel } from "../reading/preferences";
-import { listSuppressedTerms, normalizeTerm } from "../reading/knownTerms";
+import {
+  listSuppressedTerms,
+  normalizeTerm,
+} from "../reading/knownTerms";
 
 export type DifficultTermType = "word" | "phrase";
 
@@ -47,7 +48,8 @@ export function parseDifficultyPayload(
     if (!item || typeof item !== "object") continue;
     const record = item as Record<string, unknown>;
 
-    const text = typeof record.text === "string" ? record.text.trim() : "";
+    const text =
+      typeof record.text === "string" ? record.text.trim() : "";
     const type =
       record.type === "phrase"
         ? "phrase"
@@ -71,10 +73,15 @@ export function parseDifficultyPayload(
     result.push({
       text,
       type,
-      cefr: typeof record.cefr === "string" ? record.cefr.trim() : undefined,
+      cefr:
+        typeof record.cefr === "string"
+          ? record.cefr.trim()
+          : undefined,
       meaning,
       reason:
-        typeof record.reason === "string" ? record.reason.trim() : undefined,
+        typeof record.reason === "string"
+          ? record.reason.trim()
+          : undefined,
       confidence,
     });
 
@@ -87,36 +94,35 @@ export function parseDifficultyPayload(
 export async function detectDifficultTerms(
   pageText: string,
   level: ReadingLevel,
-): Promise<{ items: DifficultTerm[]; model: string; cached: boolean }> {
+): Promise<{
+  items: DifficultTerm[];
+  model: string;
+  cached: boolean;
+  source?: string;
+}> {
   const normalizedPage = normalizePageText(pageText);
   if (normalizedPage.length < 80) {
-    return { items: [], model: "", cached: false };
+    return {
+      items: [],
+      model: "",
+      cached: false,
+    };
   }
 
-  const config = await loadOllamaConfig();
-  const provider = new OllamaProvider(config.baseUrl);
-  const models = await provider.listModels();
-  const model =
-    (await resolveOllamaModelForTask("difficulty", models, config.model)) ??
-    choosePreferredOllamaModel(models, config.model);
-
-  if (!model) {
-    throw new Error(
-      "Ollama is running, but no local model is installed. Pull a model first.",
-    );
-  }
-
-  if (!config.model) {
-    await saveOllamaModel(model);
-  }
+  const runtime = await resolveTextTaskRuntime("difficulty");
 
   const cacheInput = {
     level,
     page: normalizedPage,
-    schema: 1,
+    schema: 2,
   };
-  const cacheKey = createAiCacheKey("difficulty", model, cacheInput);
-  const cached = await getCachedAiValue<{ items: DifficultTerm[] }>(cacheKey);
+  const cacheKey = createAiCacheKey(
+    "difficulty",
+    runtime.cacheModelKey,
+    cacheInput,
+  );
+  const cached =
+    await getCachedAiValue<{ items: DifficultTerm[] }>(cacheKey);
   const suppressed = await listSuppressedTerms();
 
   if (cached) {
@@ -124,8 +130,9 @@ export async function detectDifficultTerms(
       items: cached.items.filter(
         (item) => !suppressed.has(normalizeTerm(item.text)),
       ),
-      model,
+      model: runtime.model,
       cached: true,
+      source: runtime.label,
     };
   }
 
@@ -149,9 +156,9 @@ export async function detectDifficultTerms(
     normalizedPage,
   ].join("\n");
 
-  const started = performance.now();
-  const response = await provider.generateText({
-    model,
+  const started = Date.now();
+  const response = await runtime.provider.generateText({
+    model: runtime.model,
     temperature: 0.1,
     messages: [
       {
@@ -165,20 +172,35 @@ export async function detectDifficultTerms(
       },
     ],
   });
-  const latencyMs = performance.now() - started;
+  const latencyMs = Date.now() - started;
 
-  await recordAiUsage(model, "difficulty", response.usage, latencyMs);
+  await recordAiUsage(
+    runtime.model,
+    "difficulty",
+    response.usage,
+    latencyMs,
+    runtime.providerConfigId,
+  );
 
   const parsed = extractJsonObject(response.text);
-  const items = parseDifficultyPayload(parsed, normalizedPage).filter(
+  const items = parseDifficultyPayload(
+    parsed,
+    normalizedPage,
+  ).filter(
     (item) => !suppressed.has(normalizeTerm(item.text)),
   );
 
-  await putCachedAiValue(cacheKey, "difficulty", model, { items });
+  await putCachedAiValue(
+    cacheKey,
+    "difficulty",
+    runtime.cacheModelKey,
+    { items },
+  );
 
   return {
     items,
-    model: response.model,
+    model: response.model || runtime.model,
     cached: false,
+    source: runtime.label,
   };
 }

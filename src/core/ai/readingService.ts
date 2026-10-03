@@ -1,14 +1,10 @@
-import { createAiCacheKey, getCachedAiValue, putCachedAiValue } from "./cache";
 import {
-  choosePreferredOllamaModel,
-  loadOllamaConfig,
-  saveOllamaModel,
-} from "./ollamaConfig";
-import { OllamaProvider } from "./providers/ollama";
-import {
-  resolveOllamaModelForTask,
-  type ReadingTaskType,
-} from "./taskRouting";
+  createAiCacheKey,
+  getCachedAiValue,
+  putCachedAiValue,
+} from "./cache";
+import { resolveTextTaskRuntime } from "./runtimeRouter";
+import type { ReadingTaskType } from "./taskRouting";
 import { recordAiUsage } from "./usage";
 
 export type ReadingAnalysisMode = "explain" | "grammar" | "ask";
@@ -23,6 +19,7 @@ export interface ReadingAnalysisResult {
   text: string;
   model: string;
   cached?: boolean;
+  source?: string;
 }
 
 function trimContext(context: string | undefined): string {
@@ -71,24 +68,8 @@ export async function analyzeReadingSelection(
   mode: ReadingAnalysisMode,
   question?: string,
 ): Promise<ReadingAnalysisResult> {
-  const config = await loadOllamaConfig();
-  const provider = new OllamaProvider(config.baseUrl);
-  const models = await provider.listModels();
-
   const taskType = taskTypeForMode(mode);
-  const model =
-    (await resolveOllamaModelForTask(taskType, models, config.model)) ??
-    choosePreferredOllamaModel(models, config.model);
-
-  if (!model) {
-    throw new Error(
-      "Ollama is running, but no local model is installed. Pull a model first.",
-    );
-  }
-
-  if (!config.model) {
-    await saveOllamaModel(model);
-  }
+  const runtime = await resolveTextTaskRuntime(taskType);
 
   const context = trimContext(selection.context);
   const input = {
@@ -97,16 +78,22 @@ export async function analyzeReadingSelection(
     page: selection.page ?? null,
     question: question?.trim() ?? "",
     mode,
-    promptVersion: 2,
+    promptVersion: 3,
   };
 
-  const cacheKey = createAiCacheKey(taskType, model, input);
+  const cacheKey = createAiCacheKey(
+    taskType,
+    runtime.cacheModelKey,
+    input,
+  );
   const cached = await getCachedAiValue<{ text: string }>(cacheKey);
+
   if (cached?.text) {
     return {
       text: cached.text,
-      model,
+      model: runtime.model,
       cached: true,
+      source: runtime.label,
     };
   }
 
@@ -123,8 +110,8 @@ export async function analyzeReadingSelection(
     .join("\n");
 
   const started = Date.now();
-  const response = await provider.generateText({
-    model,
+  const response = await runtime.provider.generateText({
+    model: runtime.model,
     temperature: 0.2,
     messages: [
       {
@@ -142,17 +129,28 @@ export async function analyzeReadingSelection(
     ],
   });
   const latencyMs = Date.now() - started;
-
   const text = response.text.trim();
 
   await Promise.all([
-    recordAiUsage(model, taskType, response.usage, latencyMs),
-    putCachedAiValue(cacheKey, taskType, model, { text }),
+    recordAiUsage(
+      runtime.model,
+      taskType,
+      response.usage,
+      latencyMs,
+      runtime.providerConfigId,
+    ),
+    putCachedAiValue(
+      cacheKey,
+      taskType,
+      runtime.cacheModelKey,
+      { text },
+    ),
   ]);
 
   return {
     text,
-    model: response.model,
+    model: response.model || runtime.model,
     cached: false,
+    source: runtime.label,
   };
 }

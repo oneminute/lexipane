@@ -22,6 +22,7 @@ export async function recordAiUsage(
   taskType: string,
   usage: AIUsage | undefined,
   latencyMs: number,
+  providerConfigId?: string,
 ): Promise<void> {
   if (!isTauri()) return;
 
@@ -31,13 +32,15 @@ export async function recordAiUsage(
   await db.execute(
     "INSERT INTO ai_usage " +
       "(id, provider_config_id, model_id, task_type, input_tokens, output_tokens, estimated_cost, latency_ms, created_at) " +
-      "VALUES ($1, NULL, $2, $3, $4, $5, 0, $6, $7)",
+      "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     [
       crypto.randomUUID(),
+      providerConfigId ?? null,
       model,
       taskType,
       usage?.inputTokens ?? null,
       usage?.outputTokens ?? null,
+      providerConfigId ? null : 0,
       Math.round(latencyMs),
       new Date().toISOString(),
     ],

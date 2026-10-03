@@ -5,12 +5,22 @@ import {
   loadOllamaConfig,
   saveOllamaModel,
 } from "../../core/ai/ollamaConfig";
+import {
+  listProviderConfigs,
+  type ProviderConfig,
+} from "../../core/ai/providerConfigs";
+import {
+  loadAiPrivacyMode,
+  saveAiPrivacyMode,
+  type AiPrivacyMode,
+} from "../../core/ai/privacy";
 import { OllamaProvider } from "../../core/ai/providers/ollama";
 import { providerCatalog } from "../../core/ai/registry";
 import {
-  loadTaskModel,
-  saveTaskModel,
+  loadTaskRouteTarget,
+  saveTaskRouteTarget,
   type ReadingTaskType,
+  type TaskRouteTarget,
 } from "../../core/ai/taskRouting";
 import type { ModelInfo } from "../../core/ai/types";
 import {
@@ -58,7 +68,7 @@ const taskRoutes: Array<{
   {
     id: "region",
     label: "Region / image",
-    description: "Charts, scanned text, formulas, and illustrations",
+    description: "Local Ollama vision model",
   },
 ];
 
@@ -72,6 +82,55 @@ const emptyUsage: AiUsageSummary = {
   averageLatencyMs: 0,
 };
 
+function encodeRoute(target: TaskRouteTarget): string {
+  return JSON.stringify(target);
+}
+
+function decodeRoute(value: string): TaskRouteTarget | null {
+  try {
+    const parsed = JSON.parse(value) as Partial<TaskRouteTarget>;
+
+    if (
+      parsed.kind === "ollama" &&
+      typeof parsed.model === "string" &&
+      parsed.model
+    ) {
+      return {
+        kind: "ollama",
+        model: parsed.model,
+      };
+    }
+
+    if (
+      parsed.kind === "provider" &&
+      typeof parsed.configId === "string" &&
+      parsed.configId &&
+      typeof parsed.model === "string" &&
+      parsed.model
+    ) {
+      return {
+        kind: "provider",
+        configId: parsed.configId,
+        model: parsed.model,
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+const privacyModes: Array<{
+  id: AiPrivacyMode;
+  label: string;
+}> = [
+  { id: "local-only", label: "Local only" },
+  { id: "prefer-local", label: "Prefer local" },
+  { id: "automatic", label: "Automatic" },
+  { id: "cloud-only", label: "Cloud only" },
+];
+
 export function AiSettingsView() {
   const [ollamaStatus, setOllamaStatus] =
     useState<OllamaStatus>("checking");
@@ -83,22 +142,46 @@ export function AiSettingsView() {
   const [refreshing, setRefreshing] = useState(false);
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>("B2");
   const [routes, setRoutes] =
-    useState<Partial<Record<ReadingTaskType, string>>>({});
+    useState<Partial<Record<ReadingTaskType, TaskRouteTarget>>>({});
+  const [providerConfigs, setProviderConfigs] =
+    useState<ProviderConfig[]>([]);
+  const [privacyMode, setPrivacyMode] =
+    useState<AiPrivacyMode>("prefer-local");
   const [usage, setUsage] = useState<AiUsageSummary>(emptyUsage);
 
+  async function refreshProviderConfigs() {
+    setProviderConfigs(
+      (await listProviderConfigs()).filter((config) => config.enabled),
+    );
+  }
+
   async function loadPreferences() {
-    const [level, usageSummary, ...routeValues] = await Promise.all([
+    const [
+      level,
+      usageSummary,
+      privacy,
+      configuredProviders,
+      ...routeValues
+    ] = await Promise.all([
       loadReadingLevel(),
       getAiUsageSummary(),
-      ...taskRoutes.map((task) => loadTaskModel(task.id)),
+      loadAiPrivacyMode(),
+      listProviderConfigs(),
+      ...taskRoutes.map((task) => loadTaskRouteTarget(task.id)),
     ]);
 
     setReadingLevel(level);
     setUsage(usageSummary);
+    setPrivacyMode(privacy);
+    setProviderConfigs(
+      configuredProviders.filter((config) => config.enabled),
+    );
 
-    const nextRoutes: Partial<Record<ReadingTaskType, string>> = {};
+    const nextRoutes: Partial<
+      Record<ReadingTaskType, TaskRouteTarget>
+    > = {};
     taskRoutes.forEach((task, index) => {
-      const value = routeValues[index];
+      const value = routeValues[index] as TaskRouteTarget | null;
       if (value) nextRoutes[task.id] = value;
     });
     setRoutes(nextRoutes);
@@ -137,7 +220,9 @@ export function AiSettingsView() {
 
       setOllamaMessage(
         discovered.length > 0
-          ? "Connected · " + discovered.length + " local model(s) discovered"
+          ? "Connected · " +
+              discovered.length +
+              " local model(s) discovered"
           : "Connected, but no local models are installed.",
       );
     } catch (error) {
@@ -169,15 +254,54 @@ export function AiSettingsView() {
     await saveReadingLevel(level);
   }
 
+  async function changePrivacyMode(mode: AiPrivacyMode) {
+    setPrivacyMode(mode);
+    await saveAiPrivacyMode(mode);
+  }
+
   async function changeTaskRoute(
     task: ReadingTaskType,
-    model: string,
+    encoded: string,
   ) {
+    const target = decodeRoute(encoded);
+    if (!target) return;
+
     setRoutes((current) => ({
       ...current,
-      [task]: model,
+      [task]: target,
     }));
-    await saveTaskModel(task, model);
+    await saveTaskRouteTarget(task, target);
+  }
+
+  function currentRouteValue(task: ReadingTaskType): string {
+    const target = routes[task];
+
+    if (target) {
+      if (
+        target.kind === "provider" &&
+        task === "region"
+      ) {
+        // Region cloud adapters need provider-specific multimodal request
+        // support. Until then, keep image routing on Ollama.
+      } else {
+        return encodeRoute(target);
+      }
+    }
+
+    return selectedModel
+      ? encodeRoute({
+          kind: "ollama",
+          model: selectedModel,
+        })
+      : "";
+  }
+
+  function cloudRouteOptions(task: ReadingTaskType) {
+    if (task === "region") return [];
+
+    return providerConfigs.filter(
+      (config) => Boolean(config.settings.model),
+    );
   }
 
   return (
@@ -187,9 +311,9 @@ export function AiSettingsView() {
           <span className="eyebrow">AI Platform</span>
           <h1>One reader, any model.</h1>
           <p>
-            LexiPane separates reading tasks from model providers. Local
-            Ollama is live now, including task-specific model routing,
-            automatic reading assistance, caching, and local usage tracking.
+            LexiPane can route each text-reading task to a local Ollama model
+            or a securely configured OpenAI-compatible provider. Region/image
+            analysis currently stays on a vision-capable Ollama model.
           </p>
         </div>
       </header>
@@ -252,13 +376,14 @@ export function AiSettingsView() {
         </div>
 
         <small className="ollama-hint">
-          Installed models are discovered automatically. If a reading task
-          does not have its own route, it falls back to the default local
-          model.
+          Installed models are discovered automatically. Qwen 3.5 is preferred
+          when no local default has been selected.
         </small>
       </section>
 
-      <ProviderConnections />
+      <ProviderConnections
+        onChanged={() => void refreshProviderConfigs()}
+      />
 
       <div className="settings-grid">
         <section className="settings-card">
@@ -272,7 +397,9 @@ export function AiSettingsView() {
             className="settings-select"
             value={readingLevel}
             onChange={(event) =>
-              void changeReadingLevel(event.target.value as ReadingLevel)
+              void changeReadingLevel(
+                event.target.value as ReadingLevel,
+              )
             }
           >
             {readingLevels.map((level) => (
@@ -283,69 +410,135 @@ export function AiSettingsView() {
           </select>
           <small className="settings-help">
             {
-              readingLevels.find((level) => level.id === readingLevel)
-                ?.description
+              readingLevels.find(
+                (level) => level.id === readingLevel,
+              )?.description
             }
           </small>
         </section>
 
         <section className="settings-card">
           <span className="eyebrow">Privacy mode</span>
-          <h2>Prefer local</h2>
+          <h2>
+            {
+              privacyModes.find(
+                (mode) => mode.id === privacyMode,
+              )?.label
+            }
+          </h2>
           <p>
-            Reading assistance currently stays local through Ollama. Cloud
-            escalation will remain explicit when selected content would leave
-            the device.
+            Local only never sends book content to configured cloud providers.
+            Prefer local uses cloud only for tasks you explicitly route there.
+            Automatic can fall back to cloud when local AI is unavailable.
           </p>
           <div className="mode-row">
-            <button>Local only</button>
-            <button className="selected">Prefer local</button>
-            <button disabled>Automatic</button>
-            <button disabled>Cloud only</button>
+            {privacyModes.map((mode) => (
+              <button
+                key={mode.id}
+                className={
+                  privacyMode === mode.id ? "selected" : ""
+                }
+                onClick={() =>
+                  void changePrivacyMode(mode.id)
+                }
+              >
+                {mode.label}
+              </button>
+            ))}
           </div>
         </section>
 
         <section className="settings-card routing-card">
           <span className="eyebrow">Task routing</span>
-          <h2>Choose a model per reading task</h2>
+          <h2>Choose a provider and model per task</h2>
           <p>
-            Faster models can handle automatic page analysis while a stronger
-            local model handles grammar or complex questions.
+            Automatic page analysis can stay on a fast local model while
+            grammar and difficult questions use a stronger configured model.
           </p>
           <div className="task-route-list">
-            {taskRoutes.map((task) => (
-              <label key={task.id} className="task-route-row">
-                <span>
-                  <strong>{task.label}</strong>
-                  <small>{task.description}</small>
-                </span>
-                <select
-                  value={routes[task.id] ?? selectedModel}
-                  disabled={models.length === 0}
-                  onChange={(event) =>
-                    void changeTaskRoute(task.id, event.target.value)
-                  }
-                >
-                  {models.length === 0 && (
-                    <option value="">No model</option>
-                  )}
-                  {models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
+            {taskRoutes.map((task) => {
+              const clouds = cloudRouteOptions(task);
+              const noRoutes =
+                models.length === 0 && clouds.length === 0;
+
+              return (
+                <label key={task.id} className="task-route-row">
+                  <span>
+                    <strong>{task.label}</strong>
+                    <small>{task.description}</small>
+                  </span>
+                  <select
+                    value={currentRouteValue(task)}
+                    disabled={noRoutes}
+                    onChange={(event) =>
+                      void changeTaskRoute(
+                        task.id,
+                        event.target.value,
+                      )
+                    }
+                  >
+                    {noRoutes && (
+                      <option value="">No model available</option>
+                    )}
+
+                    {models.length > 0 && (
+                      <optgroup label="Ollama · local">
+                        {models.map((model) => {
+                          const target: TaskRouteTarget = {
+                            kind: "ollama",
+                            model: model.id,
+                          };
+                          return (
+                            <option
+                              key={"ollama:" + model.id}
+                              value={encodeRoute(target)}
+                            >
+                              {model.name}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    )}
+
+                    {clouds.length > 0 && (
+                      <optgroup label="Configured providers">
+                        {clouds.map((config) => {
+                          const model =
+                            config.settings.model ?? "";
+                          const target: TaskRouteTarget = {
+                            kind: "provider",
+                            configId: config.id,
+                            model,
+                          };
+                          return (
+                            <option
+                              key={
+                                "provider:" +
+                                config.id +
+                                ":" +
+                                model
+                              }
+                              value={encodeRoute(target)}
+                            >
+                              {config.displayName} · {model}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    )}
+                  </select>
+                </label>
+              );
+            })}
           </div>
         </section>
 
         <section className="settings-card usage-card">
-          <span className="eyebrow">Local usage</span>
-          <h2>{usage.requests.toLocaleString()} AI requests</h2>
+          <span className="eyebrow">AI usage</span>
+          <h2>{usage.requests.toLocaleString()} requests</h2>
           <p>
-            Local usage is tracked for performance feedback. Ollama requests
-            have no API charge.
+            Tokens and latency are tracked locally for both local and configured
+            providers. Provider billing estimates will be added separately.
           </p>
           <div className="usage-metrics">
             <div>
@@ -353,12 +546,14 @@ export function AiSettingsView() {
               <span>tokens</span>
             </div>
             <div>
-              <strong>{usage.averageLatencyMs.toLocaleString()} ms</strong>
+              <strong>
+                {usage.averageLatencyMs.toLocaleString()} ms
+              </strong>
               <span>avg latency</span>
             </div>
             <div>
-              <strong>$0</strong>
-              <span>API cost</span>
+              <strong>Local</strong>
+              <span>usage log</span>
             </div>
           </div>
         </section>
@@ -380,7 +575,9 @@ export function AiSettingsView() {
                 {providers.map((provider) => (
                   <article className="provider-card" key={provider.id}>
                     <div className="provider-topline">
-                      <span className="provider-logo">{provider.shortLabel}</span>
+                      <span className="provider-logo">
+                        {provider.shortLabel}
+                      </span>
                       <span
                         className={
                           provider.status === "core"

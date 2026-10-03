@@ -37,7 +37,11 @@ function initialForm(): FormState {
   };
 }
 
-export function ProviderConnections() {
+interface Props {
+  onChanged?: () => void | Promise<void>;
+}
+
+export function ProviderConnections({ onChanged }: Props) {
   const [configs, setConfigs] = useState<ProviderConfig[]>([]);
   const [form, setForm] = useState<FormState>(initialForm);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -128,6 +132,7 @@ export function ProviderConnections() {
           : "Saved. This provider currently has no API key.",
       );
       await refreshConfigs();
+      await onChanged?.();
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to save provider.",
@@ -188,6 +193,7 @@ export function ProviderConnections() {
       setModels([]);
     }
     await refreshConfigs();
+    await onChanged?.();
     setMessage("Provider configuration and stored API key were deleted.");
   }
 
