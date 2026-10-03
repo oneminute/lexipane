@@ -68,6 +68,38 @@ Prerequisites:
 - Rust stable
 - Tauri 2 platform prerequisites for your OS
 
+### Windows one-click launcher
+
+After cloning the repository, double-click:
+
+~~~text
+start-lexipane.cmd
+~~~
+
+The launcher:
+
+1. checks that Node.js 22+ and npm are available;
+2. runs `npm install --no-audit --no-fund` to install missing packages and synchronize dependencies;
+3. starts the Tauri desktop application with `npm run tauri dev`;
+4. keeps the console open if startup fails so the error can be read.
+
+Optional command-line modes:
+
+~~~powershell
+# Explicitly update packages within the semver ranges allowed by package.json
+.\start-lexipane.cmd -Update
+
+# Start only the browser/Vite UI
+.\start-lexipane.cmd -Web
+
+# Skip dependency synchronization when you know node_modules is current
+.\start-lexipane.cmd -SkipInstall
+~~~
+
+The launcher does not silently upgrade dependencies across breaking major versions. Major-version upgrades should remain deliberate code changes reviewed through Git.
+
+### Manual commands
+
 Install frontend dependencies:
 
 ~~~bash
