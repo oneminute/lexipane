@@ -95,8 +95,20 @@ export function LibraryView({
               onClick={() => onOpenStoredBook(book.file_path)}
             >
               <div className="book-cover-placeholder">
-                <span>{formatLabel(book.format)}</span>
-                <strong>{(book.title || "Untitled").slice(0, 1).toUpperCase()}</strong>
+                {book.cover_path?.startsWith("data:image/") ? (
+                  <img
+                    src={book.cover_path}
+                    alt=""
+                    className="book-cover-image"
+                  />
+                ) : (
+                  <>
+                    <span>{formatLabel(book.format)}</span>
+                    <strong>
+                      {(book.title || "Untitled").slice(0, 1).toUpperCase()}
+                    </strong>
+                  </>
+                )}
               </div>
               <div className="book-card-copy">
                 <strong>{book.title || "Untitled"}</strong>

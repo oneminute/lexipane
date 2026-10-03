@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
 import type { PdfTextAnnotation } from "../../core/annotations/pdfAnnotations";
 import {
+  createPdfCoverDataUrl,
   readPdfMetadata,
   readPdfOutline,
   type PdfMetadataSummary,
@@ -24,6 +25,7 @@ interface Props {
   onPageTextReady?: (pageNumber: number, text: string) => void;
   onMetadataReady?: (metadata: PdfMetadataSummary) => void;
   onOutlineReady?: (outline: PdfOutlineEntry[]) => void;
+  onCoverReady?: (coverDataUrl: string) => void;
 }
 
 export function PdfDocumentView({
@@ -36,11 +38,35 @@ export function PdfDocumentView({
   onPageTextReady,
   onMetadataReady,
   onOutlineReady,
+  onCoverReady,
 }: Props) {
   const [session, setSession] = useState<LoadedPdfDocument | null>(null);
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [passwordValue, setPasswordValue] = useState("");
+  const [passwordReason, setPasswordReason] = useState<number | null>(null);
+  const passwordResolverRef = useRef<
+    ((password: string | null) => void) | null
+  >(null);
+
+  const requestPassword = useCallback(
+    (reason: number) =>
+      new Promise<string | null>((resolve) => {
+        passwordResolverRef.current = resolve;
+        setPasswordReason(reason);
+        setPasswordValue("");
+      }),
+    [],
+  );
+
+  function completePassword(password: string | null) {
+    const resolve = passwordResolverRef.current;
+    passwordResolverRef.current = null;
+    setPasswordReason(null);
+    setPasswordValue("");
+    resolve?.(password);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -50,8 +76,10 @@ export function PdfDocumentView({
     setDocument(null);
     setLoading(true);
     setError(null);
+    setPasswordReason(null);
+    setPasswordValue("");
 
-    void loadPdfFromPath(path)
+    void loadPdfFromPath(path, requestPassword)
       .then(async (nextSession) => {
         loadedSession = nextSession;
         if (cancelled) {
@@ -64,10 +92,12 @@ export function PdfDocumentView({
         setLoading(false);
         onDocumentLoaded?.(nextSession.document.numPages);
 
-        const [metadataResult, outlineResult] = await Promise.allSettled([
-          readPdfMetadata(nextSession.document),
-          readPdfOutline(nextSession.document),
-        ]);
+        const [metadataResult, outlineResult, coverResult] =
+          await Promise.allSettled([
+            readPdfMetadata(nextSession.document),
+            readPdfOutline(nextSession.document),
+            createPdfCoverDataUrl(nextSession.document),
+          ]);
 
         if (cancelled) return;
 
@@ -77,6 +107,13 @@ export function PdfDocumentView({
 
         if (outlineResult.status === "fulfilled") {
           onOutlineReady?.(outlineResult.value);
+        }
+
+        if (
+          coverResult.status === "fulfilled" &&
+          coverResult.value
+        ) {
+          onCoverReady?.(coverResult.value);
         }
       })
       .catch((loadError) => {
@@ -91,15 +128,21 @@ export function PdfDocumentView({
 
     return () => {
       cancelled = true;
+      if (passwordResolverRef.current) {
+        passwordResolverRef.current(null);
+        passwordResolverRef.current = null;
+      }
       if (loadedSession) {
         void loadedSession.destroy();
       }
     };
   }, [
     onDocumentLoaded,
+    onCoverReady,
     onMetadataReady,
     onOutlineReady,
     path,
+    requestPassword,
   ]);
 
   useEffect(() => {
@@ -138,6 +181,54 @@ export function PdfDocumentView({
 
     return map;
   }, [annotations]);
+
+  if (passwordReason !== null) {
+    return (
+      <form
+        className="pdf-state-card pdf-password-card"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (passwordValue) {
+            completePassword(passwordValue);
+          }
+        }}
+      >
+        <span className="eyebrow">Protected PDF</span>
+        <strong>
+          {passwordReason === 2
+            ? "That password did not work."
+            : "This PDF requires a password."}
+        </strong>
+        <p>
+          Enter the document password. LexiPane uses it only to unlock this
+          local PDF and does not save it.
+        </p>
+        <input
+          autoFocus
+          type="password"
+          value={passwordValue}
+          placeholder="PDF password"
+          onChange={(event) => setPasswordValue(event.target.value)}
+        />
+        <div className="pdf-password-actions">
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={() => completePassword(null)}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="primary-button"
+            disabled={!passwordValue}
+          >
+            Unlock
+          </button>
+        </div>
+      </form>
+    );
+  }
 
   if (loading) {
     return (

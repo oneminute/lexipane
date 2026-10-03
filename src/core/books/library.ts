@@ -80,3 +80,19 @@ export async function updateBookMetadata(
     [path, title, author],
   );
 }
+
+
+export async function updateBookCover(
+  path: string,
+  coverDataUrl: string | null,
+): Promise<void> {
+  if (!isTauri() || !coverDataUrl) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  await db.execute(
+    "UPDATE books SET cover_path = $2 WHERE file_path = $1",
+    [path, coverDataUrl],
+  );
+}

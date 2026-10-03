@@ -44,7 +44,10 @@ import {
   isKindlePath,
   isPdfPath,
 } from "../../core/books/openBook";
-import { updateBookMetadata } from "../../core/books/library";
+import {
+  updateBookCover,
+  updateBookMetadata,
+} from "../../core/books/library";
 import { createReaderNote } from "../../core/notes/notes";
 import type {
   PdfMetadataSummary,
@@ -680,6 +683,16 @@ export function ReaderView({
   const handleOutlineReady = useCallback((items: PdfOutlineEntry[]) => {
     setOutline(items);
   }, []);
+
+  const handlePdfCoverReady = useCallback(
+    (coverDataUrl: string) => {
+      if (!bookPath) return;
+      void updateBookCover(bookPath, coverDataUrl).catch((error) => {
+        console.error("Unable to persist PDF cover", error);
+      });
+    },
+    [bookPath],
+  );
 
   const handleEpubMetadataReady = useCallback(
     (metadata: EpubMetadataSummary) => {
@@ -1741,6 +1754,7 @@ export function ReaderView({
                 onPageTextReady={handlePageTextReady}
                 onMetadataReady={handleMetadataReady}
                 onOutlineReady={handleOutlineReady}
+                onCoverReady={handlePdfCoverReady}
               />
             )}
 

@@ -78,3 +78,30 @@ export async function readPdfOutline(
   await walk(outline, 0, "");
   return result;
 }
+
+
+export async function createPdfCoverDataUrl(
+  document: PDFDocumentProxy,
+  targetWidth = 220,
+): Promise<string | null> {
+  try {
+    const page = await document.getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(1, targetWidth / Math.max(1, base.width));
+    const viewport = page.getViewport({ scale });
+
+    const canvas = window.document.createElement("canvas");
+    canvas.width = Math.max(1, Math.ceil(viewport.width));
+    canvas.height = Math.max(1, Math.ceil(viewport.height));
+
+    const task = page.render({
+      canvas,
+      viewport,
+    });
+    await task.promise;
+
+    return canvas.toDataURL("image/jpeg", 0.78);
+  } catch {
+    return null;
+  }
+}
