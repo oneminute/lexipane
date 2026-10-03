@@ -63,6 +63,13 @@ export interface TextGenerationResponse {
   usage?: AIUsage;
 }
 
+export interface TextStreamEvent {
+  delta?: string;
+  model?: string;
+  usage?: AIUsage;
+  done?: boolean;
+}
+
 export interface ConnectionResult {
   ok: boolean;
   message: string;

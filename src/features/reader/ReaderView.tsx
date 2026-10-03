@@ -28,7 +28,7 @@ import {
 import { loadOllamaConfig } from "../../core/ai/ollamaConfig";
 import { analyzeRegionImage } from "../../core/ai/regionService";
 import {
-  analyzeReadingSelection,
+  streamReadingSelection,
   type ReadingAnalysisMode,
   type ReadingSelection,
 } from "../../core/ai/readingService";
@@ -860,24 +860,38 @@ export function ReaderView({
     const targetSelection = overrideSelection ?? selection;
     if (!targetSelection || aiBusy) return;
 
+    const title =
+      mode === "grammar"
+        ? "Grammar & structure"
+        : mode === "ask"
+          ? "Answer"
+          : "Context explanation";
+
     setAiBusy(true);
     setAiError(null);
+    setAiResult({
+      title,
+      text: "",
+      model: configuredModel || "Routing…",
+    });
 
     try {
-      const result = await analyzeReadingSelection(
+      const result = await streamReadingSelection(
         targetSelection,
         mode,
         readerQuestion,
+        (accumulatedText) => {
+          setAiResult((current) => ({
+            title,
+            text: accumulatedText,
+            model: current?.model || configuredModel || "Streaming…",
+          }));
+        },
       );
 
       setConfiguredModel(result.model);
       setAiResult({
-        title:
-          mode === "grammar"
-            ? "Grammar & structure"
-            : mode === "ask"
-              ? "Answer"
-              : "Context explanation",
+        title,
         text: result.text,
         model: result.model,
       });
@@ -886,7 +900,7 @@ export function ReaderView({
       setAiError(
         error instanceof Error
           ? error.message
-          : "Local AI analysis failed.",
+          : "AI analysis failed.",
       );
     } finally {
       setAiBusy(false);

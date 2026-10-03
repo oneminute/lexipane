@@ -6,6 +6,7 @@ import type {
   ProviderDescriptor,
   TextGenerationRequest,
   TextGenerationResponse,
+  TextStreamEvent,
 } from "../types";
 
 interface OllamaTagsResponse {
@@ -26,6 +27,7 @@ interface OllamaShowResponse {
 
 interface OllamaChatResponse {
   model: string;
+  done?: boolean;
   message?: {
     role: string;
     content: string;
@@ -188,5 +190,85 @@ export class OllamaProvider implements AIProvider {
         outputTokens: payload.eval_count,
       },
     };
+  }
+
+  async *streamText(
+    request: TextGenerationRequest,
+  ): AsyncIterable<TextStreamEvent> {
+    const response = await appFetch(this.baseUrl + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: request.signal,
+      body: JSON.stringify({
+        model: request.model,
+        messages: request.messages,
+        stream: true,
+        options:
+          typeof request.temperature === "number"
+            ? { temperature: request.temperature }
+            : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        "Ollama streaming failed: HTTP " + response.status,
+      );
+    }
+
+    if (!response.body) {
+      throw new Error("Ollama streaming response has no body.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          const payload = JSON.parse(trimmed) as OllamaChatResponse;
+          const delta = payload.message?.content ?? "";
+
+          yield {
+            delta: delta || undefined,
+            model: payload.model || request.model,
+            usage: payload.done
+              ? {
+                  inputTokens: payload.prompt_eval_count,
+                  outputTokens: payload.eval_count,
+                }
+              : undefined,
+            done: Boolean(payload.done),
+          };
+        }
+
+        if (done) break;
+      }
+
+      if (buffer.trim()) {
+        const payload = JSON.parse(buffer.trim()) as OllamaChatResponse;
+        yield {
+          delta: payload.message?.content || undefined,
+          model: payload.model || request.model,
+          usage: {
+            inputTokens: payload.prompt_eval_count,
+            outputTokens: payload.eval_count,
+          },
+          done: true,
+        };
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 }

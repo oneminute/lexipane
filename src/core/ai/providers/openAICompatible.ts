@@ -6,6 +6,7 @@ import type {
   ProviderDescriptor,
   TextGenerationRequest,
   TextGenerationResponse,
+  TextStreamEvent,
 } from "../types";
 
 interface OpenAIModelList {
@@ -16,6 +17,19 @@ interface OpenAIChatResponse {
   model?: string;
   choices?: Array<{
     message?: {
+      content?: string;
+    };
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
+}
+
+interface OpenAIStreamChunk {
+  model?: string;
+  choices?: Array<{
+    delta?: {
       content?: string;
     };
   }>;
@@ -140,5 +154,86 @@ export class OpenAICompatibleProvider implements AIProvider {
         outputTokens: payload.usage?.completion_tokens,
       },
     };
+  }
+
+  async *streamText(
+    request: TextGenerationRequest,
+  ): AsyncIterable<TextStreamEvent> {
+    const response = await appFetch(this.baseUrl + "/chat/completions", {
+      method: "POST",
+      headers: this.headers(),
+      signal: request.signal,
+      body: JSON.stringify({
+        model: request.model,
+        messages: request.messages,
+        temperature: request.temperature,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        "Streaming generation failed: HTTP " +
+          response.status +
+          (detail ? " · " + detail.slice(0, 300) : ""),
+      );
+    }
+
+    if (!response.body) {
+      throw new Error("Streaming response has no body.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let lastModel = request.model;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+
+        const events = buffer.split(/\r?\n\r?\n/);
+        buffer = events.pop() ?? "";
+
+        for (const event of events) {
+          const dataLines = event
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).trim());
+
+          for (const data of dataLines) {
+            if (!data) continue;
+            if (data === "[DONE]") {
+              yield {
+                model: lastModel,
+                done: true,
+              };
+              continue;
+            }
+
+            const payload = JSON.parse(data) as OpenAIStreamChunk;
+            lastModel = payload.model || lastModel;
+            const delta = payload.choices?.[0]?.delta?.content ?? "";
+
+            yield {
+              delta: delta || undefined,
+              model: lastModel,
+              usage: payload.usage
+                ? {
+                    inputTokens: payload.usage.prompt_tokens,
+                    outputTokens: payload.usage.completion_tokens,
+                  }
+                : undefined,
+            };
+          }
+        }
+
+        if (done) break;
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 }
