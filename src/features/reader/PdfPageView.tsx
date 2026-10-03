@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { TextLayerBuilder } from "pdfjs-dist/web/pdf_viewer.mjs";
-import type { LoadedPdfDocument } from "../../core/documents/pdf/pdfRuntime";
 
 interface Props {
   document: PDFDocumentProxy;
-  session: LoadedPdfDocument;
   pageNumber: number;
   scale: number;
   onVisible?: (pageNumber: number) => void;
@@ -16,9 +14,14 @@ interface PageSize {
   height: number;
 }
 
+type TextLayerImagesOption =
+  Parameters<TextLayerBuilder["render"]>[0]["images"];
+
+const NO_TEXT_LAYER_IMAGES =
+  null as unknown as TextLayerImagesOption;
+
 export function PdfPageView({
   document,
-  session,
   pageNumber,
   scale,
   onVisible,
@@ -101,9 +104,11 @@ export function PdfPageView({
           },
         });
 
+        // PDF.js' own viewer passes null when image placeholders are disabled.
+        // The generated type currently marks the property as non-nullable.
         await textLayer.render({
           viewport,
-          images: session.createEmptyTextLayerImages(viewport, canvas),
+          images: NO_TEXT_LAYER_IMAGES,
         });
       } catch (renderError) {
         if (cancelled) return;
@@ -132,7 +137,7 @@ export function PdfPageView({
       renderTask?.cancel();
       textLayer?.cancel();
     };
-  }, [document, pageNumber, scale, session]);
+  }, [document, pageNumber, scale]);
 
   return (
     <div
