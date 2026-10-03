@@ -1,5 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { isPdfPath } from "../../core/books/openBook";
+import {
+  loadPdfReadingPosition,
+  savePdfReadingPosition,
+} from "../../core/books/readingPosition";
 import { PdfDocumentView } from "./PdfDocumentView";
 
 interface Props {
@@ -21,9 +25,50 @@ export function ReaderView({
   const [scale, setScale] = useState(1.1);
   const [pageCount, setPageCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [initialPage, setInitialPage] = useState<number | null>(null);
+  const [positionLoaded, setPositionLoaded] = useState(false);
   const [selectedText, setSelectedText] = useState("");
 
   const isPdf = isPdfPath(bookPath);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setPageCount(0);
+    setCurrentPage(1);
+    setInitialPage(null);
+    setPositionLoaded(false);
+    setSelectedText("");
+
+    if (!bookPath || !isPdfPath(bookPath)) {
+      setPositionLoaded(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void loadPdfReadingPosition(bookPath)
+      .then((position) => {
+        if (cancelled) return;
+        setInitialPage(position?.page ?? 1);
+        setCurrentPage(position?.page ?? 1);
+      })
+      .catch((error) => {
+        console.error("Unable to restore PDF reading position", error);
+        if (!cancelled) {
+          setInitialPage(1);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPositionLoaded(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookPath]);
 
   const zoomLabel = useMemo(
     () => Math.round(scale * 100) + "%",
@@ -40,8 +85,20 @@ export function ReaderView({
 
   const handleDocumentLoaded = useCallback((count: number) => {
     setPageCount(count);
-    setCurrentPage(1);
   }, []);
+
+  const handleCurrentPageChange = useCallback(
+    (page: number) => {
+      setCurrentPage(page);
+
+      if (!bookPath || pageCount < 1) return;
+
+      void savePdfReadingPosition(bookPath, page, pageCount).catch((error) => {
+        console.error("Unable to save PDF reading position", error);
+      });
+    },
+    [bookPath, pageCount],
+  );
 
   function captureSelection() {
     const selection = window.getSelection();
@@ -110,13 +167,21 @@ export function ReaderView({
               </div>
             )}
 
-            {bookPath && isPdf && (
+            {bookPath && isPdf && positionLoaded && (
               <PdfDocumentView
                 path={bookPath}
                 scale={scale}
+                initialPage={initialPage}
                 onDocumentLoaded={handleDocumentLoaded}
-                onCurrentPageChange={setCurrentPage}
+                onCurrentPageChange={handleCurrentPageChange}
               />
+            )}
+
+            {bookPath && isPdf && !positionLoaded && (
+              <div className="pdf-state-card">
+                <span className="pdf-spinner" />
+                <strong>Restoring reading position…</strong>
+              </div>
             )}
 
             {bookPath && !isPdf && (

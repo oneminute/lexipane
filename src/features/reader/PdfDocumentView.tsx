@@ -10,6 +10,7 @@ import { PdfPageView } from "./PdfPageView";
 interface Props {
   path: string;
   scale: number;
+  initialPage?: number | null;
   onDocumentLoaded?: (pageCount: number) => void;
   onCurrentPageChange?: (pageNumber: number) => void;
 }
@@ -17,6 +18,7 @@ interface Props {
 export function PdfDocumentView({
   path,
   scale,
+  initialPage,
   onDocumentLoaded,
   onCurrentPageChange,
 }: Props) {
@@ -64,6 +66,31 @@ export function PdfDocumentView({
       }
     };
   }, [onDocumentLoaded, path]);
+
+  useEffect(() => {
+    if (!document || !initialPage || initialPage <= 1) return;
+
+    const page = Math.min(initialPage, document.numPages);
+    let frame1 = 0;
+    let frame2 = 0;
+
+    frame1 = requestAnimationFrame(() => {
+      frame2 = requestAnimationFrame(() => {
+        const element = window.document.querySelector<HTMLElement>(
+          '[data-pdf-page="' + page + '"]',
+        );
+        element?.scrollIntoView({
+          block: "start",
+          behavior: "auto",
+        });
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(frame1);
+      cancelAnimationFrame(frame2);
+    };
+  }, [document, initialPage]);
 
   const pageNumbers = useMemo(() => {
     if (!document) return [];
