@@ -975,3 +975,176 @@ button { cursor: pointer; }
     display: none;
   }
 }
+
+
+/* Local Ollama configuration and live reading assistance */
+
+.ollama-config-card {
+  padding: 22px;
+  margin-bottom: 14px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(104, 88, 219, 0.08), transparent 38%),
+    white;
+  border: 1px solid #dfdfea;
+  border-radius: 18px;
+  box-shadow: 0 8px 30px rgba(35, 39, 54, 0.04);
+}
+
+.ollama-config-heading,
+.ollama-config-heading > div,
+.selection-card-heading,
+.ai-answer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ollama-config-heading > div {
+  justify-content: flex-start;
+}
+
+.ollama-config-heading h2 {
+  margin: 3px 0 0;
+  font-size: 18px;
+}
+
+.connection-badge {
+  padding: 5px 9px;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  border-radius: 999px;
+}
+
+.connection-badge.connected {
+  color: #246d4d;
+  background: #e0f5e9;
+}
+
+.connection-badge.checking {
+  color: #665d92;
+  background: #eeebfb;
+}
+
+.connection-badge.offline {
+  color: #93464c;
+  background: #fbe8ea;
+}
+
+.ollama-message {
+  margin: 16px 0;
+  font-size: 12px;
+  color: #6e7483;
+}
+
+.ollama-controls {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(220px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.ollama-controls label {
+  display: grid;
+  gap: 6px;
+}
+
+.ollama-controls label > span {
+  font-size: 9px;
+  font-weight: 700;
+  color: #777c8b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ollama-controls input,
+.ollama-controls select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  color: #343846;
+  background: #f8f8fa;
+  border: 1px solid #dfe1e7;
+  border-radius: 10px;
+  outline: none;
+}
+
+.ollama-controls input[readonly] {
+  color: #7e8390;
+}
+
+.ollama-hint {
+  display: block;
+  margin-top: 12px;
+  color: #9397a3;
+  line-height: 1.5;
+}
+
+.selection-card-heading small,
+.ai-answer-heading small {
+  font-size: 9px;
+  color: #969aa6;
+}
+
+.ai-progress-card {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+}
+
+.ai-progress-card .pdf-spinner {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+}
+
+.ai-progress-card strong {
+  font-size: 12px;
+}
+
+.ai-progress-card p {
+  margin: 3px 0 0;
+  color: #8c909c;
+}
+
+.ai-error-card {
+  border-color: #edcfd2;
+  background: #fffafb;
+}
+
+.ai-error-card h3 {
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.ai-answer-heading {
+  align-items: flex-start;
+}
+
+.ai-answer-heading h3 {
+  margin-bottom: 0;
+}
+
+.ai-answer-text {
+  margin-top: 14px;
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.72;
+  color: #404554;
+}
+
+.assist-actions button:disabled,
+.ask-box button:disabled,
+.ollama-controls button:disabled,
+.ask-box textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+@media (max-width: 900px) {
+  .ollama-controls {
+    grid-template-columns: 1fr;
+  }
+}

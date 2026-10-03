@@ -1,4 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
+import { loadOllamaConfig } from "../../core/ai/ollamaConfig";
+import {
+  analyzeReadingSelection,
+  type ReadingAnalysisMode,
+  type ReadingSelection,
+} from "../../core/ai/readingService";
 import { isPdfPath } from "../../core/books/openBook";
 import {
   loadPdfReadingPosition,
@@ -12,9 +24,19 @@ interface Props {
   onBackToLibrary: () => void;
 }
 
+interface AiResultState {
+  title: string;
+  text: string;
+  model: string;
+}
+
 function fileName(path: string | null) {
   if (!path) return "No book selected";
   return path.split(/[\\/]/).pop() || path;
+}
+
+function normalizedText(value: string | null | undefined): string {
+  return (value ?? "").replace(/\s+/g, " ").trim();
 }
 
 export function ReaderView({
@@ -27,9 +49,20 @@ export function ReaderView({
   const [currentPage, setCurrentPage] = useState(1);
   const [initialPage, setInitialPage] = useState<number | null>(null);
   const [positionLoaded, setPositionLoaded] = useState(false);
-  const [selectedText, setSelectedText] = useState("");
+  const [selection, setSelection] = useState<ReadingSelection | null>(null);
+  const [aiResult, setAiResult] = useState<AiResultState | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [configuredModel, setConfiguredModel] = useState<string | null>(null);
 
   const isPdf = isPdfPath(bookPath);
+
+  useEffect(() => {
+    void loadOllamaConfig()
+      .then((config) => setConfiguredModel(config.model))
+      .catch(() => setConfiguredModel(null));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +71,10 @@ export function ReaderView({
     setCurrentPage(1);
     setInitialPage(null);
     setPositionLoaded(false);
-    setSelectedText("");
+    setSelection(null);
+    setAiResult(null);
+    setAiError(null);
+    setQuestion("");
 
     if (!bookPath || !isPdfPath(bookPath)) {
       setPositionLoaded(true);
@@ -101,11 +137,80 @@ export function ReaderView({
   );
 
   function captureSelection() {
-    const selection = window.getSelection();
-    const text = selection?.toString().replace(/\s+/g, " ").trim() ?? "";
-    if (text) {
-      setSelectedText(text);
+    const browserSelection = window.getSelection();
+    const text = normalizedText(browserSelection?.toString());
+    if (!browserSelection || browserSelection.rangeCount === 0 || !text) {
+      return;
     }
+
+    const range = browserSelection.getRangeAt(0);
+    const commonNode = range.commonAncestorContainer;
+    const commonElement =
+      commonNode.nodeType === 1
+        ? (commonNode as Element)
+        : commonNode.parentElement;
+    const pageShell = commonElement?.closest<HTMLElement>(".pdf-page-shell");
+    const context = normalizedText(
+      pageShell?.querySelector<HTMLElement>(".textLayer")?.textContent,
+    );
+    const pageValue = Number(pageShell?.dataset.pdfPage);
+    const selectedPage =
+      Number.isInteger(pageValue) && pageValue > 0 ? pageValue : currentPage;
+
+    setSelection({
+      text,
+      context,
+      page: selectedPage,
+    });
+    setAiResult(null);
+    setAiError(null);
+    setQuestion("");
+  }
+
+  async function runAi(
+    mode: ReadingAnalysisMode,
+    readerQuestion?: string,
+  ) {
+    if (!selection || aiBusy) return;
+
+    setAiBusy(true);
+    setAiError(null);
+
+    try {
+      const result = await analyzeReadingSelection(
+        selection,
+        mode,
+        readerQuestion,
+      );
+
+      setConfiguredModel(result.model);
+      setAiResult({
+        title:
+          mode === "grammar"
+            ? "Grammar & structure"
+            : mode === "ask"
+              ? "Answer"
+              : "Context explanation",
+        text: result.text,
+        model: result.model,
+      });
+    } catch (error) {
+      setAiResult(null);
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : "Local AI analysis failed.",
+      );
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  function submitQuestion(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = question.trim();
+    if (!trimmed || !selection) return;
+    void runAi("ask", trimmed);
   }
 
   return (
@@ -159,7 +264,7 @@ export function ReaderView({
                 <h1>Open or drop a book to begin.</h1>
                 <p>
                   PDF files render directly inside LexiPane. Your text remains
-                  selectable so it can feed the annotation and AI layers next.
+                  selectable so it can feed the annotation and AI layers.
                 </p>
                 <button className="primary-button" onClick={onOpenBook}>
                   Choose a book
@@ -203,7 +308,7 @@ export function ReaderView({
             </span>
             <span>{zoomLabel}</span>
             <span>Continuous</span>
-            <span>{selectedText ? "Selection ready" : "Select text for AI"}</span>
+            <span>{selection ? "Selection ready" : "Select text for AI"}</span>
           </footer>
         </section>
 
@@ -213,25 +318,43 @@ export function ReaderView({
               <span className="eyebrow">AI Reading</span>
               <strong>Context assistance</strong>
             </div>
-            <button className="model-pill">Qwen · Ollama ▾</button>
+            <button className="model-pill">
+              {configuredModel || "Ollama local"} ▾
+            </button>
           </header>
 
           <div className="ai-scroll">
-            {selectedText ? (
+            {selection ? (
               <section className="assist-card selected-source-card">
-                <span className="assist-type blue">Selected text</span>
-                <h3>Ready for contextual analysis</h3>
-                <blockquote>{selectedText}</blockquote>
-                <p className="muted">
-                  The PDF text layer is live. The next AI slice will turn this
-                  selection into word, phrase and sentence analysis without
-                  copying it out of the reader.
-                </p>
+                <div className="selection-card-heading">
+                  <span className="assist-type blue">Selected text</span>
+                  {selection.page && <small>Page {selection.page}</small>}
+                </div>
+                <blockquote>{selection.text}</blockquote>
                 <div className="assist-actions">
-                  <button>Explain</button>
-                  <button>Analyze grammar</button>
-                  <button>Save note</button>
-                  <button onClick={() => setSelectedText("")}>Clear</button>
+                  <button
+                    disabled={aiBusy}
+                    onClick={() => void runAi("explain")}
+                  >
+                    Explain
+                  </button>
+                  <button
+                    disabled={aiBusy}
+                    onClick={() => void runAi("grammar")}
+                  >
+                    Analyze grammar
+                  </button>
+                  <button disabled={aiBusy}>Save note</button>
+                  <button
+                    disabled={aiBusy}
+                    onClick={() => {
+                      setSelection(null);
+                      setAiResult(null);
+                      setAiError(null);
+                    }}
+                  >
+                    Clear
+                  </button>
                 </div>
               </section>
             ) : (
@@ -239,25 +362,68 @@ export function ReaderView({
                 <span className="assist-type yellow">Reading context</span>
                 <h3>Select text on the PDF.</h3>
                 <p>
-                  LexiPane can now render a real PDF with a selectable text
-                  layer. Select a word, phrase or sentence to prepare it for
-                  contextual AI assistance.
+                  Select a word, phrase, or sentence. LexiPane will send the
+                  selection together with surrounding page context to your
+                  configured local Ollama model.
                 </p>
+              </section>
+            )}
+
+            {aiBusy && (
+              <section className="assist-card ai-progress-card">
+                <span className="pdf-spinner" />
+                <div>
+                  <strong>Analyzing locally…</strong>
+                  <p>Nothing from this request is being sent to a cloud model.</p>
+                </div>
+              </section>
+            )}
+
+            {aiError && (
+              <section className="assist-card ai-error-card">
+                <span className="assist-type orange">Local AI error</span>
+                <h3>Ollama could not complete the request.</h3>
+                <p>{aiError}</p>
+                <p className="muted">
+                  Open AI & Models to verify that Ollama is running and a model
+                  is installed.
+                </p>
+              </section>
+            )}
+
+            {aiResult && !aiBusy && (
+              <section className="assist-card ai-answer-card">
+                <div className="ai-answer-heading">
+                  <div>
+                    <span className="assist-type yellow">AI analysis</span>
+                    <h3>{aiResult.title}</h3>
+                  </div>
+                  <small>{aiResult.model}</small>
+                </div>
+                <div className="ai-answer-text">{aiResult.text}</div>
               </section>
             )}
           </div>
 
-          <div className="ask-box">
+          <form className="ask-box" onSubmit={submitQuestion}>
             <textarea
               rows={2}
+              value={question}
+              disabled={!selection || aiBusy}
+              onChange={(event) => setQuestion(event.target.value)}
               placeholder={
-                selectedText
+                selection
                   ? "Ask about the selected text…"
-                  : "Select text or ask about the current page…"
+                  : "Select text before asking a question…"
               }
             />
-            <button>Ask</button>
-          </div>
+            <button
+              type="submit"
+              disabled={!selection || !question.trim() || aiBusy}
+            >
+              Ask
+            </button>
+          </form>
         </aside>
       </div>
     </section>
