@@ -71,7 +71,7 @@ export function PdfPageView({
 
   useEffect(() => {
     if (!page) return;
-    const viewport = activePage.getViewport({ scale });
+    const viewport = page.getViewport({ scale });
     setSize({
       width: viewport.width,
       height: viewport.height,
@@ -123,8 +123,8 @@ export function PdfPageView({
 
     if (!nearViewport) {
       if (canvas) {
-        activeCanvas.width = 1;
-        activeCanvas.height = 1;
+        canvas.width = 1;
+        canvas.height = 1;
       }
       textLayerHost?.replaceChildren();
       return;
