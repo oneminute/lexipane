@@ -1,3 +1,7 @@
+import { useCallback, useMemo, useState } from "react";
+import { isPdfPath } from "../../core/books/openBook";
+import { PdfDocumentView } from "./PdfDocumentView";
+
 interface Props {
   bookPath: string | null;
   onOpenBook: () => void;
@@ -9,7 +13,39 @@ function fileName(path: string | null) {
   return path.split(/[\\/]/).pop() || path;
 }
 
-export function ReaderView({ bookPath, onOpenBook, onBackToLibrary }: Props) {
+export function ReaderView({
+  bookPath,
+  onOpenBook,
+  onBackToLibrary,
+}: Props) {
+  const [scale, setScale] = useState(1.1);
+  const [pageCount, setPageCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedText, setSelectedText] = useState("");
+
+  const isPdf = isPdfPath(bookPath);
+
+  const zoomLabel = useMemo(
+    () => Math.round(scale * 100) + "%",
+    [scale],
+  );
+
+  const zoomOut = useCallback(() => {
+    setScale((value) => Math.max(0.5, Math.round((value - 0.1) * 10) / 10));
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    setScale((value) => Math.min(2.5, Math.round((value + 0.1) * 10) / 10));
+  }, []);
+
+  function captureSelection() {
+    const selection = window.getSelection();
+    const text = selection?.toString().replace(/\s+/g, " ").trim() ?? "";
+    if (text) {
+      setSelectedText(text);
+    }
+  }
+
   return (
     <section className="reader-page">
       <header className="reader-toolbar">
@@ -20,10 +56,30 @@ export function ReaderView({ bookPath, onOpenBook, onBackToLibrary }: Props) {
           <span className="toolbar-divider" />
           <div>
             <strong>{fileName(bookPath)}</strong>
-            <small>{bookPath ? "Reader shell ready" : "Open a book to begin"}</small>
+            <small>
+              {isPdf
+                ? pageCount > 0
+                  ? pageCount + " pages"
+                  : "Opening PDF…"
+                : bookPath
+                  ? "Format saved · reader engine pending"
+                  : "Open a book to begin"}
+            </small>
           </div>
         </div>
+
         <div className="reader-actions">
+          {isPdf && (
+            <div className="zoom-control">
+              <button onClick={zoomOut} aria-label="Zoom out">
+                −
+              </button>
+              <span>{zoomLabel}</span>
+              <button onClick={zoomIn} aria-label="Zoom in">
+                +
+              </button>
+            </div>
+          )}
           <button className="ghost-button">Region select</button>
           <button className="ghost-button">Notes</button>
           <button className="primary-button compact" onClick={onOpenBook}>
@@ -34,32 +90,53 @@ export function ReaderView({ bookPath, onOpenBook, onBackToLibrary }: Props) {
 
       <div className="split-reader">
         <section className="document-pane">
-          <div className="document-stage">
-            <div className="paper">
-              <span className="paper-kicker">Reader foundation preview</span>
-              <h1>A quiet place for difficult sentences.</h1>
-              <p>
-                The proposal was ultimately{" "}
-                <mark className="auto-word">shelved</mark> after several members{" "}
-                <mark className="auto-phrase">raised concerns about</mark> its{" "}
-                <mark className="user-term">long-term implications</mark>.
-              </p>
-              <p>
-                Automatic terms, user-selected text, sentence analysis, and region
-                captures share one annotation model instead of becoming separate features.
-              </p>
-              <div className="reader-placeholder">
-                {bookPath
-                  ? "The PDF document engine is the next implementation slice."
-                  : "Choose a book to attach this reader workspace to a real file."}
+          <div className="document-stage" onMouseUp={captureSelection}>
+            {!bookPath && (
+              <div className="reader-empty-state">
+                <span className="eyebrow">Reader</span>
+                <h1>Open or drop a book to begin.</h1>
+                <p>
+                  PDF files render directly inside LexiPane. Your text remains
+                  selectable so it can feed the annotation and AI layers next.
+                </p>
+                <button className="primary-button" onClick={onOpenBook}>
+                  Choose a book
+                </button>
               </div>
-            </div>
+            )}
+
+            {bookPath && isPdf && (
+              <PdfDocumentView
+                path={bookPath}
+                scale={scale}
+                onDocumentLoaded={(count) => {
+                  setPageCount(count);
+                  setCurrentPage(1);
+                }}
+                onCurrentPageChange={setCurrentPage}
+              />
+            )}
+
+            {bookPath && !isPdf && (
+              <div className="reader-empty-state">
+                <span className="eyebrow">Document engine</span>
+                <h1>This book is in your library.</h1>
+                <p>
+                  PDF is the first live engine. EPUB, MOBI and AZW/AZW3 will
+                  attach to this exact reader shell without changing the
+                  annotation, notebook or AI architecture.
+                </p>
+              </div>
+            )}
           </div>
 
           <footer className="reader-statusbar">
-            <span>Page — / —</span>
-            <span>100%</span>
+            <span>
+              Page {pageCount ? currentPage : "—"} / {pageCount || "—"}
+            </span>
+            <span>{zoomLabel}</span>
             <span>Continuous</span>
+            <span>{selectedText ? "Selection ready" : "Select text for AI"}</span>
           </footer>
         </section>
 
@@ -73,39 +150,45 @@ export function ReaderView({ bookPath, onOpenBook, onBackToLibrary }: Props) {
           </header>
 
           <div className="ai-scroll">
-            <section className="assist-card">
-              <span className="assist-type yellow">Word</span>
-              <h3>shelved</h3>
-              <p>
-                <strong>在这里：</strong>搁置、暂缓推进。
-              </p>
-              <p className="muted">
-                Not the literal meaning “put on a shelf.” The plan was stopped or postponed.
-              </p>
-              <div className="assist-actions">
-                <button>Known</button>
-                <button>Save note</button>
-                <button>Explain more</button>
-              </div>
-            </section>
-
-            <section className="assist-card">
-              <span className="assist-type orange">Phrase</span>
-              <h3>raise concerns about</h3>
-              <p>
-                对某件事提出担忧或质疑，是比 <em>be worried about</em> 更正式的书面表达。
-              </p>
-            </section>
-
-            <section className="assist-card">
-              <span className="assist-type blue">User selection</span>
-              <h3>long-term implications</h3>
-              <p>某件事情长期可能产生的影响、后果或连带意义。</p>
-            </section>
+            {selectedText ? (
+              <section className="assist-card selected-source-card">
+                <span className="assist-type blue">Selected text</span>
+                <h3>Ready for contextual analysis</h3>
+                <blockquote>{selectedText}</blockquote>
+                <p className="muted">
+                  The PDF text layer is live. The next AI slice will turn this
+                  selection into word, phrase and sentence analysis without
+                  copying it out of the reader.
+                </p>
+                <div className="assist-actions">
+                  <button>Explain</button>
+                  <button>Analyze grammar</button>
+                  <button>Save note</button>
+                  <button onClick={() => setSelectedText("")}>Clear</button>
+                </div>
+              </section>
+            ) : (
+              <section className="assist-card reader-ai-empty">
+                <span className="assist-type yellow">Reading context</span>
+                <h3>Select text on the PDF.</h3>
+                <p>
+                  LexiPane can now render a real PDF with a selectable text
+                  layer. Select a word, phrase or sentence to prepare it for
+                  contextual AI assistance.
+                </p>
+              </section>
+            )}
           </div>
 
           <div className="ask-box">
-            <textarea rows={2} placeholder="Ask about the current text…" />
+            <textarea
+              rows={2}
+              placeholder={
+                selectedText
+                  ? "Ask about the selected text…"
+                  : "Select text or ask about the current page…"
+              }
+            />
             <button>Ask</button>
           </div>
         </aside>

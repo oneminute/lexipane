@@ -4,7 +4,7 @@ The roadmap is organized as vertical slices. Each phase should leave the applica
 
 ## Phase 0 — Foundation
 
-Status: in progress
+Status: substantially complete
 
 - Tauri 2 + React + TypeScript + Rust
 - responsive desktop and mobile-aware shell
@@ -15,20 +15,35 @@ Status: in progress
 - generic OpenAI-compatible adapter
 - architecture documentation
 - baseline CI
-
-Exit condition: a fresh clone can install dependencies, typecheck, test, build the frontend and launch the Tauri shell.
+- Windows dependency-aware launcher
 
 ## Phase 1 — PDF reader
 
+Status: in progress
+
+Implemented:
+
 - PDF.js integration
-- open and drag-drop PDF
-- page and continuous modes
-- zoom
+- native file picker
+- native file drag/drop routing
+- local filesystem access through Tauri fs
+- persisted runtime filesystem scopes so bookshelf files can reopen after restart
+- real PDF canvas rendering
+- continuous multi-page reading
+- selectable PDF text layer
+- zoom controls
+- current-page detection
+- opened books persisted to SQLite and shown in the bookshelf
+- selected PDF text passed into the AI pane as reading context
+
+Still planned in this phase:
+
 - table of contents
-- text layer and selection
-- reading-position persistence
-- add opened PDF to local library
-- cover and thumbnail generation
+- reading-position persistence and restore
+- cover/thumbnail generation
+- page virtualization/lazy rendering for very large PDFs
+- richer PDF error/password handling
+- first stable PDF annotation anchor
 
 Exit condition: LexiPane is a competent local PDF reader before AI is required.
 

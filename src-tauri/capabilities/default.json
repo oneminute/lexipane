@@ -3,5 +3,10 @@
   "identifier": "default",
   "description": "Default desktop capability for LexiPane",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "sql:default"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "fs:allow-read-file",
+    "sql:default"
+  ]
 }

@@ -1,8 +1,47 @@
+import { useEffect, useState } from "react";
+import {
+  listLibraryBooks,
+  type LibraryBook,
+} from "../../core/books/library";
+
 interface Props {
   onOpenBook: () => void;
+  onOpenStoredBook: (path: string) => void | Promise<void>;
+  revision: number;
 }
 
-export function LibraryView({ onOpenBook }: Props) {
+function formatLabel(format: string) {
+  return format.toUpperCase();
+}
+
+export function LibraryView({
+  onOpenBook,
+  onOpenStoredBook,
+  revision,
+}: Props) {
+  const [books, setBooks] = useState<LibraryBook[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    void listLibraryBooks()
+      .then((items) => {
+        if (!cancelled) setBooks(items);
+      })
+      .catch((error) => {
+        console.error("Unable to load LexiPane library", error);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [revision]);
+
   return (
     <section className="page library-page">
       <header className="page-header">
@@ -10,8 +49,9 @@ export function LibraryView({ onOpenBook }: Props) {
           <span className="eyebrow">Library</span>
           <h1>Your books, ready for deeper reading.</h1>
           <p>
-            Open a PDF, EPUB, MOBI, AZW, or AZW3 file. Supported formats will
-            enter the local library automatically as their document engines land.
+            PDF is now connected to the real reader. EPUB and Kindle-family
+            formats already enter the library and will plug into the same
+            document layer next.
           </p>
         </div>
         <button className="primary-button" onClick={onOpenBook}>
@@ -33,33 +73,48 @@ export function LibraryView({ onOpenBook }: Props) {
         <span className="drop-icon">⇩</span>
         <strong>Drop a book here or choose a file</strong>
         <span>
-          PDF first · EPUB and Kindle formats follow through the same document layer
+          PDF can be read now · EPUB, MOBI and AZW support is staged behind the
+          same document abstraction
         </span>
       </button>
 
-      <div className="foundation-grid">
-        <article className="foundation-card">
-          <span className="card-index">01</span>
-          <h2>Read without leaving the page</h2>
-          <p>
-            Contextual vocabulary, phrases and sentence structure live beside the source.
-          </p>
-        </article>
-        <article className="foundation-card">
-          <span className="card-index">02</span>
-          <h2>Choose your AI</h2>
-          <p>
-            Local Qwen through Ollama, cloud models, or any OpenAI-compatible endpoint.
-          </p>
-        </article>
-        <article className="foundation-card">
-          <span className="card-index">03</span>
-          <h2>Build a personal reading model</h2>
-          <p>
-            Known, removed and manually-added terms teach LexiPane what actually blocks you.
-          </p>
-        </article>
+      <div className="library-section-heading">
+        <div>
+          <span className="eyebrow">Bookshelf</span>
+          <h2>Local library</h2>
+        </div>
+        <span>{loading ? "Loading…" : books.length + " books"}</span>
       </div>
+
+      {books.length > 0 ? (
+        <div className="book-grid">
+          {books.map((book) => (
+            <button
+              className="book-card"
+              key={book.id}
+              onClick={() => onOpenStoredBook(book.file_path)}
+            >
+              <div className="book-cover-placeholder">
+                <span>{formatLabel(book.format)}</span>
+                <strong>{(book.title || "Untitled").slice(0, 1).toUpperCase()}</strong>
+              </div>
+              <div className="book-card-copy">
+                <strong>{book.title || "Untitled"}</strong>
+                <span>
+                  {book.author || "Local book"} · {formatLabel(book.format)}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="library-empty">
+          <strong>{loading ? "Loading your bookshelf…" : "No books yet."}</strong>
+          <span>
+            Open or drag in a book and LexiPane will remember it here.
+          </span>
+        </div>
+      )}
     </section>
   );
 }
