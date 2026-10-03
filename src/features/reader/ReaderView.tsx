@@ -5,6 +5,13 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import {
+  createUserPdfHighlight,
+  listPdfTextAnnotations,
+  removePdfTextAnnotation,
+  type NormalizedRect,
+  type PdfTextAnnotation,
+} from "../../core/annotations/pdfAnnotations";
 import { loadOllamaConfig } from "../../core/ai/ollamaConfig";
 import {
   analyzeReadingSelection,
@@ -31,6 +38,11 @@ interface AiResultState {
   model: string;
 }
 
+interface ActiveReaderSelection extends ReadingSelection {
+  page: number;
+  rects: NormalizedRect[];
+}
+
 function fileName(path: string | null) {
   if (!path) return "No book selected";
   return path.split(/[\\/]/).pop() || path;
@@ -50,13 +62,18 @@ export function ReaderView({
   const [currentPage, setCurrentPage] = useState(1);
   const [initialPage, setInitialPage] = useState<number | null>(null);
   const [positionLoaded, setPositionLoaded] = useState(false);
-  const [selection, setSelection] = useState<ReadingSelection | null>(null);
+  const [selection, setSelection] =
+    useState<ActiveReaderSelection | null>(null);
   const [aiResult, setAiResult] = useState<AiResultState | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [question, setQuestion] = useState("");
   const [configuredModel, setConfiguredModel] = useState<string | null>(null);
-  const [noteStatus, setNoteStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [noteStatus, setNoteStatus] =
+    useState<"idle" | "saving" | "saved">("idle");
+  const [highlightStatus, setHighlightStatus] =
+    useState<"idle" | "saving" | "saved">("idle");
+  const [annotations, setAnnotations] = useState<PdfTextAnnotation[]>([]);
 
   const isPdf = isPdfPath(bookPath);
 
@@ -78,6 +95,7 @@ export function ReaderView({
     setAiError(null);
     setQuestion("");
     setNoteStatus("idle");
+    setHighlightStatus("idle");
 
     if (!bookPath || !isPdfPath(bookPath)) {
       setPositionLoaded(true);
@@ -109,9 +127,41 @@ export function ReaderView({
     };
   }, [bookPath]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!bookPath || !isPdfPath(bookPath)) {
+      setAnnotations([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void listPdfTextAnnotations(bookPath)
+      .then((items) => {
+        if (!cancelled) setAnnotations(items);
+      })
+      .catch((error) => {
+        console.error("Unable to load PDF annotations", error);
+        if (!cancelled) setAnnotations([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookPath]);
+
   const zoomLabel = useMemo(
     () => Math.round(scale * 100) + "%",
     [scale],
+  );
+
+  const currentPageAnnotations = useMemo(
+    () =>
+      annotations.filter(
+        (annotation) => annotation.anchor.page === currentPage,
+      ),
+    [annotations, currentPage],
   );
 
   const zoomOut = useCallback(() => {
@@ -160,15 +210,30 @@ export function ReaderView({
     const selectedPage =
       Number.isInteger(pageValue) && pageValue > 0 ? pageValue : currentPage;
 
+    const pageBounds = pageShell?.getBoundingClientRect();
+    const rects: NormalizedRect[] =
+      pageShell && pageBounds && pageBounds.width > 0 && pageBounds.height > 0
+        ? Array.from(range.getClientRects())
+            .filter((rect) => rect.width > 0.5 && rect.height > 0.5)
+            .map((rect) => ({
+              x: Math.max(0, Math.min(1, (rect.left - pageBounds.left) / pageBounds.width)),
+              y: Math.max(0, Math.min(1, (rect.top - pageBounds.top) / pageBounds.height)),
+              width: Math.max(0, Math.min(1, rect.width / pageBounds.width)),
+              height: Math.max(0, Math.min(1, rect.height / pageBounds.height)),
+            }))
+        : [];
+
     setSelection({
       text,
       context,
       page: selectedPage,
+      rects,
     });
     setAiResult(null);
     setAiError(null);
     setQuestion("");
     setNoteStatus("idle");
+    setHighlightStatus("idle");
   }
 
   async function runAi(
@@ -207,6 +272,53 @@ export function ReaderView({
       );
     } finally {
       setAiBusy(false);
+    }
+  }
+
+  async function saveCurrentHighlight() {
+    if (
+      !bookPath ||
+      !selection ||
+      selection.rects.length === 0 ||
+      highlightStatus === "saving"
+    ) {
+      return;
+    }
+
+    setHighlightStatus("saving");
+    try {
+      const created = await createUserPdfHighlight(
+        bookPath,
+        selection.page,
+        selection.text,
+        selection.context ?? "",
+        selection.rects,
+      );
+
+      if (created) {
+        setAnnotations((items) => [
+          ...items.filter((item) => item.id !== created.id),
+          created,
+        ]);
+        setHighlightStatus("saved");
+        window.setTimeout(() => setHighlightStatus("idle"), 1500);
+      } else {
+        setHighlightStatus("idle");
+      }
+    } catch (error) {
+      console.error("Unable to save PDF highlight", error);
+      setHighlightStatus("idle");
+    }
+  }
+
+  async function removeHighlight(annotationId: string) {
+    try {
+      await removePdfTextAnnotation(annotationId);
+      setAnnotations((items) =>
+        items.filter((annotation) => annotation.id !== annotationId),
+      );
+    } catch (error) {
+      console.error("Unable to remove PDF highlight", error);
     }
   }
 
@@ -299,6 +411,7 @@ export function ReaderView({
                 path={bookPath}
                 scale={scale}
                 initialPage={initialPage}
+                annotations={annotations}
                 onDocumentLoaded={handleDocumentLoaded}
                 onCurrentPageChange={handleCurrentPageChange}
               />
@@ -367,6 +480,20 @@ export function ReaderView({
                     Analyze grammar
                   </button>
                   <button
+                    disabled={
+                      aiBusy ||
+                      selection.rects.length === 0 ||
+                      highlightStatus === "saving"
+                    }
+                    onClick={() => void saveCurrentHighlight()}
+                  >
+                    {highlightStatus === "saving"
+                      ? "Highlighting…"
+                      : highlightStatus === "saved"
+                        ? "Highlighted"
+                        : "Highlight"}
+                  </button>
+                  <button
                     disabled={aiBusy || noteStatus === "saving"}
                     onClick={() => void saveCurrentNote()}
                   >
@@ -383,6 +510,7 @@ export function ReaderView({
                       setAiResult(null);
                       setAiError(null);
                       setNoteStatus("idle");
+                      setHighlightStatus("idle");
                     }}
                   >
                     Clear
@@ -433,6 +561,25 @@ export function ReaderView({
                   <small>{aiResult.model}</small>
                 </div>
                 <div className="ai-answer-text">{aiResult.text}</div>
+              </section>
+            )}
+
+            {currentPageAnnotations.length > 0 && (
+              <section className="assist-card page-highlights-card">
+                <span className="assist-type blue">Page highlights</span>
+                <h3>{currentPageAnnotations.length} saved on this page</h3>
+                <div className="page-highlight-list">
+                  {currentPageAnnotations.map((annotation) => (
+                    <div key={annotation.id}>
+                      <span>{annotation.selectedText}</span>
+                      <button
+                        onClick={() => void removeHighlight(annotation.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </section>
             )}
           </div>

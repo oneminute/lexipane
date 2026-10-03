@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { TextLayerBuilder } from "pdfjs-dist/web/pdf_viewer.mjs";
+import type { PdfTextAnnotation } from "../../core/annotations/pdfAnnotations";
 
 interface Props {
   document: PDFDocumentProxy;
+  annotations?: PdfTextAnnotation[];
   pageNumber: number;
   scale: number;
   onVisible?: (pageNumber: number) => void;
@@ -22,6 +24,7 @@ const NO_TEXT_LAYER_IMAGES =
 
 export function PdfPageView({
   document,
+  annotations = [],
   pageNumber,
   scale,
   onVisible,
@@ -163,6 +166,26 @@ export function PdfPageView({
         </div>
       )}
       <canvas ref={canvasRef} className="pdf-page-canvas" />
+      <div className="pdf-highlight-layer" aria-hidden="true">
+        {annotations.flatMap((annotation) =>
+          annotation.anchor.rects.map((rect, index) => (
+            <span
+              key={annotation.id + ":" + index}
+              className={
+                annotation.source === "auto"
+                  ? "pdf-highlight auto"
+                  : "pdf-highlight user"
+              }
+              style={{
+                left: rect.x * 100 + "%",
+                top: rect.y * 100 + "%",
+                width: rect.width * 100 + "%",
+                height: rect.height * 100 + "%",
+              }}
+            />
+          )),
+        )}
+      </div>
       <div ref={textLayerHostRef} className="pdf-text-layer-host" />
     </div>
   );

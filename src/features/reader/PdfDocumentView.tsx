@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
+import type { PdfTextAnnotation } from "../../core/annotations/pdfAnnotations";
 import {
   loadPdfFromPath,
   type LoadedPdfDocument,
@@ -11,6 +12,7 @@ interface Props {
   path: string;
   scale: number;
   initialPage?: number | null;
+  annotations?: PdfTextAnnotation[];
   onDocumentLoaded?: (pageCount: number) => void;
   onCurrentPageChange?: (pageNumber: number) => void;
 }
@@ -19,6 +21,7 @@ export function PdfDocumentView({
   path,
   scale,
   initialPage,
+  annotations = [],
   onDocumentLoaded,
   onCurrentPageChange,
 }: Props) {
@@ -122,6 +125,9 @@ export function PdfDocumentView({
         <PdfPageView
           key={pageNumber}
           document={document}
+          annotations={annotations.filter(
+            (annotation) => annotation.anchor.page === pageNumber,
+          )}
           pageNumber={pageNumber}
           scale={scale}
           onVisible={onCurrentPageChange}
