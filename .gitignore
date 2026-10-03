@@ -23,3 +23,8 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+
+# Tauri icons are generated locally from the canonical source icon.png.
+src-tauri/icons/*
+!src-tauri/icons/icon.png
