@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  parseReaderNavigationTarget,
+  type ReaderNavigationTarget,
+} from "../../core/books/navigation";
 import { exportNotesAsMarkdown } from "../../core/notes/exportMarkdown";
 import {
   deleteReaderNote,
@@ -11,7 +15,10 @@ import {
 
 interface NoteCardProps {
   note: ReaderNote;
-  onOpenBook?: (path: string) => void | Promise<void>;
+  onOpenBook?: (
+    path: string,
+    target?: ReaderNavigationTarget | null,
+  ) => void | Promise<void>;
   onDelete: (noteId: string) => void;
 }
 
@@ -66,7 +73,12 @@ function NoteCard({ note, onOpenBook, onDelete }: NoteCardProps) {
           {note.book_path && onOpenBook && (
             <button
               className="ghost-button"
-              onClick={() => void onOpenBook(note.book_path!)}
+              onClick={() =>
+                void onOpenBook(
+                  note.book_path!,
+                  parseReaderNavigationTarget(note.anchor_json),
+                )
+              }
             >
               Open book
             </button>
@@ -143,7 +155,10 @@ function NoteCard({ note, onOpenBook, onDelete }: NoteCardProps) {
 }
 
 interface Props {
-  onOpenBook?: (path: string) => void | Promise<void>;
+  onOpenBook?: (
+    path: string,
+    target?: ReaderNavigationTarget | null,
+  ) => void | Promise<void>;
 }
 
 export function NotebookView({ onOpenBook }: Props) {

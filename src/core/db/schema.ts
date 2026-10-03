@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const schemaStatements = [
   "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -14,4 +14,18 @@ export const schemaStatements = [
   "CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at)",
   "CREATE TABLE IF NOT EXISTS ai_cache (cache_key TEXT PRIMARY KEY, task_type TEXT NOT NULL, model_id TEXT NOT NULL, content_json TEXT NOT NULL, created_at TEXT NOT NULL)",
   "CREATE INDEX IF NOT EXISTS idx_ai_cache_task ON ai_cache(task_type)",
+];
+
+export interface SchemaMigration {
+  version: number;
+  statements: string[];
+}
+
+export const schemaMigrations: SchemaMigration[] = [
+  {
+    version: 3,
+    statements: [
+      "ALTER TABLE notes ADD COLUMN anchor_json TEXT",
+    ],
+  },
 ];

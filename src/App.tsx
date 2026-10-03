@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppSidebar, type AppView } from "./components/AppSidebar";
 import { listenForBookDrops } from "./core/books/drop";
+import type { ReaderNavigationTarget } from "./core/books/navigation";
 import { registerBookFile } from "./core/books/library";
 import {
   chooseBookFile,
@@ -15,6 +16,8 @@ import { AiSettingsView } from "./features/settings/AiSettingsView";
 export default function App() {
   const [view, setView] = useState<AppView>("library");
   const [activeBookPath, setActiveBookPath] = useState<string | null>(null);
+  const [activeNavigationTarget, setActiveNavigationTarget] =
+    useState<ReaderNavigationTarget | null>(null);
   const [libraryRevision, setLibraryRevision] = useState(0);
 
   useEffect(() => {
@@ -23,19 +26,26 @@ export default function App() {
     });
   }, []);
 
-  const openBookPath = useCallback(async (path: string) => {
-    if (!isSupportedBookPath(path)) return;
+  const openBookPath = useCallback(
+    async (
+      path: string,
+      target: ReaderNavigationTarget | null = null,
+    ) => {
+      if (!isSupportedBookPath(path)) return;
 
-    try {
-      await registerBookFile(path);
-      setLibraryRevision((revision) => revision + 1);
-    } catch (error) {
-      console.error("Unable to register book in local library", error);
-    }
+      try {
+        await registerBookFile(path);
+        setLibraryRevision((revision) => revision + 1);
+      } catch (error) {
+        console.error("Unable to register book in local library", error);
+      }
 
-    setActiveBookPath(path);
-    setView("reader");
-  }, []);
+      setActiveBookPath(path);
+      setActiveNavigationTarget(target);
+      setView("reader");
+    },
+    [],
+  );
 
   const openBook = useCallback(async () => {
     const path = await chooseBookFile();
@@ -72,6 +82,7 @@ export default function App() {
         {view === "reader" && (
           <ReaderView
             bookPath={activeBookPath}
+            navigationTarget={activeNavigationTarget}
             onOpenBook={openBook}
             onBackToLibrary={() => setView("library")}
           />

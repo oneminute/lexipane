@@ -45,6 +45,10 @@ import {
   isPdfPath,
 } from "../../core/books/openBook";
 import {
+  serializeReaderNavigationTarget,
+  type ReaderNavigationTarget,
+} from "../../core/books/navigation";
+import {
   updateBookCover,
   updateBookMetadata,
 } from "../../core/books/library";
@@ -94,6 +98,7 @@ import {
 
 interface Props {
   bookPath: string | null;
+  navigationTarget?: ReaderNavigationTarget | null;
   onOpenBook: () => void;
   onBackToLibrary: () => void;
 }
@@ -132,6 +137,7 @@ function normalizedText(value: string | null | undefined): string {
 
 export function ReaderView({
   bookPath,
+  navigationTarget = null,
   onOpenBook,
   onBackToLibrary,
 }: Props) {
@@ -290,8 +296,12 @@ export function ReaderView({
       void loadPdfReadingPosition(bookPath)
         .then((position) => {
           if (cancelled) return;
-          setInitialPage(position?.page ?? 1);
-          setCurrentPage(position?.page ?? 1);
+          const targetPage =
+            navigationTarget?.kind === "pdf-page"
+              ? navigationTarget.page
+              : position?.page ?? 1;
+          setInitialPage(targetPage);
+          setCurrentPage(targetPage);
         })
         .catch((error) => {
           console.error("Unable to restore PDF reading position", error);
@@ -308,7 +318,11 @@ export function ReaderView({
       void loadEpubReadingPosition(bookPath)
         .then((position) => {
           if (cancelled) return;
-          setEpubInitialCfi(position?.cfi ?? null);
+          setEpubInitialCfi(
+            navigationTarget?.kind === "epub-cfi"
+              ? navigationTarget.cfi
+              : position?.cfi ?? null,
+          );
           setEpubProgress(position?.progress ?? null);
         })
         .catch((error) => {
@@ -323,7 +337,11 @@ export function ReaderView({
       void loadKindleReadingPosition(bookPath)
         .then((position) => {
           if (cancelled) return;
-          setKindleInitialChapterId(position?.chapterId ?? null);
+          setKindleInitialChapterId(
+            navigationTarget?.kind === "kindle-chapter"
+              ? navigationTarget.chapterId
+              : position?.chapterId ?? null,
+          );
           setKindleProgress(position?.progress ?? null);
         })
         .catch((error) => {
@@ -341,7 +359,7 @@ export function ReaderView({
     return () => {
       cancelled = true;
     };
-  }, [bookPath]);
+  }, [bookPath, navigationTarget]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1495,12 +1513,32 @@ export function ReaderView({
   async function saveCurrentNote() {
     if (!bookPath || !selection || noteStatus === "saving") return;
 
+    let noteTarget: ReaderNavigationTarget | null = null;
+
+    if (isEpub && epubSelectionCfi) {
+      noteTarget = {
+        kind: "epub-cfi",
+        cfi: epubSelectionCfi,
+      };
+    } else if (isKindle && kindleSelectionChapterId) {
+      noteTarget = {
+        kind: "kindle-chapter",
+        chapterId: kindleSelectionChapterId,
+      };
+    } else if (isPdf && selection.page >= 1) {
+      noteTarget = {
+        kind: "pdf-page",
+        page: selection.page,
+      };
+    }
+
     setNoteStatus("saving");
     try {
       await createReaderNote(
         bookPath,
         selection.text,
         aiResult?.text ?? null,
+        serializeReaderNavigationTarget(noteTarget),
       );
       setNoteStatus("saved");
       window.setTimeout(() => setNoteStatus("idle"), 1500);
