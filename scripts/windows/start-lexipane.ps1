@@ -116,6 +116,44 @@ Cargo is normally installed under:
     }
 }
 
+
+function Ensure-TauriIcons {
+    $IconDir = Join-Path $ProjectRoot "src-tauri\icons"
+    $SourceIcon = Join-Path $IconDir "icon.png"
+    $WindowsIcon = Join-Path $IconDir "icon.ico"
+
+    if (Test-Path $WindowsIcon) {
+        return
+    }
+
+    if (-not (Test-Path $SourceIcon)) {
+        Fail @"
+Tauri application icons are missing.
+
+Expected at least:
+    src-tauri\icons\icon.png
+
+Restore the icon source file from Git, then run the launcher again.
+"@
+    }
+
+    Write-Step "Generating Tauri application icons from icon.png"
+    & npm run tauri -- icon "src-tauri/icons/icon.png"
+
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Tauri icon generation failed with exit code $LASTEXITCODE."
+    }
+
+    if (-not (Test-Path $WindowsIcon)) {
+        Fail @"
+Tauri icon generation completed, but src-tauri\icons\icon.ico is still missing.
+
+Try manually:
+    npm run tauri -- icon src-tauri/icons/icon.png
+"@
+    }
+}
+
 Write-Host "LexiPane Development Launcher" -ForegroundColor Magenta
 Write-Host "Project: $ProjectRoot"
 
@@ -191,6 +229,10 @@ if (-not $SkipInstall) {
 }
 else {
     Write-Step "Skipping npm dependency synchronization"
+}
+
+if (-not $Web) {
+    Ensure-TauriIcons
 }
 
 if ($Web) {
