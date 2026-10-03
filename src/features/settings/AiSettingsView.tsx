@@ -457,7 +457,7 @@ export function AiSettingsView() {
           </p>
           <div className="task-route-list">
             {taskRoutes.map((task) => {
-              const clouds = cloudRouteOptions(task);
+              const clouds = cloudRouteOptions(task.id);
               const noRoutes =
                 models.length === 0 && clouds.length === 0;
 
@@ -468,7 +468,7 @@ export function AiSettingsView() {
                     <small>{task.description}</small>
                   </span>
                   <select
-                    value={currentRouteValue(task)}
+                    value={currentRouteValue(task.id)}
                     disabled={noRoutes}
                     onChange={(event) =>
                       void changeTaskRoute(
