@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   createUserPdfHighlight,
@@ -236,18 +237,138 @@ export function ReaderView({
     setHighlightStatus("idle");
   }
 
+  function captureSentence(event: ReactMouseEvent<HTMLDivElement>) {
+    const targetElement =
+      event.target instanceof Element ? event.target : null;
+    const targetSpan = targetElement?.closest<HTMLSpanElement>(
+      ".textLayer span",
+    );
+    const pageShell = targetElement?.closest<HTMLElement>(".pdf-page-shell");
+    const textLayer = pageShell?.querySelector<HTMLElement>(".textLayer");
+
+    if (!targetSpan || !pageShell || !textLayer) return;
+
+    const spans = Array.from(
+      textLayer.querySelectorAll<HTMLSpanElement>("span"),
+    );
+    const targetIndex = spans.indexOf(targetSpan);
+    if (targetIndex < 0) return;
+
+    const records: Array<{
+      span: HTMLSpanElement;
+      start: number;
+      end: number;
+    }> = [];
+
+    let pageText = "";
+    let targetOffset = 0;
+
+    spans.forEach((span, index) => {
+      const value = normalizedText(span.textContent);
+      if (!value) return;
+
+      if (pageText) pageText += " ";
+      const start = pageText.length;
+      pageText += value;
+      const end = pageText.length;
+
+      records.push({ span, start, end });
+      if (index === targetIndex) {
+        targetOffset = Math.min(end - 1, start + Math.floor(value.length / 2));
+      }
+    });
+
+    if (!pageText) return;
+
+    const sentenceRegex = /[^.!?]+(?:[.!?]+["')\]]*|$)/g;
+    let match: RegExpExecArray | null;
+    let sentenceStart = 0;
+    let sentenceEnd = pageText.length;
+    let sentenceText = pageText;
+
+    while ((match = sentenceRegex.exec(pageText)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (targetOffset >= start && targetOffset <= end) {
+        sentenceStart = start;
+        sentenceEnd = end;
+        sentenceText = normalizedText(match[0]);
+        break;
+      }
+
+      if (match[0].length === 0) {
+        sentenceRegex.lastIndex += 1;
+      }
+    }
+
+    if (!sentenceText) return;
+
+    const pageBounds = pageShell.getBoundingClientRect();
+    const rects: NormalizedRect[] =
+      pageBounds.width > 0 && pageBounds.height > 0
+        ? records
+            .filter(
+              (record) =>
+                record.end >= sentenceStart && record.start <= sentenceEnd,
+            )
+            .flatMap((record) =>
+              Array.from(record.span.getClientRects()).map((rect) => ({
+                x: Math.max(
+                  0,
+                  Math.min(1, (rect.left - pageBounds.left) / pageBounds.width),
+                ),
+                y: Math.max(
+                  0,
+                  Math.min(1, (rect.top - pageBounds.top) / pageBounds.height),
+                ),
+                width: Math.max(
+                  0,
+                  Math.min(1, rect.width / pageBounds.width),
+                ),
+                height: Math.max(
+                  0,
+                  Math.min(1, rect.height / pageBounds.height),
+                ),
+              })),
+            )
+        : [];
+
+    const pageValue = Number(pageShell.dataset.pdfPage);
+    const selectedPage =
+      Number.isInteger(pageValue) && pageValue > 0 ? pageValue : currentPage;
+
+    const nextSelection: ActiveReaderSelection = {
+      text: sentenceText,
+      context: pageText,
+      page: selectedPage,
+      rects,
+    };
+
+    window.getSelection()?.removeAllRanges();
+    setSelection(nextSelection);
+    setAiResult(null);
+    setAiError(null);
+    setQuestion("");
+    setNoteStatus("idle");
+    setHighlightStatus("idle");
+
+    void runAi("grammar", undefined, nextSelection);
+  }
+
   async function runAi(
     mode: ReadingAnalysisMode,
     readerQuestion?: string,
+    overrideSelection?: ActiveReaderSelection,
   ) {
-    if (!selection || aiBusy) return;
+    const targetSelection = overrideSelection ?? selection;
+    if (!targetSelection || aiBusy) return;
 
     setAiBusy(true);
     setAiError(null);
 
     try {
       const result = await analyzeReadingSelection(
-        selection,
+        targetSelection,
         mode,
         readerQuestion,
       );
@@ -391,7 +512,11 @@ export function ReaderView({
 
       <div className="split-reader">
         <section className="document-pane">
-          <div className="document-stage" onMouseUp={captureSelection}>
+          <div
+            className="document-stage"
+            onMouseUp={captureSelection}
+            onDoubleClick={captureSentence}
+          >
             {!bookPath && (
               <div className="reader-empty-state">
                 <span className="eyebrow">Reader</span>
@@ -522,9 +647,9 @@ export function ReaderView({
                 <span className="assist-type yellow">Reading context</span>
                 <h3>Select text on the PDF.</h3>
                 <p>
-                  Select a word, phrase, or sentence. LexiPane will send the
-                  selection together with surrounding page context to your
-                  configured local Ollama model.
+                  Select a word or phrase for contextual help. Double-click
+                  inside a PDF sentence to select that sentence and run grammar
+                  analysis automatically.
                 </p>
               </section>
             )}
