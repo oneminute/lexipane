@@ -80,9 +80,13 @@ Implemented:
 - automatic highlights
 - Known / Remove / Difficult feedback
 - structured JSON validation for automatic-difficulty results
+- structured typed output for contextual explanations, grammar analysis, and reader questions
+- dedicated structured AI result UI instead of free-form text blocks
 - result cache
-- per-task routing
-- Local only / Prefer local / Automatic / Cloud only modes
+- per-task primary routing
+- ordered per-task fallback chains
+- Local only / Prefer local / Automatic / Cloud only global modes
+- per-book privacy override with inheritance from the global policy
 - local and cloud usage logging
 - secure provider credentials
 - configurable OpenAI-compatible providers
@@ -91,11 +95,10 @@ Implemented:
 
 Next:
 
-- richer structured UI contracts for word and sentence analyses
 - cost estimates using provider/model pricing metadata or user overrides
 - model capability probing beyond current text/vision checks
-- optional fallback chains instead of one primary route
-- explicit per-book cloud/privacy override
+- configurable fallback retry policy / timeout rules
+- per-book provider allow/deny lists in addition to the privacy mode
 
 ## Phase 3 — Notebook and region intelligence
 
@@ -235,13 +238,15 @@ Core:
 - [x] provider configuration UI
 - [x] streaming text
 - [x] automatic-difficulty structured output validation
-- [x] per-task routing
-- [x] privacy modes
+- [x] per-task primary routing
+- [x] ordered fallback chains
+- [x] global privacy modes
+- [x] per-book privacy override
 - [x] usage/token/latency logging
 - [x] native Anthropic adapter
 - [x] native Gemini adapter
 - [x] local/cloud multimodal region routing
-- [ ] richer structured contracts for all reading tasks
+- [x] structured contracts for explain / grammar / ask
 - [ ] pricing metadata and cost estimates
-- [ ] fallback chains
-- [ ] per-book privacy policy
+- [ ] richer structured contracts for multimodal region analysis
+- [ ] per-book provider allow/deny policy
