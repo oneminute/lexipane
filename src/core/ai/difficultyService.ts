@@ -3,7 +3,7 @@ import {
   getCachedAiValue,
   putCachedAiValue,
 } from "./cache";
-import { resolveTextTaskRuntime } from "./runtimeRouter";
+import { resolveTextTaskRuntimes } from "./runtimeRouter";
 import { extractJsonObject } from "./structured";
 import { recordAiUsage } from "./usage";
 import type { ReadingLevel } from "../reading/preferences";
@@ -92,14 +92,20 @@ export function parseDifficultyPayload(
   return result;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function detectDifficultTerms(
   pageText: string,
   level: ReadingLevel,
+  bookPath?: string | null,
 ): Promise<{
   items: DifficultTerm[];
   model: string;
   cached: boolean;
   source?: string;
+  fallbackUsed?: boolean;
 }> {
   const normalizedPage = normalizePageText(pageText);
   if (normalizedPage.length < 80) {
@@ -110,35 +116,11 @@ export async function detectDifficultTerms(
     };
   }
 
-  const runtime = await resolveTextTaskRuntime("difficulty");
-
-  const cacheInput = {
-    level,
-    page: normalizedPage,
-    schema: 2,
-  };
-  const cacheKey = createAiCacheKey(
-    "difficulty",
-    runtime.cacheModelKey,
-    cacheInput,
-  );
-  const cached =
-    await getCachedAiValue<{ items: DifficultTerm[] }>(cacheKey);
-  const [suppressed, difficultHints] = await Promise.all([
+  const [runtimes, suppressed, difficultHints] = await Promise.all([
+    resolveTextTaskRuntimes("difficulty", bookPath),
     listSuppressedTerms(),
     listDifficultTermHints(40),
   ]);
-
-  if (cached) {
-    return {
-      items: cached.items.filter(
-        (item) => !suppressed.has(normalizeTerm(item.text)),
-      ),
-      model: runtime.model,
-      cached: true,
-      source: runtime.label,
-    };
-  }
 
   const levelInstruction: Record<ReadingLevel, string> = {
     A2: "The reader is around A2. Include useful B1+ words and multi-word expressions that are likely to interrupt understanding.",
@@ -162,53 +144,95 @@ export async function detectDifficultTerms(
     "",
     "PAGE:",
     normalizedPage,
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
-  const started = Date.now();
-  const response = await runtime.provider.generateText({
-    model: runtime.model,
-    temperature: 0.1,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are LexiPane's reading-difficulty detector. Be selective and context-aware. Return JSON only.",
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-  });
-  const latencyMs = Date.now() - started;
+  const errors: string[] = [];
 
-  await recordAiUsage(
-    runtime.model,
-    "difficulty",
-    response.usage,
-    latencyMs,
-    runtime.providerConfigId,
+  for (let index = 0; index < runtimes.length; index += 1) {
+    const runtime = runtimes[index];
+    const cacheInput = {
+      level,
+      page: normalizedPage,
+      schema: 3,
+    };
+    const cacheKey = createAiCacheKey(
+      "difficulty",
+      runtime.cacheModelKey,
+      cacheInput,
+    );
+    const cached =
+      await getCachedAiValue<{ items: DifficultTerm[] }>(cacheKey);
+
+    if (cached) {
+      return {
+        items: cached.items.filter(
+          (item) => !suppressed.has(normalizeTerm(item.text)),
+        ),
+        model: runtime.model,
+        cached: true,
+        source: runtime.label,
+        fallbackUsed: index > 0,
+      };
+    }
+
+    try {
+      const started = Date.now();
+      const response = await runtime.provider.generateText({
+        model: runtime.model,
+        temperature: 0.1,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are LexiPane's reading-difficulty detector. Be selective and context-aware. Return JSON only.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      });
+      const latencyMs = Date.now() - started;
+
+      const parsed = extractJsonObject(response.text);
+      const items = parseDifficultyPayload(
+        parsed,
+        normalizedPage,
+      ).filter(
+        (item) => !suppressed.has(normalizeTerm(item.text)),
+      );
+
+      await Promise.all([
+        recordAiUsage(
+          runtime.model,
+          "difficulty",
+          response.usage,
+          latencyMs,
+          runtime.providerConfigId,
+        ),
+        putCachedAiValue(
+          cacheKey,
+          "difficulty",
+          runtime.cacheModelKey,
+          { items },
+        ),
+      ]);
+
+      return {
+        items,
+        model: response.model || runtime.model,
+        cached: false,
+        source: runtime.label,
+        fallbackUsed: index > 0,
+      };
+    } catch (error) {
+      errors.push(runtime.label + " — " + errorMessage(error));
+    }
+  }
+
+  throw new Error(
+    "All difficulty-analysis routes failed. " + errors.join(" | "),
   );
-
-  const parsed = extractJsonObject(response.text);
-  const items = parseDifficultyPayload(
-    parsed,
-    normalizedPage,
-  ).filter(
-    (item) => !suppressed.has(normalizeTerm(item.text)),
-  );
-
-  await putCachedAiValue(
-    cacheKey,
-    "difficulty",
-    runtime.cacheModelKey,
-    { items },
-  );
-
-  return {
-    items,
-    model: response.model || runtime.model,
-    cached: false,
-    source: runtime.label,
-  };
 }

@@ -8,12 +8,17 @@ import {
   saveOllamaModel,
 } from "./ollamaConfig";
 import { OllamaProvider } from "./providers/ollama";
-import { loadAiPrivacyMode } from "./privacy";
 import {
-  loadTaskRouteTarget,
-  resolveOllamaModelForTask,
+  loadAiPrivacyMode,
+  type AiPrivacyMode,
+} from "./privacy";
+import {
+  loadTaskRoutePlan,
   type ReadingTaskType,
+  type TaskRouteTarget,
 } from "./taskRouting";
+import { choosePreferredOllamaModel } from "./ollamaConfig";
+import { loadBookPrivacyMode } from "../books/bookPrivacy";
 
 export interface ResolvedTextRuntime {
   provider: AIProvider;
@@ -24,21 +29,42 @@ export interface ResolvedTextRuntime {
   label: string;
 }
 
+function runtimeKey(runtime: ResolvedTextRuntime): string {
+  return runtime.cacheModelKey;
+}
+
+async function effectivePrivacyMode(
+  bookPath?: string | null,
+): Promise<AiPrivacyMode> {
+  if (bookPath) {
+    const bookMode = await loadBookPrivacyMode(bookPath);
+    if (bookMode) return bookMode;
+  }
+
+  return loadAiPrivacyMode();
+}
+
 async function localRuntime(
   task: ReadingTaskType,
+  requestedModel?: string,
 ): Promise<ResolvedTextRuntime> {
   const config = await loadOllamaConfig();
   const provider = new OllamaProvider(config.baseUrl);
   const models = await provider.listModels();
-  const model = await resolveOllamaModelForTask(
-    task,
-    models,
-    config.model,
-  );
+
+  const requested = requestedModel
+    ? models.find((model) => model.id === requestedModel)?.id ?? null
+    : null;
+
+  const model =
+    requested ??
+    choosePreferredOllamaModel(models, config.model);
 
   if (!model) {
     throw new Error(
-      "Ollama is running, but no local model is installed. Pull a model first.",
+      requestedModel
+        ? 'Ollama model "' + requestedModel + '" is not installed.'
+        : "Ollama is running, but no local model is installed. Pull a model first.",
     );
   }
 
@@ -84,76 +110,137 @@ async function providerRuntime(
   };
 }
 
-async function defaultCloudRuntime(): Promise<ResolvedTextRuntime> {
-  const configs = (await listProviderConfigs()).filter(
-    (config) =>
-      config.enabled &&
-      Boolean(config.settings.model),
-  );
-
-  for (const config of configs) {
-    const runtime = await providerRuntime(
-      config.id,
-      config.settings.model ?? "",
-    );
-    if (!runtime.local) {
-      return runtime;
-    }
-  }
-
-  throw new Error(
-    "Cloud routing needs at least one enabled cloud provider with a model configured.",
-  );
+async function runtimeFromTarget(
+  task: ReadingTaskType,
+  target: TaskRouteTarget,
+): Promise<ResolvedTextRuntime> {
+  return target.kind === "ollama"
+    ? localRuntime(task, target.model)
+    : providerRuntime(target.configId, target.model);
 }
 
-async function localWithAutomaticFallback(
-  task: ReadingTaskType,
-): Promise<ResolvedTextRuntime> {
-  try {
-    return await localRuntime(task);
-  } catch (localError) {
+async function configuredCloudRuntimes(): Promise<ResolvedTextRuntime[]> {
+  const configs = (await listProviderConfigs()).filter(
+    (config) => config.enabled && Boolean(config.settings.model),
+  );
+
+  const runtimes: ResolvedTextRuntime[] = [];
+
+  for (const config of configs) {
     try {
-      return await defaultCloudRuntime();
+      const runtime = await providerRuntime(
+        config.id,
+        config.settings.model ?? "",
+      );
+      if (!runtime.local) runtimes.push(runtime);
     } catch {
-      throw localError;
+      // Invalid/removed provider configurations should not prevent
+      // another configured fallback from being considered.
     }
   }
+
+  return runtimes;
+}
+
+function acceptsPrivacy(
+  runtime: ResolvedTextRuntime,
+  mode: AiPrivacyMode,
+): boolean {
+  if (mode === "local-only") return runtime.local;
+  if (mode === "cloud-only") return !runtime.local;
+  return true;
+}
+
+function dedupeRuntimes(
+  runtimes: ResolvedTextRuntime[],
+): ResolvedTextRuntime[] {
+  const seen = new Set<string>();
+  const result: ResolvedTextRuntime[] = [];
+
+  for (const runtime of runtimes) {
+    const key = runtimeKey(runtime);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(runtime);
+  }
+
+  return result;
+}
+
+export async function resolveTextTaskRuntimes(
+  task: ReadingTaskType,
+  bookPath?: string | null,
+): Promise<ResolvedTextRuntime[]> {
+  const [privacyMode, plan] = await Promise.all([
+    effectivePrivacyMode(bookPath),
+    loadTaskRoutePlan(task),
+  ]);
+
+  const orderedTargets = [
+    ...(plan.primary ? [plan.primary] : []),
+    ...plan.fallbacks,
+  ];
+
+  const routed: ResolvedTextRuntime[] = [];
+
+  for (const target of orderedTargets) {
+    try {
+      const runtime = await runtimeFromTarget(task, target);
+      if (acceptsPrivacy(runtime, privacyMode)) {
+        routed.push(runtime);
+      }
+    } catch {
+      // Resolution failures are intentionally skipped so the next configured
+      // fallback can still run.
+    }
+  }
+
+  if (privacyMode === "local-only") {
+    try {
+      routed.push(await localRuntime(task));
+    } catch {
+      // Preserve any explicitly configured local fallback that resolved.
+    }
+  } else if (privacyMode === "cloud-only") {
+    routed.push(...(await configuredCloudRuntimes()));
+  } else if (privacyMode === "automatic") {
+    try {
+      routed.push(await localRuntime(task));
+    } catch {
+      // Cloud fallback may still be available.
+    }
+    routed.push(...(await configuredCloudRuntimes()));
+  } else if (routed.length === 0) {
+    // Prefer-local does not silently upload book content. If no explicit
+    // cloud route exists, its implicit default remains local.
+    try {
+      routed.push(await localRuntime(task));
+    } catch {
+      // Error below contains the privacy context.
+    }
+  }
+
+  const result = dedupeRuntimes(routed).filter((runtime) =>
+    acceptsPrivacy(runtime, privacyMode),
+  );
+
+  if (result.length === 0) {
+    throw new Error(
+      privacyMode === "local-only"
+        ? "This book is Local Only, but no usable local AI route is available."
+        : privacyMode === "cloud-only"
+          ? "This book is Cloud Only, but no usable cloud AI route is configured."
+          : "No usable AI runtime is available for this task.",
+    );
+  }
+
+  return result;
 }
 
 export async function resolveTextTaskRuntime(
   task: ReadingTaskType,
+  bookPath?: string | null,
 ): Promise<ResolvedTextRuntime> {
-  const [privacyMode, target] = await Promise.all([
-    loadAiPrivacyMode(),
-    loadTaskRouteTarget(task),
-  ]);
-
-  if (privacyMode === "local-only") {
-    return localRuntime(task);
-  }
-
-  if (privacyMode === "cloud-only") {
-    if (target?.kind === "provider") {
-      const routed = await providerRuntime(
-        target.configId,
-        target.model,
-      );
-      if (!routed.local) return routed;
-    }
-
-    return defaultCloudRuntime();
-  }
-
-  if (target?.kind === "provider") {
-    return providerRuntime(
-      target.configId,
-      target.model,
-    );
-  }
-
-  if (privacyMode === "automatic") {
-    return localWithAutomaticFallback(task);
-  }
-
-  return localRuntime(task);
+  const runtimes = await resolveTextTaskRuntimes(task, bookPath);
+  return runtimes[0];
 }

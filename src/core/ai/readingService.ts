@@ -3,7 +3,13 @@ import {
   getCachedAiValue,
   putCachedAiValue,
 } from "./cache";
-import { resolveTextTaskRuntime } from "./runtimeRouter";
+import {
+  formatStructuredReadingAnalysis,
+  parseStructuredReadingAnalysis,
+  structuredOutputInstruction,
+  type StructuredReadingAnalysis,
+} from "./readingStructured";
+import { resolveTextTaskRuntimes } from "./runtimeRouter";
 import type { ReadingTaskType } from "./taskRouting";
 import type {
   AIMessage,
@@ -18,13 +24,17 @@ export interface ReadingSelection {
   text: string;
   context?: string;
   page?: number | null;
+  bookPath?: string | null;
 }
 
 export interface ReadingAnalysisResult {
   text: string;
+  analysis: StructuredReadingAnalysis;
   model: string;
   cached?: boolean;
   source?: string;
+  fallbackUsed?: boolean;
+  attemptedSources?: string[];
 }
 
 export type ReadingStreamCallback = (
@@ -47,8 +57,7 @@ function taskInstruction(
       "Analyze the selected English text for a Chinese learner.",
       "Explain the sentence structure, clauses, grammatical constructions,",
       "pronoun/reference relationships, and idiomatic expressions that affect",
-      "understanding. End with a natural Chinese interpretation.",
-      "Do not spend space on grammar that is obvious or irrelevant.",
+      "understanding. Do not spend space on grammar that is obvious or irrelevant.",
     ].join(" ");
   }
 
@@ -62,10 +71,8 @@ function taskInstruction(
 
   return [
     "Explain the selected English text in its current context for a Chinese learner.",
-    "Start with the natural meaning in this context, then explain important words,",
-    "phrases, collocations, idioms, or usage that could block reading.",
-    "If it is only a word or phrase, explain why that meaning fits the surrounding text.",
-    "Keep the explanation focused instead of giving a dictionary dump.",
+    "Focus on the actual contextual meaning, important expressions, collocations,",
+    "idioms, and usage that could block reading. Avoid a dictionary dump.",
   ].join(" ");
 }
 
@@ -99,11 +106,12 @@ function prepareReadingRequest(
     page: selection.page ?? null,
     question: question?.trim() ?? "",
     mode,
-    promptVersion: 4,
+    promptVersion: 5,
   };
 
   const userContent = [
     taskInstruction(mode, question),
+    structuredOutputInstruction(mode),
     "",
     "Selected text:",
     input.text,
@@ -120,8 +128,8 @@ function prepareReadingRequest(
       content:
         "You are LexiPane, a contextual reading assistant. " +
         "Answer primarily in Simplified Chinese while preserving useful English " +
-        "words and structures. Base explanations on the supplied reading context. " +
-        "Do not invent missing story facts.",
+        "words and structures. Base every claim on the supplied reading context. " +
+        "Do not invent missing story facts. Follow the requested JSON schema exactly.",
     },
     {
       role: "user",
@@ -142,6 +150,7 @@ async function persistReadingResult(
   cacheModelKey: string,
   model: string,
   text: string,
+  analysis: StructuredReadingAnalysis,
   usage: AIUsage | undefined,
   latencyMs: number,
   providerConfigId?: string,
@@ -158,9 +167,119 @@ async function persistReadingResult(
       cacheKey,
       taskType,
       cacheModelKey,
-      { text },
+      { text, analysis },
     ),
   ]);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function executeReadingRequest(
+  selection: ReadingSelection,
+  mode: ReadingAnalysisMode,
+  question: string | undefined,
+  stream: boolean,
+  onStream?: ReadingStreamCallback,
+): Promise<ReadingAnalysisResult> {
+  const prepared = prepareReadingRequest(selection, mode, question);
+  const runtimes = await resolveTextTaskRuntimes(
+    prepared.taskType,
+    selection.bookPath,
+  );
+  const attemptedSources: string[] = [];
+
+  for (let index = 0; index < runtimes.length; index += 1) {
+    const runtime = runtimes[index];
+    const cacheKey = createAiCacheKey(
+      prepared.taskType,
+      runtime.cacheModelKey,
+      prepared.input,
+    );
+
+    const cached = await getCachedAiValue<{
+      text: string;
+      analysis: StructuredReadingAnalysis;
+    }>(cacheKey);
+
+    if (cached?.text && cached.analysis) {
+      onStream?.(cached.text, cached.text);
+      return {
+        text: cached.text,
+        analysis: cached.analysis,
+        model: runtime.model,
+        cached: true,
+        source: runtime.label,
+        fallbackUsed: index > 0,
+        attemptedSources,
+      };
+    }
+
+    const request: TextGenerationRequest = {
+      model: runtime.model,
+      temperature: 0.15,
+      messages: prepared.messages,
+    };
+
+    attemptedSources.push(runtime.label);
+
+    try {
+      const started = Date.now();
+      let rawText = "";
+      let model = runtime.model;
+      let usage: AIUsage | undefined;
+
+      if (stream && runtime.provider.streamText) {
+        for await (const event of runtime.provider.streamText(request)) {
+          if (event.model) model = event.model;
+          if (event.usage) usage = event.usage;
+          if (event.delta) rawText += event.delta;
+        }
+      } else {
+        const response = await runtime.provider.generateText(request);
+        rawText = response.text;
+        model = response.model || runtime.model;
+        usage = response.usage;
+      }
+
+      const analysis = parseStructuredReadingAnalysis(rawText, mode);
+      const text = formatStructuredReadingAnalysis(analysis);
+      const latencyMs = Date.now() - started;
+
+      await persistReadingResult(
+        prepared.taskType,
+        cacheKey,
+        runtime.cacheModelKey,
+        runtime.model,
+        text,
+        analysis,
+        usage,
+        latencyMs,
+        runtime.providerConfigId,
+      );
+
+      onStream?.(text, text);
+
+      return {
+        text,
+        analysis,
+        model,
+        cached: false,
+        source: runtime.label,
+        fallbackUsed: index > 0,
+        attemptedSources,
+      };
+    } catch (error) {
+      attemptedSources[attemptedSources.length - 1] =
+        runtime.label + " — " + errorMessage(error);
+    }
+  }
+
+  throw new Error(
+    "All configured AI routes failed. " +
+      attemptedSources.join(" | "),
+  );
 }
 
 export async function analyzeReadingSelection(
@@ -168,53 +287,12 @@ export async function analyzeReadingSelection(
   mode: ReadingAnalysisMode,
   question?: string,
 ): Promise<ReadingAnalysisResult> {
-  const prepared = prepareReadingRequest(selection, mode, question);
-  const runtime = await resolveTextTaskRuntime(prepared.taskType);
-
-  const cacheKey = createAiCacheKey(
-    prepared.taskType,
-    runtime.cacheModelKey,
-    prepared.input,
+  return executeReadingRequest(
+    selection,
+    mode,
+    question,
+    false,
   );
-  const cached = await getCachedAiValue<{ text: string }>(cacheKey);
-
-  if (cached?.text) {
-    return {
-      text: cached.text,
-      model: runtime.model,
-      cached: true,
-      source: runtime.label,
-    };
-  }
-
-  const request: TextGenerationRequest = {
-    model: runtime.model,
-    temperature: 0.2,
-    messages: prepared.messages,
-  };
-
-  const started = Date.now();
-  const response = await runtime.provider.generateText(request);
-  const latencyMs = Date.now() - started;
-  const text = response.text.trim();
-
-  await persistReadingResult(
-    prepared.taskType,
-    cacheKey,
-    runtime.cacheModelKey,
-    runtime.model,
-    text,
-    response.usage,
-    latencyMs,
-    runtime.providerConfigId,
-  );
-
-  return {
-    text,
-    model: response.model || runtime.model,
-    cached: false,
-    source: runtime.label,
-  };
 }
 
 export async function streamReadingSelection(
@@ -223,78 +301,11 @@ export async function streamReadingSelection(
   question: string | undefined,
   onStream: ReadingStreamCallback,
 ): Promise<ReadingAnalysisResult> {
-  const prepared = prepareReadingRequest(selection, mode, question);
-  const runtime = await resolveTextTaskRuntime(prepared.taskType);
-
-  const cacheKey = createAiCacheKey(
-    prepared.taskType,
-    runtime.cacheModelKey,
-    prepared.input,
+  return executeReadingRequest(
+    selection,
+    mode,
+    question,
+    true,
+    onStream,
   );
-  const cached = await getCachedAiValue<{ text: string }>(cacheKey);
-
-  if (cached?.text) {
-    onStream(cached.text, cached.text);
-    return {
-      text: cached.text,
-      model: runtime.model,
-      cached: true,
-      source: runtime.label,
-    };
-  }
-
-  const request: TextGenerationRequest = {
-    model: runtime.model,
-    temperature: 0.2,
-    messages: prepared.messages,
-  };
-
-  if (!runtime.provider.streamText) {
-    const result = await analyzeReadingSelection(
-      selection,
-      mode,
-      question,
-    );
-    onStream(result.text, result.text);
-    return result;
-  }
-
-  const started = Date.now();
-  let text = "";
-  let model = runtime.model;
-  let usage: AIUsage | undefined;
-
-  for await (const event of runtime.provider.streamText(request)) {
-    if (event.model) {
-      model = event.model;
-    }
-    if (event.usage) {
-      usage = event.usage;
-    }
-    if (event.delta) {
-      text += event.delta;
-      onStream(text, event.delta);
-    }
-  }
-
-  text = text.trim();
-  const latencyMs = Date.now() - started;
-
-  await persistReadingResult(
-    prepared.taskType,
-    cacheKey,
-    runtime.cacheModelKey,
-    runtime.model,
-    text,
-    usage,
-    latencyMs,
-    runtime.providerConfigId,
-  );
-
-  return {
-    text,
-    model,
-    cached: false,
-    source: runtime.label,
-  };
 }
