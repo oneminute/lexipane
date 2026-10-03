@@ -1,90 +1,125 @@
 # LexiPane roadmap
 
-The roadmap is organized as vertical slices. Each phase should leave the application usable rather than adding disconnected infrastructure.
+The roadmap is organized as vertical slices. Each phase should leave the application useful instead of adding disconnected infrastructure.
 
 ## Phase 0 — Foundation
 
-Status: substantially complete
+Status: **complete for desktop development**
+
+Implemented:
 
 - Tauri 2 + React + TypeScript + Rust
-- responsive desktop and mobile-aware shell
+- responsive desktop/mobile-aware shell
 - SQLite schema v1
-- library, reader, notebook and AI settings surfaces
-- provider catalog
+- Library, Reader, Notebook, and AI/Models surfaces
+- provider registry
 - Ollama adapter
-- generic OpenAI-compatible adapter
+- generic OpenAI-compatible adapter foundation
+- Tauri HTTP transport for local Ollama without WebView CORS dependency
 - architecture documentation
-- baseline CI
-- Windows dependency-aware launcher
+- GitHub Actions frontend and Rust checks
+- Windows dependency-aware one-click launcher
 
 ## Phase 1 — PDF reader
 
-Status: in progress
+Status: **mostly implemented**
 
 Implemented:
 
 - PDF.js integration
 - native file picker
-- native file drag/drop routing
-- local filesystem access through Tauri fs
-- persisted runtime filesystem scopes so bookshelf files can reopen after restart
+- native drag/drop routing
+- Tauri filesystem access
+- persisted runtime filesystem scopes
 - real PDF canvas rendering
 - continuous multi-page reading
-- selectable PDF text layer
+- selectable text layer
 - zoom controls
 - current-page detection
 - opened books persisted to SQLite and shown in the bookshelf
-- selected PDF text passed into the AI pane as reading context
+- reading-position persistence and restore
+- selected PDF text routed into the AI pane
+- persistent user highlights
+- versioned PDF anchors with page, exact quote, prefix/suffix context, and normalized rectangles
+- highlight removal from the current-page assistance panel
 
-Still planned in this phase:
+Still planned:
 
 - table of contents
-- reading-position persistence and restore
-- cover/thumbnail generation
+- PDF metadata/author extraction
+- cover and thumbnail generation
 - page virtualization/lazy rendering for very large PDFs
-- richer PDF error/password handling
-- first stable PDF annotation anchor
-
-Exit condition: LexiPane is a competent local PDF reader before AI is required.
+- encrypted/password PDF handling
+- stronger quote-based highlight recovery if PDF.js text segmentation changes
 
 ## Phase 2 — Contextual AI reading
 
+Status: **started; local selection analysis is live**
+
+Implemented:
+
+- Ollama connection through Tauri HTTP
+- installed-model discovery
+- persisted local-model preference
+- preference for Qwen 3.5/Qwen when no model is configured
+- selected-text context extraction
+- surrounding-page context supplied to the local model
+- contextual explanation
+- grammar/structure analysis
+- custom questions about the selection
+
+Next:
+
 - automatic difficult-word candidates
 - phrase and collocation candidates
-- configurable reading level
-- user add and remove annotation
-- Known feedback
-- context-aware word and phrase explanation
-- sentence selection
-- grammar and meaning structure analysis
-- structured model output
+- configurable reader language level
+- automatic word/phrase highlights
+- Known / Remove feedback
+- double-click sentence analysis
+- structured-output validation
 - AI result caching
+- task router with per-task model selection
+- cloud provider configuration and secure credentials
+- streaming responses
+- usage and cost accounting
 
-Exit condition: a user can read an English PDF and get useful assistance without copying text into a chat application.
+Exit condition: a user can read an English book with useful automatic assistance rather than manually requesting help for every selection.
 
 ## Phase 3 — Notebook and region intelligence
 
-- unified notebook
-- manual notes beside AI content
-- tags
+Status: **Notebook foundation live**
+
+Implemented:
+
+- persistent Notebook
+- source text kept separately from AI content
+- AI explanation saved with a selection
+- editable user-authored notes
+- jump back from a note to its local book
+
+Next:
+
+- tags and filters
+- note deletion/archive
+- link notes directly to annotation anchors
 - rectangular region selection
 - text-layer extraction when possible
 - OCR fallback for scanned regions
-- multimodal model route for charts, images and formulas
-- Markdown export
+- multimodal model routing for charts, images, and formulas
+- Markdown/PDF export
 
 ## Phase 4 — EPUB
 
 - EPUB engine behind Document Engine interface
 - CFI-based anchors
 - reflow and font controls
-- same annotation and AI workflow as PDF
+- same annotation, AI, and Notebook workflow as PDF
 
-## Phase 5 — MOBI, AZW and AZW3
+## Phase 5 — MOBI / AZW / AZW3
 
 - native parsing or conversion adapter
-- normalized chapter and block anchors
-- same notebook and AI workflow
+- normalized chapter/block anchors
+- same Notebook and AI workflow
 
 ## Phase 6 — Mobile
 
@@ -92,7 +127,7 @@ Exit condition: a user can read an English PDF and get useful assistance without
 - iOS packaging
 - touch selection
 - reading-first AI sheet
-- open-with and file association flows
+- open-with/file association flows
 - mobile secret storage
 - local/cloud model capability negotiation
 
@@ -102,27 +137,28 @@ Exit condition: a user can read an English PDF and get useful assistance without
 - false-positive feedback
 - manually-added difficulty feedback
 - user-specific difficulty scoring
-- CEFR, frequency and domain priors
+- CEFR/frequency/domain priors
 - adaptive automatic highlighting
 
 ## AI provider milestones
 
-Core compatibility adapters:
+Core:
 
-- [x] Ollama foundation
-- [x] Generic OpenAI-compatible foundation
-- [ ] provider configuration UI
+- [x] Ollama provider
+- [x] Tauri HTTP local transport
+- [x] Ollama model discovery UI
+- [x] persisted local model selection
+- [x] generic OpenAI-compatible provider foundation
 - [ ] secure API-key storage
-- [ ] model discovery UI
+- [ ] cloud-provider configuration UI
 - [ ] streaming
 - [ ] structured-output validation
-- [ ] task router
-- [ ] cost and usage dashboard
+- [ ] per-task router
+- [ ] usage/cost dashboard
 
 Native adapters:
 
 - [ ] Anthropic Claude
 - [ ] Google Gemini
-- [ ] provider-specific multimodal, caching and reasoning controls
-
-The registry already contains major global, China-cloud and local provider families. Catalog presence does not mean every provider-native feature is implemented.
+- [ ] OpenAI provider-native capabilities where useful
+- [ ] provider-specific multimodal/caching/reasoning controls

@@ -2,62 +2,116 @@
 
 LexiPane is a cross-platform AI-assisted ebook reader for deep reading and language learning.
 
-The product keeps the book as the primary surface and places structured AI assistance beside it: difficult words and phrases, contextual meanings, sentence grammar, passage explanations, region/image analysis, notes, and eventually a personal reading model that adapts to what the user actually knows.
+The book remains the primary reading surface. AI assistance sits beside it and stays tied to the exact reading context instead of becoming a separate chat workflow.
 
-## Current foundation
+## What works now
 
-The repository now contains the initial application scaffold:
+The current desktop build already includes a usable PDF-first vertical slice:
 
-- Tauri 2 desktop/mobile shell
-- React + TypeScript frontend
-- Rust native layer
-- SQLite schema v1
-- Library, Reader, Notebook and AI/Models UI surfaces
-- Ollama provider adapter
-- generic OpenAI-compatible provider adapter
-- provider catalog covering major local, global-cloud and China-cloud model families
-- responsive split-reader concept
-- baseline tests and CI
+- Tauri 2 + React + TypeScript + Rust desktop shell
+- local SQLite bookshelf
+- open books through the native file picker
+- drag supported ebook files into the application
+- real PDF.js rendering
+- continuous multi-page PDF reading
+- zoom controls
+- selectable PDF text layer
+- reading-position persistence and restore
+- persistent user highlights
+- versioned PDF text anchors containing page, exact quote, quote context, and normalized highlight rectangles
+- local Ollama model discovery
+- automatic preference for an installed Qwen 3.5/Qwen model when no model was chosen
+- contextual explanation of selected PDF text
+- grammar/structure analysis of selected text
+- questions about selected text with surrounding page context
+- persistent Notebook entries containing source text, AI explanation, and editable user notes
+- provider registry covering major local, global-cloud, and China-cloud AI families
 
-The PDF rendering engine is the next implementation slice.
+The first live AI path is intentionally local: Ollama at `http://127.0.0.1:11434`.
 
-## Planned formats
+## Current reading workflow
 
-- PDF first
-- EPUB
-- MOBI
-- AZW / AZW3
-- additional common ebook formats through the Document Engine abstraction
+1. Open or drag in a PDF.
+2. LexiPane adds it to the local bookshelf.
+3. Read continuously and zoom as needed.
+4. Select a word, phrase, or sentence.
+5. Use **Explain** or **Analyze grammar** in the AI pane.
+6. Ask a custom question about the selection.
+7. Use **Highlight** to keep the selection visually attached to the PDF.
+8. Use **Save note** to store the source text and optional AI explanation.
+9. Open **Notebook** to add your own notes.
+10. Close and reopen the book; LexiPane restores the saved reading page.
 
-## AI philosophy
+## AI architecture
 
 LexiPane is model-agnostic.
 
-Local targets include Ollama, LM Studio, llama.cpp server, vLLM and LocalAI. Cloud targets include OpenAI, Anthropic Claude, Google Gemini, xAI Grok, OpenRouter, Alibaba Qwen, DeepSeek, Kimi, GLM, MiniMax, Doubao, ERNIE and Hunyuan.
+### Live now
 
-The provider layer is separate from reading features, so changing a model does not change reader UI.
+- Ollama local runtime
+- runtime model discovery
+- local model selection
+- contextual reading analysis
 
-A typical setup can use local Qwen for vocabulary, phrases and sentence grammar while using a cloud vision model only when needed.
+### Adapter foundation already present
+
+- generic OpenAI-compatible provider adapter
+
+### Provider catalog
+
+Local targets:
+
+- Ollama
+- LM Studio
+- llama.cpp server
+- vLLM
+- LocalAI
+- custom OpenAI-compatible local endpoints
+
+Cloud targets:
+
+- OpenAI
+- Anthropic Claude
+- Google Gemini
+- xAI Grok
+- OpenRouter
+- Mistral
+- Alibaba Qwen / Model Studio
+- DeepSeek
+- Moonshot / Kimi
+- Zhipu / GLM
+- MiniMax
+- ByteDance / Doubao
+- Baidu ERNIE / Qianfan
+- Tencent Hunyuan
+
+Catalog presence does not mean every provider is fully configured in the UI yet. Cloud credential storage and provider-native integrations are still under development.
 
 ## Architecture
 
 ~~~text
 LexiPane
 ├─ Document Engine
+│  └─ PDF.js                 live
 ├─ Annotation Engine
-├─ Notebook Engine
+│  └─ PDF text-range anchors live
+├─ Notebook Engine           live foundation
 ├─ AI Platform
 │  ├─ Provider Registry
 │  ├─ Model Registry
-│  ├─ Task Router
-│  ├─ Prompt Templates
-│  ├─ Structured Output
-│  ├─ Usage / Cost
+│  ├─ Ollama Runtime         live
+│  ├─ Task Router            in progress
+│  ├─ Structured Output      planned
+│  ├─ Usage / Cost           planned
 │  └─ Privacy Policy
-└─ Personal Reading Model
+└─ Personal Reading Model    planned
 ~~~
 
-See docs/architecture.md, docs/roadmap.md and docs/ai-providers.md.
+See:
+
+- `docs/architecture.md`
+- `docs/roadmap.md`
+- `docs/ai-providers.md`
 
 ## Development
 
@@ -68,9 +122,9 @@ Prerequisites:
 - Rust stable
 - Tauri 2 platform prerequisites for your OS
 
-### Windows one-click launcher
+### Windows one-click development launcher
 
-After cloning the repository, double-click:
+After cloning or pulling the repository, double-click:
 
 ~~~text
 start-lexipane.cmd
@@ -78,47 +132,36 @@ start-lexipane.cmd
 
 The launcher:
 
-1. checks that Node.js 22+ and npm are available;
-2. runs `npm install --no-audit --no-fund` to install missing packages and synchronize dependencies;
-3. starts the Tauri desktop application with `npm run tauri dev`;
-4. keeps the console open if startup fails so the error can be read.
+1. checks Node.js and npm;
+2. requires Node.js 22 or newer;
+3. runs `npm install --no-audit --no-fund`;
+4. installs missing dependencies and synchronizes `node_modules`;
+5. starts the desktop app with `npm run tauri dev`;
+6. keeps the console open if startup fails.
 
-Optional command-line modes:
+Optional modes:
 
 ~~~powershell
-# Explicitly update packages within the semver ranges allowed by package.json
+# Update packages within the version ranges allowed by package.json
 .\start-lexipane.cmd -Update
 
 # Start only the browser/Vite UI
 .\start-lexipane.cmd -Web
 
-# Skip dependency synchronization when you know node_modules is current
+# Skip npm dependency synchronization
 .\start-lexipane.cmd -SkipInstall
 ~~~
 
-The launcher does not silently upgrade dependencies across breaking major versions. Major-version upgrades should remain deliberate code changes reviewed through Git.
+Breaking major dependency upgrades remain deliberate project changes rather than happening silently at startup.
 
 ### Manual commands
 
-Install frontend dependencies:
-
 ~~~bash
 npm install
-~~~
-
-Run browser UI during frontend work:
-
-~~~bash
-npm run dev
-~~~
-
-Run the desktop application:
-
-~~~bash
 npm run tauri dev
 ~~~
 
-Run checks:
+Checks:
 
 ~~~bash
 npm run typecheck
@@ -127,13 +170,56 @@ npm run build
 cargo check --manifest-path src-tauri/Cargo.toml
 ~~~
 
-## Data and privacy
+## Ollama
 
-Book metadata, positions, annotations, notes, provider configuration and usage records are designed to live in local SQLite.
+Start Ollama before starting LexiPane and make sure at least one model is installed.
 
-Cloud API keys must not be stored in plaintext SQLite. A platform SecretStore abstraction will use the operating system secure credential facility.
+LexiPane connects to:
 
-Privacy modes are planned as Local only, Prefer local, Automatic and Cloud only.
+~~~text
+http://127.0.0.1:11434
+~~~
+
+Open **AI & Models** inside LexiPane to see connection status and discovered models.
+
+If no model has been selected, LexiPane prefers:
+
+1. an installed model whose name contains `qwen3.5`;
+2. another installed Qwen model;
+3. otherwise the first available local model.
+
+The reader never hard-codes one exact Qwen model identifier.
+
+## Formats
+
+Current live reader:
+
+- PDF
+
+Library recognition already includes:
+
+- EPUB
+- MOBI
+- AZW
+- AZW3
+
+Those formats will connect to the shared Document Engine in later phases.
+
+DRM-protected content is outside the initial scope.
+
+## Local data and privacy
+
+SQLite stores local application data including:
+
+- bookshelf metadata
+- reading positions
+- annotations
+- highlights
+- notes
+- model preferences
+- future provider configuration and usage data
+
+The current Ollama reading path runs locally. Cloud API keys must not be stored as plaintext SQLite values; platform secure credential storage will be added before cloud-provider configuration is considered complete.
 
 ## License
 
