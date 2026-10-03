@@ -1,7 +1,6 @@
 import { readFile } from "@tauri-apps/plugin-fs";
 import {
   GlobalWorkerOptions,
-  TextLayerImages,
   getDocument,
   type PDFDocumentProxy,
   type PDFDocumentLoadingTask,
@@ -12,10 +11,6 @@ GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 export interface LoadedPdfDocument {
   document: PDFDocumentProxy;
-  createEmptyTextLayerImages(
-    viewport: ConstructorParameters<typeof TextLayerImages>[2],
-    canvas: HTMLCanvasElement,
-  ): TextLayerImages;
   destroy(): Promise<void>;
 }
 
@@ -28,14 +23,6 @@ export async function loadPdfFromPath(path: string): Promise<LoadedPdfDocument> 
 
   return {
     document,
-    createEmptyTextLayerImages(viewport, canvas) {
-      return new TextLayerImages(
-        0,
-        new Float32Array(0),
-        viewport,
-        () => canvas,
-      );
-    },
     async destroy() {
       await loadingTask.destroy();
     },
