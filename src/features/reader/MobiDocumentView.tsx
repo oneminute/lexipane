@@ -171,7 +171,7 @@ function chapterDocument(
 
 function unwrapMarks(document: Document) {
   const marks = Array.from(
-    document.querySelectorAll<HTMLMarkElement>(
+    document.querySelectorAll<HTMLElement>(
       "mark.lexipane-kindle-user, " +
         "mark.lexipane-kindle-auto-word, " +
         "mark.lexipane-kindle-auto-phrase",
