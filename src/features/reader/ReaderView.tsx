@@ -8,6 +8,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
+  createEpubHighlight,
+  listEpubHighlights,
+  removeEpubHighlight,
+  type EpubTextAnnotation,
+} from "../../core/annotations/epubAnnotations";
+import {
   createAutoPdfHighlight,
   createUserPdfHighlight,
   listPdfTextAnnotations,
@@ -26,7 +32,10 @@ import {
   type ReadingAnalysisMode,
   type ReadingSelection,
 } from "../../core/ai/readingService";
-import { isPdfPath } from "../../core/books/openBook";
+import {
+  isEpubPath,
+  isPdfPath,
+} from "../../core/books/openBook";
 import { updateBookMetadata } from "../../core/books/library";
 import { createReaderNote } from "../../core/notes/notes";
 import type {
@@ -42,9 +51,19 @@ import {
   type ReadingLevel,
 } from "../../core/reading/preferences";
 import {
+  loadEpubReadingPosition,
+  saveEpubReadingPosition,
+} from "../../core/books/epubPosition";
+import {
   loadPdfReadingPosition,
   savePdfReadingPosition,
 } from "../../core/books/readingPosition";
+import {
+  EpubDocumentView,
+  type EpubMetadataSummary,
+  type EpubOutlineEntry,
+  type EpubSelection,
+} from "./EpubDocumentView";
 import { PdfDocumentView } from "./PdfDocumentView";
 import { getPdfPageText, locatePdfTextRects } from "./pdfTextDom";
 import {
@@ -128,8 +147,22 @@ export function ReaderView({
   const [regionMode, setRegionMode] = useState(false);
   const [regionDrag, setRegionDrag] = useState<RegionDragState | null>(null);
   const [regionCapture, setRegionCapture] = useState<PdfRegionCapture | null>(null);
+  const [epubInitialCfi, setEpubInitialCfi] = useState<string | null>(null);
+  const [epubProgress, setEpubProgress] = useState<number | null>(null);
+  const [epubMetadata, setEpubMetadata] = useState<EpubMetadataSummary>({
+    title: null,
+    author: null,
+  });
+  const [epubOutline, setEpubOutline] = useState<EpubOutlineEntry[]>([]);
+  const [epubNavigationTarget, setEpubNavigationTarget] =
+    useState<string | null>(null);
+  const [epubAnnotations, setEpubAnnotations] =
+    useState<EpubTextAnnotation[]>([]);
+  const [epubSelectionCfi, setEpubSelectionCfi] =
+    useState<string | null>(null);
 
   const isPdf = isPdfPath(bookPath);
+  const isEpub = isEpubPath(bookPath);
 
   useEffect(() => {
     void loadOllamaConfig()
@@ -164,31 +197,57 @@ export function ReaderView({
     setRegionMode(false);
     setRegionDrag(null);
     setRegionCapture(null);
+    setEpubInitialCfi(null);
+    setEpubProgress(null);
+    setEpubMetadata({ title: null, author: null });
+    setEpubOutline([]);
+    setEpubNavigationTarget(null);
+    setEpubAnnotations([]);
+    setEpubSelectionCfi(null);
 
-    if (!bookPath || !isPdfPath(bookPath)) {
+    if (!bookPath) {
       setPositionLoaded(true);
       return () => {
         cancelled = true;
       };
     }
 
-    void loadPdfReadingPosition(bookPath)
-      .then((position) => {
-        if (cancelled) return;
-        setInitialPage(position?.page ?? 1);
-        setCurrentPage(position?.page ?? 1);
-      })
-      .catch((error) => {
-        console.error("Unable to restore PDF reading position", error);
-        if (!cancelled) {
-          setInitialPage(1);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setPositionLoaded(true);
-        }
-      });
+    if (isPdfPath(bookPath)) {
+      void loadPdfReadingPosition(bookPath)
+        .then((position) => {
+          if (cancelled) return;
+          setInitialPage(position?.page ?? 1);
+          setCurrentPage(position?.page ?? 1);
+        })
+        .catch((error) => {
+          console.error("Unable to restore PDF reading position", error);
+          if (!cancelled) {
+            setInitialPage(1);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setPositionLoaded(true);
+          }
+        });
+    } else if (isEpubPath(bookPath)) {
+      void loadEpubReadingPosition(bookPath)
+        .then((position) => {
+          if (cancelled) return;
+          setEpubInitialCfi(position?.cfi ?? null);
+          setEpubProgress(position?.progress ?? null);
+        })
+        .catch((error) => {
+          console.error("Unable to restore EPUB reading position", error);
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setPositionLoaded(true);
+          }
+        });
+    } else {
+      setPositionLoaded(true);
+    }
 
     return () => {
       cancelled = true;
@@ -212,6 +271,30 @@ export function ReaderView({
       .catch((error) => {
         console.error("Unable to load PDF annotations", error);
         if (!cancelled) setAnnotations([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!bookPath || !isEpubPath(bookPath)) {
+      setEpubAnnotations([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void listEpubHighlights(bookPath)
+      .then((items) => {
+        if (!cancelled) setEpubAnnotations(items);
+      })
+      .catch((error) => {
+        console.error("Unable to load EPUB annotations", error);
+        if (!cancelled) setEpubAnnotations([]);
       });
 
     return () => {
@@ -361,6 +444,61 @@ export function ReaderView({
   const handleOutlineReady = useCallback((items: PdfOutlineEntry[]) => {
     setOutline(items);
   }, []);
+
+  const handleEpubMetadataReady = useCallback(
+    (metadata: EpubMetadataSummary) => {
+      setEpubMetadata(metadata);
+      if (bookPath) {
+        void updateBookMetadata(
+          bookPath,
+          metadata.title,
+          metadata.author,
+        ).catch((error) => {
+          console.error("Unable to persist EPUB metadata", error);
+        });
+      }
+    },
+    [bookPath],
+  );
+
+  const handleEpubOutlineReady = useCallback(
+    (items: EpubOutlineEntry[]) => {
+      setEpubOutline(items);
+    },
+    [],
+  );
+
+  const handleEpubRelocated = useCallback(
+    (cfi: string, progress: number | null) => {
+      setEpubProgress(progress);
+      if (!bookPath) return;
+
+      void saveEpubReadingPosition(bookPath, cfi, progress).catch(
+        (error) => {
+          console.error("Unable to save EPUB reading position", error);
+        },
+      );
+    },
+    [bookPath],
+  );
+
+  const handleEpubSelection = useCallback(
+    (selected: EpubSelection) => {
+      setEpubSelectionCfi(selected.cfi);
+      setSelection({
+        text: selected.text,
+        context: selected.context,
+        page: 0,
+        rects: [],
+      });
+      setAiResult(null);
+      setAiError(null);
+      setQuestion("");
+      setNoteStatus("idle");
+      setHighlightStatus("idle");
+    },
+    [],
+  );
 
   const jumpToPage = useCallback((page: number) => {
     const element = window.document.querySelector<HTMLElement>(
@@ -759,7 +897,6 @@ export function ReaderView({
     if (
       !bookPath ||
       !selection ||
-      selection.rects.length === 0 ||
       highlightStatus === "saving"
     ) {
       return;
@@ -767,6 +904,39 @@ export function ReaderView({
 
     setHighlightStatus("saving");
     try {
+      if (isEpub) {
+        if (!epubSelectionCfi) {
+          setHighlightStatus("idle");
+          return;
+        }
+
+        const created = await createEpubHighlight(
+          bookPath,
+          epubSelectionCfi,
+          selection.text,
+          selection.context ?? "",
+        );
+
+        if (created) {
+          await recordTermFeedback(selection.text, "difficult");
+          setEpubAnnotations((items) => [
+            ...items.filter((item) => item.id !== created.id),
+            created,
+          ]);
+          setHighlightStatus("saved");
+          window.setTimeout(() => setHighlightStatus("idle"), 1500);
+          return;
+        }
+
+        setHighlightStatus("idle");
+        return;
+      }
+
+      if (!isPdf || selection.rects.length === 0) {
+        setHighlightStatus("idle");
+        return;
+      }
+
       const created = await createUserPdfHighlight(
         bookPath,
         selection.page,
@@ -787,7 +957,7 @@ export function ReaderView({
         setHighlightStatus("idle");
       }
     } catch (error) {
-      console.error("Unable to save PDF highlight", error);
+      console.error("Unable to save reading highlight", error);
       setHighlightStatus("idle");
     }
   }
@@ -800,6 +970,17 @@ export function ReaderView({
       );
     } catch (error) {
       console.error("Unable to remove PDF highlight", error);
+    }
+  }
+
+  async function removeEpubSavedHighlight(annotationId: string) {
+    try {
+      await removeEpubHighlight(annotationId);
+      setEpubAnnotations((items) =>
+        items.filter((annotation) => annotation.id !== annotationId),
+      );
+    } catch (error) {
+      console.error("Unable to remove EPUB highlight", error);
     }
   }
 
@@ -890,18 +1071,25 @@ export function ReaderView({
           </button>
           <span className="toolbar-divider" />
           <div>
-            <strong>{pdfMetadata.title || fileName(bookPath)}</strong>
+            <strong>
+              {(isEpub ? epubMetadata.title : pdfMetadata.title) ||
+                fileName(bookPath)}
+            </strong>
             <small>
-              {pdfMetadata.author
-                ? pdfMetadata.author + " · "
+              {(isEpub ? epubMetadata.author : pdfMetadata.author)
+                ? (isEpub ? epubMetadata.author : pdfMetadata.author) + " · "
                 : ""}
               {isPdf
                 ? pageCount > 0
                   ? pageCount + " pages"
                   : "Opening PDF…"
-                : bookPath
-                  ? "Format saved · reader engine pending"
-                  : "Open a book to begin"}
+                : isEpub
+                  ? epubProgress !== null
+                    ? Math.round(epubProgress * 100) + "% read"
+                    : "EPUB"
+                  : bookPath
+                    ? "Format saved · reader engine pending"
+                    : "Open a book to begin"}
             </small>
           </div>
         </div>
@@ -918,7 +1106,8 @@ export function ReaderView({
               </button>
             </div>
           )}
-          {isPdf && outline.length > 0 && (
+          {((isPdf && outline.length > 0) ||
+            (isEpub && epubOutline.length > 0)) && (
             <button
               className={tocOpen ? "ghost-button active" : "ghost-button"}
               onClick={() => setTocOpen((value) => !value)}
@@ -926,6 +1115,7 @@ export function ReaderView({
               Contents
             </button>
           )}
+          {isPdf && (
           <button
             className={regionMode ? "ghost-button active" : "ghost-button"}
             onClick={() => {
@@ -936,6 +1126,7 @@ export function ReaderView({
           >
             {regionMode ? "Cancel region" : "Region select"}
           </button>
+          )}
           <button className="ghost-button">Notes</button>
           <button className="primary-button compact" onClick={onOpenBook}>
             Open
@@ -945,7 +1136,7 @@ export function ReaderView({
 
       <div className="split-reader">
         <section className="document-pane">
-          {tocOpen && outline.length > 0 && (
+          {tocOpen && isPdf && outline.length > 0 && (
             <aside className="toc-panel">
               <header>
                 <div>
@@ -969,6 +1160,33 @@ export function ReaderView({
                   >
                     <span>{item.title}</span>
                     {item.page && <small>{item.page}</small>}
+                  </button>
+                ))}
+              </div>
+            </aside>
+          )}
+
+          {tocOpen && isEpub && epubOutline.length > 0 && (
+            <aside className="toc-panel">
+              <header>
+                <div>
+                  <span className="eyebrow">Contents</span>
+                  <strong>{epubOutline.length} sections</strong>
+                </div>
+                <button onClick={() => setTocOpen(false)}>×</button>
+              </header>
+              <div className="toc-list">
+                {epubOutline.map((item) => (
+                  <button
+                    key={item.id}
+                    className="toc-item"
+                    style={{ paddingLeft: 12 + item.depth * 14 }}
+                    onClick={() => {
+                      setEpubNavigationTarget(item.href);
+                      setTocOpen(false);
+                    }}
+                  >
+                    <span>{item.title}</span>
                   </button>
                 ))}
               </div>
@@ -1032,14 +1250,27 @@ export function ReaderView({
               />
             )}
 
-            {bookPath && isPdf && !positionLoaded && (
+            {bookPath && isEpub && positionLoaded && (
+              <EpubDocumentView
+                path={bookPath}
+                initialCfi={epubInitialCfi}
+                navigationTarget={epubNavigationTarget}
+                annotations={epubAnnotations}
+                onMetadataReady={handleEpubMetadataReady}
+                onOutlineReady={handleEpubOutlineReady}
+                onRelocated={handleEpubRelocated}
+                onSelection={handleEpubSelection}
+              />
+            )}
+
+            {bookPath && (isPdf || isEpub) && !positionLoaded && (
               <div className="pdf-state-card">
                 <span className="pdf-spinner" />
                 <strong>Restoring reading position…</strong>
               </div>
             )}
 
-            {bookPath && !isPdf && (
+            {bookPath && !isPdf && !isEpub && (
               <div className="reader-empty-state">
                 <span className="eyebrow">Document engine</span>
                 <h1>This book is in your library.</h1>
@@ -1054,10 +1285,17 @@ export function ReaderView({
 
           <footer className="reader-statusbar">
             <span>
-              Page {pageCount ? currentPage : "—"} / {pageCount || "—"}
+              {isEpub
+                ? epubProgress !== null
+                  ? Math.round(epubProgress * 100) + "% read"
+                  : "EPUB"
+                : "Page " +
+                  (pageCount ? currentPage : "—") +
+                  " / " +
+                  (pageCount || "—")}
             </span>
-            <span>{zoomLabel}</span>
-            <span>Continuous</span>
+            <span>{isEpub ? "Reflowable" : zoomLabel}</span>
+            <span>{isEpub ? "EPUB CFI" : "Continuous"}</span>
             <span>{selection ? "Selection ready" : "Select text for AI"}</span>
           </footer>
         </section>
@@ -1216,7 +1454,7 @@ export function ReaderView({
                   <button
                     disabled={
                       aiBusy ||
-                      selection.rects.length === 0 ||
+                      (!isEpub && selection.rects.length === 0) ||
                       highlightStatus === "saving"
                     }
                     onClick={() => void saveCurrentHighlight()}
@@ -1308,6 +1546,27 @@ export function ReaderView({
                       <span>{annotation.selectedText}</span>
                       <button
                         onClick={() => void removeHighlight(annotation.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {isEpub && epubAnnotations.length > 0 && (
+              <section className="assist-card page-highlights-card">
+                <span className="assist-type blue">EPUB highlights</span>
+                <h3>{epubAnnotations.length} saved in this book</h3>
+                <div className="page-highlight-list">
+                  {epubAnnotations.slice(-12).reverse().map((annotation) => (
+                    <div key={annotation.id}>
+                      <span>{annotation.selectedText}</span>
+                      <button
+                        onClick={() =>
+                          void removeEpubSavedHighlight(annotation.id)
+                        }
                       >
                         Remove
                       </button>

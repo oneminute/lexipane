@@ -19,7 +19,8 @@
     "@tauri-apps/plugin-sql": "^2.0.0",
     "pdfjs-dist": "6.3.289",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "epubjs": "0.3.93"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

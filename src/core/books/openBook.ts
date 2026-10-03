@@ -28,6 +28,10 @@ export function isPdfPath(path: string | null): boolean {
   return Boolean(path && getBookExtension(path) === "pdf");
 }
 
+export function isEpubPath(path: string | null): boolean {
+  return Boolean(path && getBookExtension(path) === "epub");
+}
+
 export async function chooseBookFile(): Promise<string | null> {
   if (!isTauri()) {
     console.info("Native file picker is available when running inside Tauri.");

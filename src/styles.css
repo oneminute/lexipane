@@ -2035,3 +2035,56 @@ button { cursor: pointer; }
     flex-direction: column;
   }
 }
+
+
+/* EPUB reading */
+
+.epub-reader-shell {
+  position: relative;
+  width: min(880px, 100%);
+  height: calc(100vh - 150px);
+  min-height: 560px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #fffefa;
+  border: 1px solid #d7d8dd;
+  border-radius: 8px;
+  box-shadow: 0 8px 36px rgba(33, 34, 40, 0.13);
+}
+
+.epub-rendition {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #fffefa;
+}
+
+.epub-rendition.hidden {
+  visibility: hidden;
+}
+
+.epub-rendition iframe {
+  border: 0 !important;
+  background: #fffefa;
+}
+
+.epub-loading-card {
+  position: absolute;
+  z-index: 2;
+  inset: 24px;
+  width: auto;
+  margin: 0;
+}
+
+.lexipane-epub-highlight {
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .epub-reader-shell {
+    width: 100%;
+    height: calc(100vh - 150px);
+    min-height: 480px;
+    border-radius: 0;
+  }
+}
