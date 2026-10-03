@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   createAutoPdfHighlight,
@@ -45,6 +46,10 @@ import {
 } from "../../core/books/readingPosition";
 import { PdfDocumentView } from "./PdfDocumentView";
 import { getPdfPageText, locatePdfTextRects } from "./pdfTextDom";
+import {
+  capturePdfRegion,
+  type PdfRegionCapture,
+} from "./pdfRegion";
 
 interface Props {
   bookPath: string | null;
@@ -61,6 +66,18 @@ interface AiResultState {
 interface ActiveReaderSelection extends ReadingSelection {
   page: number;
   rects: NormalizedRect[];
+}
+
+interface RegionDragState {
+  page: number;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+  pageLeft: number;
+  pageTop: number;
+  pageWidth: number;
+  pageHeight: number;
 }
 
 function fileName(path: string | null) {
@@ -107,6 +124,9 @@ export function ReaderView({
   });
   const [outline, setOutline] = useState<PdfOutlineEntry[]>([]);
   const [tocOpen, setTocOpen] = useState(false);
+  const [regionMode, setRegionMode] = useState(false);
+  const [regionDrag, setRegionDrag] = useState<RegionDragState | null>(null);
+  const [regionCapture, setRegionCapture] = useState<PdfRegionCapture | null>(null);
 
   const isPdf = isPdfPath(bookPath);
 
@@ -140,6 +160,9 @@ export function ReaderView({
     setPdfMetadata({ title: null, author: null });
     setOutline([]);
     setTocOpen(false);
+    setRegionMode(false);
+    setRegionDrag(null);
+    setRegionCapture(null);
 
     if (!bookPath || !isPdfPath(bookPath)) {
       setPositionLoaded(true);
@@ -362,7 +385,138 @@ export function ReaderView({
     [bookPath, pageCount],
   );
 
+  function beginRegionSelection(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!regionMode) return;
+
+    const target = event.target instanceof Element ? event.target : null;
+    const shell = target?.closest<HTMLElement>(".pdf-page-shell");
+    if (!shell) return;
+
+    const bounds = shell.getBoundingClientRect();
+    const page = Number(shell.dataset.pdfPage);
+    if (
+      !Number.isInteger(page) ||
+      page < 1 ||
+      bounds.width <= 0 ||
+      bounds.height <= 0
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const x = Math.max(
+      0,
+      Math.min(1, (event.clientX - bounds.left) / bounds.width),
+    );
+    const y = Math.max(
+      0,
+      Math.min(1, (event.clientY - bounds.top) / bounds.height),
+    );
+
+    setRegionCapture(null);
+    setRegionDrag({
+      page,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y,
+      pageLeft: bounds.left,
+      pageTop: bounds.top,
+      pageWidth: bounds.width,
+      pageHeight: bounds.height,
+    });
+  }
+
+  function moveRegionSelection(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!regionMode || !regionDrag) return;
+
+    const shell = window.document.querySelector<HTMLElement>(
+      '.pdf-page-shell[data-pdf-page="' + regionDrag.page + '"]',
+    );
+    if (!shell) return;
+
+    const bounds = shell.getBoundingClientRect();
+    const x = Math.max(
+      0,
+      Math.min(1, (event.clientX - bounds.left) / bounds.width),
+    );
+    const y = Math.max(
+      0,
+      Math.min(1, (event.clientY - bounds.top) / bounds.height),
+    );
+
+    setRegionDrag((current) =>
+      current
+        ? {
+            ...current,
+            currentX: x,
+            currentY: y,
+            pageLeft: bounds.left,
+            pageTop: bounds.top,
+            pageWidth: bounds.width,
+            pageHeight: bounds.height,
+          }
+        : current,
+    );
+  }
+
+  function finishRegionSelection(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!regionMode || !regionDrag) return;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const rect: NormalizedRect = {
+      x: Math.min(regionDrag.startX, regionDrag.currentX),
+      y: Math.min(regionDrag.startY, regionDrag.currentY),
+      width: Math.abs(regionDrag.currentX - regionDrag.startX),
+      height: Math.abs(regionDrag.currentY - regionDrag.startY),
+    };
+
+    const page = regionDrag.page;
+    setRegionDrag(null);
+    setRegionMode(false);
+
+    if (rect.width < 0.01 || rect.height < 0.01) return;
+
+    const capture = capturePdfRegion(page, rect);
+    if (!capture) return;
+
+    setRegionCapture(capture);
+    setSelection(null);
+    setAiResult(null);
+    setAiError(null);
+    setQuestion("");
+  }
+
+  function explainCapturedRegion() {
+    if (!regionCapture) return;
+
+    if (!regionCapture.text) {
+      setAiError(
+        "This region has no selectable PDF text. OCR/vision routing is not connected yet; the image capture is ready for that next provider layer.",
+      );
+      return;
+    }
+
+    const nextSelection: ActiveReaderSelection = {
+      text: regionCapture.text,
+      context:
+        pageTexts[regionCapture.page] || getPdfPageText(regionCapture.page),
+      page: regionCapture.page,
+      rects: [regionCapture.rect],
+    };
+
+    setSelection(nextSelection);
+    void runAi("explain", undefined, nextSelection);
+  }
+
   function captureSelection() {
+    if (regionMode) return;
+
     const browserSelection = window.getSelection();
     const text = normalizedText(browserSelection?.toString());
     if (!browserSelection || browserSelection.rangeCount === 0 || !text) {
@@ -410,6 +564,8 @@ export function ReaderView({
   }
 
   function captureSentence(event: ReactMouseEvent<HTMLDivElement>) {
+    if (regionMode) return;
+
     const targetElement =
       event.target instanceof Element ? event.target : null;
     const targetSpan = targetElement?.closest<HTMLSpanElement>(
@@ -739,7 +895,16 @@ export function ReaderView({
               Contents
             </button>
           )}
-          <button className="ghost-button">Region select</button>
+          <button
+            className={regionMode ? "ghost-button active" : "ghost-button"}
+            onClick={() => {
+              setRegionMode((value) => !value);
+              setRegionDrag(null);
+              setRegionCapture(null);
+            }}
+          >
+            {regionMode ? "Cancel region" : "Region select"}
+          </button>
           <button className="ghost-button">Notes</button>
           <button className="primary-button compact" onClick={onOpenBook}>
             Open
@@ -779,10 +944,35 @@ export function ReaderView({
             </aside>
           )}
           <div
-            className="document-stage"
+            className={regionMode ? "document-stage region-mode" : "document-stage"}
             onMouseUp={captureSelection}
             onDoubleClick={captureSentence}
+            onPointerDown={beginRegionSelection}
+            onPointerMove={moveRegionSelection}
+            onPointerUp={finishRegionSelection}
+            onPointerCancel={() => setRegionDrag(null)}
           >
+            {regionDrag && (
+              <div
+                className="region-drag-box"
+                style={{
+                  left:
+                    regionDrag.pageLeft +
+                    Math.min(regionDrag.startX, regionDrag.currentX) *
+                      regionDrag.pageWidth,
+                  top:
+                    regionDrag.pageTop +
+                    Math.min(regionDrag.startY, regionDrag.currentY) *
+                      regionDrag.pageHeight,
+                  width:
+                    Math.abs(regionDrag.currentX - regionDrag.startX) *
+                    regionDrag.pageWidth,
+                  height:
+                    Math.abs(regionDrag.currentY - regionDrag.startY) *
+                    regionDrag.pageHeight,
+                }}
+              />
+            )}
             {!bookPath && (
               <div className="reader-empty-state">
                 <span className="eyebrow">Reader</span>
@@ -856,6 +1046,37 @@ export function ReaderView({
           </header>
 
           <div className="ai-scroll">
+            {regionCapture && (
+              <section className="assist-card region-capture-card">
+                <div className="selection-card-heading">
+                  <span className="assist-type blue">Region capture</span>
+                  <small>Page {regionCapture.page}</small>
+                </div>
+                {regionCapture.imageDataUrl && (
+                  <img
+                    src={regionCapture.imageDataUrl}
+                    alt="Selected PDF region"
+                  />
+                )}
+                {regionCapture.text ? (
+                  <blockquote>{regionCapture.text}</blockquote>
+                ) : (
+                  <p className="muted">
+                    No selectable text was found in this region. The image is
+                    captured and ready for a future OCR/vision route.
+                  </p>
+                )}
+                <div className="assist-actions">
+                  <button onClick={explainCapturedRegion}>
+                    Explain region
+                  </button>
+                  <button onClick={() => setRegionCapture(null)}>
+                    Clear
+                  </button>
+                </div>
+              </section>
+            )}
+
             <section className="assist-card auto-difficulty-card">
               <div className="auto-difficulty-heading">
                 <div>
