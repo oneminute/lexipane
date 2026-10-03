@@ -15,6 +15,7 @@ interface Props {
   annotations?: PdfTextAnnotation[];
   onDocumentLoaded?: (pageCount: number) => void;
   onCurrentPageChange?: (pageNumber: number) => void;
+  onPageTextReady?: (pageNumber: number, text: string) => void;
 }
 
 export function PdfDocumentView({
@@ -24,6 +25,7 @@ export function PdfDocumentView({
   annotations = [],
   onDocumentLoaded,
   onCurrentPageChange,
+  onPageTextReady,
 }: Props) {
   const [session, setSession] = useState<LoadedPdfDocument | null>(null);
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
@@ -131,6 +133,7 @@ export function PdfDocumentView({
           pageNumber={pageNumber}
           scale={scale}
           onVisible={onCurrentPageChange}
+          onTextReady={onPageTextReady}
         />
       ))}
     </div>

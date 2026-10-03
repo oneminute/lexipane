@@ -9,6 +9,7 @@ interface Props {
   pageNumber: number;
   scale: number;
   onVisible?: (pageNumber: number) => void;
+  onTextReady?: (pageNumber: number, text: string) => void;
 }
 
 interface PageSize {
@@ -28,6 +29,7 @@ export function PdfPageView({
   pageNumber,
   scale,
   onVisible,
+  onTextReady,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -113,6 +115,13 @@ export function PdfPageView({
           viewport,
           images: NO_TEXT_LAYER_IMAGES,
         });
+
+        if (!cancelled) {
+          const pageText = (textLayerHost.textContent ?? "")
+            .replace(/[\s\u00a0]+/g, " ")
+            .trim();
+          onTextReady?.(pageNumber, pageText);
+        }
       } catch (renderError) {
         if (cancelled) return;
 
@@ -140,7 +149,7 @@ export function PdfPageView({
       renderTask?.cancel();
       textLayer?.cancel();
     };
-  }, [document, pageNumber, scale]);
+  }, [document, onTextReady, pageNumber, scale]);
 
   return (
     <div
@@ -173,7 +182,7 @@ export function PdfPageView({
               key={annotation.id + ":" + index}
               className={
                 annotation.source === "auto"
-                  ? "pdf-highlight auto"
+                  ? "pdf-highlight auto " + annotation.type
                   : "pdf-highlight user"
               }
               style={{

@@ -7,12 +7,17 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
+  createAutoPdfHighlight,
   createUserPdfHighlight,
   listPdfTextAnnotations,
   removePdfTextAnnotation,
   type NormalizedRect,
   type PdfTextAnnotation,
 } from "../../core/annotations/pdfAnnotations";
+import {
+  detectDifficultTerms,
+  type DifficultTerm,
+} from "../../core/ai/difficultyService";
 import { loadOllamaConfig } from "../../core/ai/ollamaConfig";
 import {
   analyzeReadingSelection,
@@ -22,10 +27,19 @@ import {
 import { isPdfPath } from "../../core/books/openBook";
 import { createReaderNote } from "../../core/notes/notes";
 import {
+  recordTermFeedback,
+  normalizeTerm,
+} from "../../core/reading/knownTerms";
+import {
+  loadReadingLevel,
+  type ReadingLevel,
+} from "../../core/reading/preferences";
+import {
   loadPdfReadingPosition,
   savePdfReadingPosition,
 } from "../../core/books/readingPosition";
 import { PdfDocumentView } from "./PdfDocumentView";
+import { getPdfPageText, locatePdfTextRects } from "./pdfTextDom";
 
 interface Props {
   bookPath: string | null;
@@ -75,6 +89,13 @@ export function ReaderView({
   const [highlightStatus, setHighlightStatus] =
     useState<"idle" | "saving" | "saved">("idle");
   const [annotations, setAnnotations] = useState<PdfTextAnnotation[]>([]);
+  const [readingLevel, setReadingLevel] = useState<ReadingLevel>("B2");
+  const [pageTexts, setPageTexts] = useState<Record<number, string>>({});
+  const [autoTermsByPage, setAutoTermsByPage] =
+    useState<Record<number, DifficultTerm[]>>({});
+  const [difficultyBusyPage, setDifficultyBusyPage] =
+    useState<number | null>(null);
+  const [difficultyError, setDifficultyError] = useState<string | null>(null);
 
   const isPdf = isPdfPath(bookPath);
 
@@ -82,6 +103,10 @@ export function ReaderView({
     void loadOllamaConfig()
       .then((config) => setConfiguredModel(config.model))
       .catch(() => setConfiguredModel(null));
+
+    void loadReadingLevel()
+      .then(setReadingLevel)
+      .catch(() => setReadingLevel("B2"));
   }, []);
 
   useEffect(() => {
@@ -97,6 +122,10 @@ export function ReaderView({
     setQuestion("");
     setNoteStatus("idle");
     setHighlightStatus("idle");
+    setPageTexts({});
+    setAutoTermsByPage({});
+    setDifficultyBusyPage(null);
+    setDifficultyError(null);
 
     if (!bookPath || !isPdfPath(bookPath)) {
       setPositionLoaded(true);
@@ -152,6 +181,93 @@ export function ReaderView({
     };
   }, [bookPath]);
 
+  useEffect(() => {
+    if (!bookPath || !isPdf || difficultyBusyPage !== null) return;
+
+    const pageText = pageTexts[currentPage] || getPdfPageText(currentPage);
+    if (!pageText || pageText.length < 80) return;
+    if (Object.prototype.hasOwnProperty.call(autoTermsByPage, currentPage)) {
+      return;
+    }
+
+    let cancelled = false;
+    setDifficultyBusyPage(currentPage);
+    setDifficultyError(null);
+
+    void detectDifficultTerms(pageText, readingLevel)
+      .then(async (result) => {
+        if (cancelled) return;
+
+        setConfiguredModel((current) => result.model || current);
+
+        const createdAnnotations: PdfTextAnnotation[] = [];
+
+        for (const term of result.items) {
+          const rects = locatePdfTextRects(currentPage, term.text);
+          if (rects.length === 0) continue;
+
+          const created = await createAutoPdfHighlight(
+            bookPath,
+            currentPage,
+            term.text,
+            pageText,
+            rects,
+            term.type,
+          );
+
+          if (created) {
+            createdAnnotations.push(created);
+          }
+        }
+
+        if (cancelled) return;
+
+        setAutoTermsByPage((current) => ({
+          ...current,
+          [currentPage]: result.items,
+        }));
+
+        if (createdAnnotations.length > 0) {
+          setAnnotations((current) => {
+            const byId = new Map(current.map((item) => [item.id, item]));
+            for (const item of createdAnnotations) {
+              byId.set(item.id, item);
+            }
+            return Array.from(byId.values());
+          });
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Unable to detect difficult terms", error);
+        setAutoTermsByPage((current) => ({
+          ...current,
+          [currentPage]: [],
+        }));
+        setDifficultyError(
+          error instanceof Error
+            ? error.message
+            : "Automatic difficulty analysis failed.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDifficultyBusyPage(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    autoTermsByPage,
+    bookPath,
+    currentPage,
+    isPdf,
+    pageTexts,
+    readingLevel,
+  ]);
+
   const zoomLabel = useMemo(
     () => Math.round(scale * 100) + "%",
     [scale],
@@ -165,6 +281,8 @@ export function ReaderView({
     [annotations, currentPage],
   );
 
+  const currentAutoTerms = autoTermsByPage[currentPage] ?? [];
+
   const zoomOut = useCallback(() => {
     setScale((value) => Math.max(0.5, Math.round((value - 0.1) * 10) / 10));
   }, []);
@@ -176,6 +294,15 @@ export function ReaderView({
   const handleDocumentLoaded = useCallback((count: number) => {
     setPageCount(count);
   }, []);
+
+  const handlePageTextReady = useCallback(
+    (page: number, text: string) => {
+      setPageTexts((current) =>
+        current[page] === text ? current : { ...current, [page]: text },
+      );
+    },
+    [],
+  );
 
   const handleCurrentPageChange = useCallback(
     (page: number) => {
@@ -417,6 +544,7 @@ export function ReaderView({
       );
 
       if (created) {
+        await recordTermFeedback(selection.text, "difficult");
         setAnnotations((items) => [
           ...items.filter((item) => item.id !== created.id),
           created,
@@ -441,6 +569,59 @@ export function ReaderView({
     } catch (error) {
       console.error("Unable to remove PDF highlight", error);
     }
+  }
+
+  async function setAutoTermFeedback(
+    term: DifficultTerm,
+    status: "known" | "suppressed",
+  ) {
+    await recordTermFeedback(term.text, status);
+
+    const normalized = normalizeTerm(term.text);
+    const matching = annotations.filter(
+      (annotation) =>
+        annotation.source === "auto" &&
+        annotation.anchor.page === currentPage &&
+        normalizeTerm(annotation.selectedText) === normalized,
+    );
+
+    for (const annotation of matching) {
+      await removePdfTextAnnotation(annotation.id);
+    }
+
+    setAnnotations((items) =>
+      items.filter(
+        (annotation) =>
+          !(
+            annotation.source === "auto" &&
+            annotation.anchor.page === currentPage &&
+            normalizeTerm(annotation.selectedText) === normalized
+          ),
+      ),
+    );
+
+    setAutoTermsByPage((current) => ({
+      ...current,
+      [currentPage]: (current[currentPage] ?? []).filter(
+        (item) => normalizeTerm(item.text) !== normalized,
+      ),
+    }));
+  }
+
+  function explainAutoTerm(term: DifficultTerm) {
+    const pageText = pageTexts[currentPage] || getPdfPageText(currentPage);
+    const rects = locatePdfTextRects(currentPage, term.text);
+    const nextSelection: ActiveReaderSelection = {
+      text: term.text,
+      context: pageText,
+      page: currentPage,
+      rects,
+    };
+
+    setSelection(nextSelection);
+    setAiResult(null);
+    setAiError(null);
+    void runAi("explain", undefined, nextSelection);
   }
 
   async function saveCurrentNote() {
@@ -539,6 +720,7 @@ export function ReaderView({
                 annotations={annotations}
                 onDocumentLoaded={handleDocumentLoaded}
                 onCurrentPageChange={handleCurrentPageChange}
+                onPageTextReady={handlePageTextReady}
               />
             )}
 
@@ -578,12 +760,84 @@ export function ReaderView({
               <span className="eyebrow">AI Reading</span>
               <strong>Context assistance</strong>
             </div>
-            <button className="model-pill">
-              {configuredModel || "Ollama local"} ▾
-            </button>
+            <div className="ai-pane-meta">
+              <span>{readingLevel} reader</span>
+              <button className="model-pill">
+                {configuredModel || "Ollama local"} ▾
+              </button>
+            </div>
           </header>
 
           <div className="ai-scroll">
+            <section className="assist-card auto-difficulty-card">
+              <div className="auto-difficulty-heading">
+                <div>
+                  <span className="assist-type yellow">Auto reading help</span>
+                  <h3>Page {currentPage}</h3>
+                </div>
+                <small>{readingLevel}</small>
+              </div>
+
+              {difficultyBusyPage === currentPage && (
+                <div className="auto-difficulty-loading">
+                  <span className="pdf-spinner" />
+                  <span>Finding words and phrases that may slow you down…</span>
+                </div>
+              )}
+
+              {difficultyError && difficultyBusyPage === null && (
+                <p className="auto-difficulty-error">{difficultyError}</p>
+              )}
+
+              {difficultyBusyPage !== currentPage &&
+                currentAutoTerms.length === 0 &&
+                !difficultyError && (
+                  <p className="muted">
+                    No high-value reading obstacles were found on this page.
+                  </p>
+                )}
+
+              {currentAutoTerms.length > 0 && (
+                <div className="auto-term-list">
+                  {currentAutoTerms.map((term) => (
+                    <article
+                      key={term.type + ":" + normalizeTerm(term.text)}
+                      className={"auto-term " + term.type}
+                    >
+                      <div className="auto-term-copy">
+                        <div>
+                          <strong>{term.text}</strong>
+                          <span>
+                            {term.type}
+                            {term.cefr ? " · " + term.cefr : ""}
+                          </span>
+                        </div>
+                        <p>{term.meaning}</p>
+                        {term.reason && <small>{term.reason}</small>}
+                      </div>
+                      <div className="auto-term-actions">
+                        <button onClick={() => explainAutoTerm(term)}>
+                          Explain
+                        </button>
+                        <button
+                          onClick={() => void setAutoTermFeedback(term, "known")}
+                        >
+                          Known
+                        </button>
+                        <button
+                          onClick={() =>
+                            void setAutoTermFeedback(term, "suppressed")
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+
             {selection ? (
               <section className="assist-card selected-source-card">
                 <div className="selection-card-heading">
