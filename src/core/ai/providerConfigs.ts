@@ -7,6 +7,8 @@ import {
   setProviderApiKey,
 } from "./secretStore";
 import { providerCatalog } from "./registry";
+import { AnthropicProvider } from "./providers/anthropic";
+import { GeminiProvider } from "./providers/gemini";
 import { OpenAICompatibleProvider } from "./providers/openAICompatible";
 import type { ConnectionResult, ModelInfo } from "./types";
 
@@ -115,10 +117,14 @@ export async function saveProviderConfig(
     throw new Error("Unknown provider: " + input.providerId);
   }
 
-  if (descriptor.adapter !== "openai-compatible") {
+  if (
+    descriptor.adapter !== "openai-compatible" &&
+    descriptor.adapter !== "anthropic-native" &&
+    descriptor.adapter !== "gemini-native"
+  ) {
     throw new Error(
       descriptor.name +
-        " needs its native adapter before it can be configured here.",
+        " needs its provider adapter before it can be configured here.",
     );
   }
 
@@ -205,19 +211,28 @@ async function createRuntime(config: ProviderConfig) {
     throw new Error("Provider is no longer registered: " + config.providerId);
   }
 
-  if (descriptor.adapter !== "openai-compatible") {
-    throw new Error(
-      descriptor.name + " requires a provider-native runtime.",
-    );
-  }
-
   const apiKey = await getProviderApiKey(config.id);
-
-  return new OpenAICompatibleProvider({
+  const options = {
     descriptor,
     baseUrl: config.baseUrl,
     apiKey: apiKey ?? undefined,
-  });
+  };
+
+  if (descriptor.adapter === "openai-compatible") {
+    return new OpenAICompatibleProvider(options);
+  }
+
+  if (descriptor.adapter === "anthropic-native") {
+    return new AnthropicProvider(options);
+  }
+
+  if (descriptor.adapter === "gemini-native") {
+    return new GeminiProvider(options);
+  }
+
+  throw new Error(
+    descriptor.name + " does not have a configurable runtime yet.",
+  );
 }
 
 export async function testProviderConfig(

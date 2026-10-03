@@ -10,8 +10,11 @@ import {
 import { providerCatalog } from "../../core/ai/registry";
 import type { ModelInfo } from "../../core/ai/types";
 
-const compatibleProviders = providerCatalog.filter(
-  (provider) => provider.adapter === "openai-compatible",
+const configurableProviders = providerCatalog.filter(
+  (provider) =>
+    provider.adapter === "openai-compatible" ||
+    provider.adapter === "anthropic-native" ||
+    provider.adapter === "gemini-native",
 );
 
 interface FormState {
@@ -25,8 +28,8 @@ interface FormState {
 
 function initialForm(): FormState {
   const provider =
-    compatibleProviders.find((item) => item.id === "openai") ??
-    compatibleProviders[0];
+    configurableProviders.find((item) => item.id === "openai") ??
+    configurableProviders[0];
 
   return {
     providerId: provider?.id ?? "custom-cloud",
@@ -51,7 +54,7 @@ export function ProviderConnections({ onChanged }: Props) {
 
   const selectedDescriptor = useMemo(
     () =>
-      compatibleProviders.find(
+      configurableProviders.find(
         (provider) => provider.id === form.providerId,
       ),
     [form.providerId],
@@ -72,7 +75,7 @@ export function ProviderConnections({ onChanged }: Props) {
   }, []);
 
   function selectProvider(providerId: string) {
-    const descriptor = compatibleProviders.find(
+    const descriptor = configurableProviders.find(
       (provider) => provider.id === providerId,
     );
 
@@ -237,7 +240,7 @@ export function ProviderConnections({ onChanged }: Props) {
                 value={form.providerId}
                 onChange={(event) => selectProvider(event.target.value)}
               >
-                {compatibleProviders.map((provider) => (
+                {configurableProviders.map((provider) => (
                   <option key={provider.id} value={provider.id}>
                     {provider.name}
                   </option>
@@ -343,9 +346,9 @@ export function ProviderConnections({ onChanged }: Props) {
         <section className="configured-provider-list">
           {configs.length === 0 ? (
             <div className="library-empty">
-              <strong>No cloud/self-hosted providers configured yet.</strong>
+              <strong>No additional providers configured yet.</strong>
               <span>
-                Ollama works independently. Add a compatible provider here when
+                Ollama works independently. Add a provider here when
                 you want another model source.
               </span>
             </div>

@@ -73,8 +73,9 @@ export const providerCatalog: ProviderDescriptor[] = [
     shortLabel: "AN",
     region: "global",
     adapter: "anthropic-native",
-    status: "cataloged",
-    description: "Claude native API adapter for provider-specific features.",
+    status: "core",
+    description: "Claude through the native Messages API, including streaming.",
+    defaultBaseUrl: "https://api.anthropic.com/v1",
   },
   {
     id: "gemini",
@@ -82,8 +83,9 @@ export const providerCatalog: ProviderDescriptor[] = [
     shortLabel: "GE",
     region: "global",
     adapter: "gemini-native",
-    status: "cataloged",
-    description: "Gemini native adapter for long-context and multimodal tasks.",
+    status: "core",
+    description: "Gemini through the native Generative Language API, including streaming.",
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
   },
   {
     id: "xai",
