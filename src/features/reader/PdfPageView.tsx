@@ -71,7 +71,7 @@ export function PdfPageView({
 
   useEffect(() => {
     if (!page) return;
-    const viewport = page.getViewport({ scale });
+    const viewport = activePage.getViewport({ scale });
     setSize({
       width: viewport.width,
       height: viewport.height,
@@ -123,14 +123,18 @@ export function PdfPageView({
 
     if (!nearViewport) {
       if (canvas) {
-        canvas.width = 1;
-        canvas.height = 1;
+        activeCanvas.width = 1;
+        activeCanvas.height = 1;
       }
       textLayerHost?.replaceChildren();
       return;
     }
 
     if (!page || !canvas || !textLayerHost) return;
+
+    const activePage = page;
+    const activeCanvas = canvas;
+    const activeTextLayerHost = textLayerHost;
 
     let cancelled = false;
     let renderTask: RenderTask | null = null;
@@ -140,16 +144,16 @@ export function PdfPageView({
       try {
         setError(null);
 
-        const viewport = page.getViewport({ scale });
+        const viewport = activePage.getViewport({ scale });
         const outputScale = Math.min(window.devicePixelRatio || 1, 2);
 
-        canvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
-        canvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
-        canvas.style.width = viewport.width + "px";
-        canvas.style.height = viewport.height + "px";
+        activeCanvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
+        activeCanvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
+        activeCanvas.style.width = viewport.width + "px";
+        activeCanvas.style.height = viewport.height + "px";
 
-        renderTask = page.render({
-          canvas,
+        renderTask = activePage.render({
+          canvas: activeCanvas,
           viewport,
           transform:
             outputScale === 1
@@ -160,13 +164,13 @@ export function PdfPageView({
         await renderTask.promise;
         if (cancelled) return;
 
-        textLayerHost.replaceChildren();
+        activeTextLayerHost.replaceChildren();
 
         textLayer = new TextLayerBuilder({
-          pdfPage: page,
+          pdfPage: activePage,
           onAppend: (textLayerDiv: HTMLDivElement) => {
             if (!cancelled) {
-              textLayerHost.replaceChildren(textLayerDiv);
+              activeTextLayerHost.replaceChildren(textLayerDiv);
             }
           },
         });
@@ -177,7 +181,7 @@ export function PdfPageView({
         });
 
         if (!cancelled) {
-          const pageText = (textLayerHost.textContent ?? "")
+          const pageText = (activeTextLayerHost.textContent ?? "")
             .replace(/[\s\u00a0]+/g, " ")
             .trim();
           onTextReady?.(pageNumber, pageText);
