@@ -20,6 +20,10 @@ interface OllamaTagsResponse {
   }>;
 }
 
+interface OllamaShowResponse {
+  capabilities?: string[];
+}
+
 interface OllamaChatResponse {
   model: string;
   message?: {
@@ -86,6 +90,68 @@ export class OllamaProvider implements AIProvider {
         streaming: true,
       },
     }));
+  }
+
+  async getCapabilities(model: string): Promise<string[]> {
+    const response = await appFetch(this.baseUrl + "/api/show", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        "Unable to inspect Ollama model capabilities: HTTP " +
+          response.status,
+      );
+    }
+
+    const payload = (await response.json()) as OllamaShowResponse;
+    return payload.capabilities ?? [];
+  }
+
+  async generateVisionText(
+    model: string,
+    prompt: string,
+    imageDataUrl: string,
+  ): Promise<TextGenerationResponse> {
+    const comma = imageDataUrl.indexOf(",");
+    const base64 = comma >= 0 ? imageDataUrl.slice(comma + 1) : imageDataUrl;
+
+    const response = await appFetch(this.baseUrl + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: [
+          {
+            role: "user",
+            content: prompt,
+            images: [base64],
+          },
+        ],
+        options: {
+          temperature: 0.2,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        "Ollama vision analysis failed: HTTP " + response.status,
+      );
+    }
+
+    const payload = (await response.json()) as OllamaChatResponse;
+    return {
+      text: payload.message?.content ?? "",
+      model: payload.model || model,
+      usage: {
+        inputTokens: payload.prompt_eval_count,
+        outputTokens: payload.eval_count,
+      },
+    };
   }
 
   async generateText(

@@ -2,7 +2,12 @@ import type { ModelInfo } from "./types";
 import { choosePreferredOllamaModel } from "./ollamaConfig";
 import { getAppMeta, setAppMeta } from "../settings/appMeta";
 
-export type ReadingTaskType = "explain" | "grammar" | "ask" | "difficulty";
+export type ReadingTaskType =
+  | "explain"
+  | "grammar"
+  | "ask"
+  | "difficulty"
+  | "region";
 
 const taskRouteKey = (task: ReadingTaskType) => "ai.route." + task;
 

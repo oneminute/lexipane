@@ -54,6 +54,11 @@ const taskRoutes: Array<{
     label: "Reader questions",
     description: "Free-form questions about selected text",
   },
+  {
+    id: "region",
+    label: "Region / image",
+    description: "Charts, scanned text, formulas, and illustrations",
+  },
 ];
 
 type OllamaStatus = "checking" | "connected" | "offline";

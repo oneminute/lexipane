@@ -20,6 +20,7 @@ import {
   type DifficultTerm,
 } from "../../core/ai/difficultyService";
 import { loadOllamaConfig } from "../../core/ai/ollamaConfig";
+import { analyzeRegionImage } from "../../core/ai/regionService";
 import {
   analyzeReadingSelection,
   type ReadingAnalysisMode,
@@ -497,7 +498,7 @@ export function ReaderView({
 
     if (!regionCapture.text) {
       setAiError(
-        "This region has no selectable PDF text. OCR/vision routing is not connected yet; the image capture is ready for that next provider layer.",
+        "No selectable PDF text was found in this region. Use Analyze image with a vision-capable Ollama model.",
       );
       return;
     }
@@ -512,6 +513,36 @@ export function ReaderView({
 
     setSelection(nextSelection);
     void runAi("explain", undefined, nextSelection);
+  }
+
+  async function analyzeCapturedRegionImage() {
+    if (!regionCapture?.imageDataUrl || aiBusy) return;
+
+    setAiBusy(true);
+    setAiError(null);
+
+    try {
+      const result = await analyzeRegionImage(
+        regionCapture.imageDataUrl,
+        pageTexts[regionCapture.page] || getPdfPageText(regionCapture.page),
+      );
+
+      setConfiguredModel(result.model);
+      setAiResult({
+        title: "Region / image analysis",
+        text: result.text,
+        model: result.model,
+      });
+    } catch (error) {
+      setAiResult(null);
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : "Region image analysis failed.",
+      );
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   function captureSelection() {
@@ -1067,10 +1098,26 @@ export function ReaderView({
                   </p>
                 )}
                 <div className="assist-actions">
-                  <button onClick={explainCapturedRegion}>
-                    Explain region
-                  </button>
-                  <button onClick={() => setRegionCapture(null)}>
+                  {regionCapture.text && (
+                    <button
+                      disabled={aiBusy}
+                      onClick={explainCapturedRegion}
+                    >
+                      Explain text
+                    </button>
+                  )}
+                  {regionCapture.imageDataUrl && (
+                    <button
+                      disabled={aiBusy}
+                      onClick={() => void analyzeCapturedRegionImage()}
+                    >
+                      Analyze image
+                    </button>
+                  )}
+                  <button
+                    disabled={aiBusy}
+                    onClick={() => setRegionCapture(null)}
+                  >
                     Clear
                   </button>
                 </div>
