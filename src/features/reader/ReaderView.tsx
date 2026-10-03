@@ -21,6 +21,7 @@ import {
   type NormalizedRect,
   type PdfTextAnnotation,
 } from "../../core/annotations/pdfAnnotations";
+import { stableHash } from "../../core/ai/cache";
 import {
   detectDifficultTerms,
   type DifficultTerm,
@@ -161,6 +162,13 @@ export function ReaderView({
     useState<EpubTextAnnotation[]>([]);
   const [epubSelectionCfi, setEpubSelectionCfi] =
     useState<string | null>(null);
+  const [epubContext, setEpubContext] = useState("");
+  const [epubContextKey, setEpubContextKey] = useState("");
+  const [epubAnalyzedContextKey, setEpubAnalyzedContextKey] = useState("");
+  const [epubAutoTerms, setEpubAutoTerms] = useState<DifficultTerm[]>([]);
+  const [epubDifficultyBusy, setEpubDifficultyBusy] = useState(false);
+  const [epubDifficultyError, setEpubDifficultyError] =
+    useState<string | null>(null);
 
   const isPdf = isPdfPath(bookPath);
   const isEpub = isEpubPath(bookPath);
@@ -205,6 +213,12 @@ export function ReaderView({
     setEpubNavigationTarget(null);
     setEpubAnnotations([]);
     setEpubSelectionCfi(null);
+    setEpubContext("");
+    setEpubContextKey("");
+    setEpubAnalyzedContextKey("");
+    setEpubAutoTerms([]);
+    setEpubDifficultyBusy(false);
+    setEpubDifficultyError(null);
 
     if (!bookPath) {
       setPositionLoaded(true);
@@ -390,6 +404,62 @@ export function ReaderView({
     readingLevel,
   ]);
 
+  useEffect(() => {
+    if (
+      !bookPath ||
+      !isEpub ||
+      !epubContext ||
+      epubContext.length < 80 ||
+      !epubContextKey ||
+      epubContextKey === epubAnalyzedContextKey ||
+      epubDifficultyBusy
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const analysisKey = epubContextKey;
+
+    setEpubAnalyzedContextKey(analysisKey);
+    setEpubDifficultyBusy(true);
+    setEpubDifficultyError(null);
+
+    void detectDifficultTerms(epubContext, readingLevel)
+      .then((result) => {
+        if (cancelled) return;
+
+        setConfiguredModel((current) => result.model || current);
+        setEpubAutoTerms(result.items);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Unable to detect EPUB difficult terms", error);
+        setEpubAutoTerms([]);
+        setEpubDifficultyError(
+          error instanceof Error
+            ? error.message
+            : "Automatic EPUB difficulty analysis failed.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setEpubDifficultyBusy(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bookPath,
+    epubAnalyzedContextKey,
+    epubContext,
+    epubContextKey,
+    epubDifficultyBusy,
+    isEpub,
+    readingLevel,
+  ]);
+
   const zoomLabel = useMemo(
     () => Math.round(scale * 100) + "%",
     [scale],
@@ -405,7 +475,9 @@ export function ReaderView({
     [annotations, currentPage],
   );
 
-  const currentAutoTerms = autoTermsByPage[currentPage] ?? [];
+  const currentAutoTerms = isEpub
+    ? epubAutoTerms
+    : autoTermsByPage[currentPage] ?? [];
 
   const zoomOut = useCallback(() => {
     setScale((value) => Math.max(0.5, Math.round((value - 0.1) * 10) / 10));
@@ -493,9 +565,30 @@ export function ReaderView({
     [bookPath],
   );
 
+  const handleEpubContextReady = useCallback(
+    (_cfi: string, context: string) => {
+      const normalized = normalizedText(context).slice(0, 9000);
+      if (!normalized) return;
+
+      const key = stableHash(normalized);
+      setEpubContext((current) =>
+        current === normalized ? current : normalized,
+      );
+      setEpubContextKey((current) =>
+        current === key ? current : key,
+      );
+    },
+    [],
+  );
+
   const handleEpubSelection = useCallback(
     (selected: EpubSelection) => {
       setEpubSelectionCfi(selected.cfi);
+      const normalizedContext = normalizedText(selected.context).slice(0, 9000);
+      if (normalizedContext) {
+        setEpubContext(normalizedContext);
+        setEpubContextKey(stableHash(normalizedContext));
+      }
       setSelection({
         text: selected.text,
         context: selected.context,
@@ -1016,6 +1109,15 @@ export function ReaderView({
     await recordTermFeedback(term.text, status);
 
     const normalized = normalizeTerm(term.text);
+
+    if (isEpub) {
+      setEpubAutoTerms((items) =>
+        items.filter(
+          (item) => normalizeTerm(item.text) !== normalized,
+        ),
+      );
+      return;
+    }
     const matching = annotations.filter(
       (annotation) =>
         annotation.source === "auto" &&
@@ -1047,6 +1149,22 @@ export function ReaderView({
   }
 
   function explainAutoTerm(term: DifficultTerm) {
+    if (isEpub) {
+      const nextSelection: ActiveReaderSelection = {
+        text: term.text,
+        context: epubContext,
+        page: 0,
+        rects: [],
+      };
+
+      setEpubSelectionCfi(null);
+      setSelection(nextSelection);
+      setAiResult(null);
+      setAiError(null);
+      void runAi("explain", undefined, nextSelection);
+      return;
+    }
+
     const pageText = pageTexts[currentPage] || getPdfPageText(currentPage);
     const rects = locatePdfTextRects(currentPage, term.text);
     const nextSelection: ActiveReaderSelection = {
@@ -1288,9 +1406,11 @@ export function ReaderView({
                 initialCfi={epubInitialCfi}
                 navigationTarget={epubNavigationTarget}
                 annotations={epubAnnotations}
+                autoTerms={epubAutoTerms}
                 onMetadataReady={handleEpubMetadataReady}
                 onOutlineReady={handleEpubOutlineReady}
                 onRelocated={handleEpubRelocated}
+                onContextReady={handleEpubContextReady}
                 onSelection={handleEpubSelection}
               />
             )}
@@ -1398,27 +1518,33 @@ export function ReaderView({
               <div className="auto-difficulty-heading">
                 <div>
                   <span className="assist-type yellow">Auto reading help</span>
-                  <h3>Page {currentPage}</h3>
+                  <h3>
+                    {isEpub ? "Current EPUB section" : "Page " + currentPage}
+                  </h3>
                 </div>
                 <small>{readingLevel}</small>
               </div>
 
-              {difficultyBusyPage === currentPage && (
+              {(isEpub ? epubDifficultyBusy : difficultyBusyPage === currentPage) && (
                 <div className="auto-difficulty-loading">
                   <span className="pdf-spinner" />
                   <span>Finding words and phrases that may slow you down…</span>
                 </div>
               )}
 
-              {difficultyError && difficultyBusyPage === null && (
-                <p className="auto-difficulty-error">{difficultyError}</p>
-              )}
+              {(isEpub ? epubDifficultyError : difficultyError) &&
+                (isEpub ? !epubDifficultyBusy : difficultyBusyPage === null) && (
+                  <p className="auto-difficulty-error">
+                    {isEpub ? epubDifficultyError : difficultyError}
+                  </p>
+                )}
 
-              {difficultyBusyPage !== currentPage &&
+              {(isEpub ? !epubDifficultyBusy : difficultyBusyPage !== currentPage) &&
                 currentAutoTerms.length === 0 &&
-                !difficultyError && (
+                !(isEpub ? epubDifficultyError : difficultyError) && (
                   <p className="muted">
-                    No high-value reading obstacles were found on this page.
+                    No high-value reading obstacles were found in the current
+                    reading context.
                   </p>
                 )}
 
@@ -1486,7 +1612,9 @@ export function ReaderView({
                   <button
                     disabled={
                       aiBusy ||
-                      (!isEpub && selection.rects.length === 0) ||
+                      (isEpub
+                        ? !epubSelectionCfi
+                        : selection.rects.length === 0) ||
                       highlightStatus === "saving"
                     }
                     onClick={() => void saveCurrentHighlight()}
@@ -1515,6 +1643,7 @@ export function ReaderView({
                       setAiError(null);
                       setNoteStatus("idle");
                       setHighlightStatus("idle");
+                      setEpubSelectionCfi(null);
                     }}
                   >
                     Clear
@@ -1524,10 +1653,10 @@ export function ReaderView({
             ) : (
               <section className="assist-card reader-ai-empty">
                 <span className="assist-type yellow">Reading context</span>
-                <h3>Select text on the PDF.</h3>
+                <h3>Select text while reading.</h3>
                 <p>
-                  Select a word or phrase for contextual help. Double-click
-                  inside a PDF sentence to select that sentence and run grammar
+                  Select a word, phrase, or sentence for contextual help.
+                  In PDF, double-click inside a sentence to run grammar
                   analysis automatically.
                 </p>
               </section>
@@ -1537,20 +1666,23 @@ export function ReaderView({
               <section className="assist-card ai-progress-card">
                 <span className="pdf-spinner" />
                 <div>
-                  <strong>Analyzing locally…</strong>
-                  <p>Nothing from this request is being sent to a cloud model.</p>
+                  <strong>Analyzing with your configured AI route…</strong>
+                  <p>
+                    Privacy mode and task routing determine whether this stays
+                    local or uses a configured cloud provider.
+                  </p>
                 </div>
               </section>
             )}
 
             {aiError && (
               <section className="assist-card ai-error-card">
-                <span className="assist-type orange">Local AI error</span>
-                <h3>Ollama could not complete the request.</h3>
+                <span className="assist-type orange">AI error</span>
+                <h3>The configured AI route could not complete the request.</h3>
                 <p>{aiError}</p>
                 <p className="muted">
-                  Open AI & Models to verify that Ollama is running and a model
-                  is installed.
+                  Open AI & Models to verify the selected provider, model,
+                  credentials, privacy mode, and task route.
                 </p>
               </section>
             )}

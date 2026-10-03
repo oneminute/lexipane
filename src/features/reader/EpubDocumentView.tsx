@@ -12,6 +12,8 @@ import {
   useState,
 } from "react";
 import type { EpubTextAnnotation } from "../../core/annotations/epubAnnotations";
+import type { DifficultTerm } from "../../core/ai/difficultyService";
+import { normalizeTerm } from "../../core/reading/knownTerms";
 
 export interface EpubMetadataSummary {
   title: string | null;
@@ -37,9 +39,11 @@ interface Props {
   initialCfi?: string | null;
   navigationTarget?: string | null;
   annotations?: EpubTextAnnotation[];
+  autoTerms?: DifficultTerm[];
   onMetadataReady?: (metadata: EpubMetadataSummary) => void;
   onOutlineReady?: (outline: EpubOutlineEntry[]) => void;
   onRelocated?: (cfi: string, progress: number | null) => void;
+  onContextReady?: (cfi: string, context: string) => void;
   onSelection?: (selection: EpubSelection) => void;
 }
 
@@ -83,7 +87,55 @@ function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-function syncHighlights(
+function renderedContents(rendition: Rendition): Contents[] {
+  const value = rendition.getContents() as unknown;
+  if (Array.isArray(value)) {
+    return value as Contents[];
+  }
+
+  return value ? [value as Contents] : [];
+}
+
+function currentContext(rendition: Rendition): string {
+  return normalizeText(
+    renderedContents(rendition)
+      .map((contents) => contents.document.body?.textContent ?? "")
+      .join(" "),
+  ).slice(0, 9000);
+}
+
+function findExactRange(
+  contents: Contents,
+  exact: string,
+): Range | null {
+  const body = contents.document.body;
+  if (!body || !exact.trim()) return null;
+
+  const target = exact.toLocaleLowerCase("en-US");
+  const walker = contents.document.createTreeWalker(
+    body,
+    contents.window.NodeFilter.SHOW_TEXT,
+  );
+
+  let node = walker.nextNode();
+  while (node) {
+    const value = node.nodeValue ?? "";
+    const index = value.toLocaleLowerCase("en-US").indexOf(target);
+
+    if (index >= 0) {
+      const range = contents.document.createRange();
+      range.setStart(node, index);
+      range.setEnd(node, index + exact.length);
+      return range;
+    }
+
+    node = walker.nextNode();
+  }
+
+  return null;
+}
+
+function syncUserHighlights(
   rendition: Rendition,
   annotations: EpubTextAnnotation[],
   renderedCfis: Set<string>,
@@ -119,23 +171,94 @@ function syncHighlights(
   }
 }
 
+function clearAutoHighlights(
+  rendition: Rendition,
+  renderedAutoCfis: Map<string, string>,
+) {
+  for (const cfi of renderedAutoCfis.values()) {
+    rendition.annotations.remove(cfi, "highlight");
+  }
+  renderedAutoCfis.clear();
+}
+
+function syncAutoHighlights(
+  rendition: Rendition,
+  terms: DifficultTerm[],
+  renderedAutoCfis: Map<string, string>,
+) {
+  clearAutoHighlights(rendition, renderedAutoCfis);
+
+  const contentsList = renderedContents(rendition);
+  if (contentsList.length === 0) return;
+
+  for (const term of terms) {
+    const key = term.type + ":" + normalizeTerm(term.text);
+
+    for (const contents of contentsList) {
+      const range = findExactRange(contents, term.text);
+      if (!range) continue;
+
+      const cfi = contents.cfiFromRange(range);
+      const phrase = term.type === "phrase";
+
+      rendition.annotations.highlight(
+        cfi,
+        {
+          source: "auto",
+          term: term.text,
+          type: term.type,
+        },
+        undefined,
+        phrase
+          ? "lexipane-epub-auto-phrase"
+          : "lexipane-epub-auto-word",
+        {
+          fill: phrase ? "#ffb564" : "#ffe05c",
+          "fill-opacity": phrase ? "0.30" : "0.34",
+          "mix-blend-mode": "multiply",
+        },
+      );
+
+      renderedAutoCfis.set(key, cfi);
+      break;
+    }
+  }
+}
+
 export function EpubDocumentView({
   path,
   fontScale = 100,
   initialCfi,
   navigationTarget,
   annotations = [],
+  autoTerms = [],
   onMetadataReady,
   onOutlineReady,
   onRelocated,
+  onContextReady,
   onSelection,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const bookRef = useRef<Book | null>(null);
   const renderedHighlightCfisRef = useRef<Set<string>>(new Set());
+  const renderedAutoCfisRef = useRef<Map<string, string>>(new Map());
+  const autoTermsRef = useRef<DifficultTerm[]>(autoTerms);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    autoTermsRef.current = autoTerms;
+
+    const rendition = renditionRef.current;
+    if (!rendition) return;
+
+    syncAutoHighlights(
+      rendition,
+      autoTerms,
+      renderedAutoCfisRef.current,
+    );
+  }, [autoTerms]);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +268,7 @@ export function EpubDocumentView({
     setLoading(true);
     setError(null);
     renderedHighlightCfisRef.current = new Set();
+    renderedAutoCfisRef.current = new Map();
 
     async function openBook() {
       const host = hostRef.current;
@@ -207,7 +331,7 @@ export function EpubDocumentView({
         "relocated",
         (location: Location) => {
           const cfi = location.start?.cfi;
-          if (!cfi) return;
+          if (!cfi || !rendition) return;
 
           const percentage =
             typeof location.start.percentage === "number"
@@ -215,6 +339,21 @@ export function EpubDocumentView({
               : null;
 
           onRelocated?.(cfi, percentage);
+
+          window.setTimeout(() => {
+            if (cancelled || !rendition) return;
+
+            const context = currentContext(rendition);
+            if (context) {
+              onContextReady?.(cfi, context);
+            }
+
+            syncAutoHighlights(
+              rendition,
+              autoTermsRef.current,
+              renderedAutoCfisRef.current,
+            );
+          }, 0);
         },
       );
 
@@ -241,11 +380,22 @@ export function EpubDocumentView({
       await rendition.display(initialCfi || undefined);
       if (cancelled) return;
 
-      syncHighlights(
+      syncUserHighlights(
         rendition,
         annotations,
         renderedHighlightCfisRef.current,
       );
+      syncAutoHighlights(
+        rendition,
+        autoTermsRef.current,
+        renderedAutoCfisRef.current,
+      );
+
+      const context = currentContext(rendition);
+      const location = rendition.location?.start?.cfi;
+      if (context && location) {
+        onContextReady?.(location, context);
+      }
 
       setLoading(false);
     }
@@ -264,11 +414,18 @@ export function EpubDocumentView({
       cancelled = true;
       renditionRef.current = null;
       bookRef.current = null;
-      rendition?.destroy();
+      if (rendition) {
+        clearAutoHighlights(
+          rendition,
+          renderedAutoCfisRef.current,
+        );
+        rendition.destroy();
+      }
       book?.destroy();
     };
   }, [
     initialCfi,
+    onContextReady,
     onMetadataReady,
     onOutlineReady,
     onRelocated,
@@ -280,7 +437,7 @@ export function EpubDocumentView({
     const rendition = renditionRef.current;
     if (!rendition) return;
 
-    syncHighlights(
+    syncUserHighlights(
       rendition,
       annotations,
       renderedHighlightCfisRef.current,
