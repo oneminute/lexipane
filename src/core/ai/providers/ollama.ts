@@ -1,3 +1,4 @@
+import { appFetch } from "../../http/appFetch";
 import type { AIProvider } from "../provider";
 import type {
   ConnectionResult,
@@ -49,7 +50,7 @@ export class OllamaProvider implements AIProvider {
 
   async testConnection(): Promise<ConnectionResult> {
     try {
-      const response = await fetch(this.baseUrl + "/api/tags");
+      const response = await appFetch(this.baseUrl + "/api/tags");
       return response.ok
         ? { ok: true, message: "Connected to Ollama." }
         : {
@@ -66,7 +67,7 @@ export class OllamaProvider implements AIProvider {
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    const response = await fetch(this.baseUrl + "/api/tags");
+    const response = await appFetch(this.baseUrl + "/api/tags");
     if (!response.ok) {
       throw new Error(
         "Unable to list Ollama models: HTTP " + response.status,
@@ -90,7 +91,7 @@ export class OllamaProvider implements AIProvider {
   async generateText(
     request: TextGenerationRequest,
   ): Promise<TextGenerationResponse> {
-    const response = await fetch(this.baseUrl + "/api/chat", {
+    const response = await appFetch(this.baseUrl + "/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: request.signal,
