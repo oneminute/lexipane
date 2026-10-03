@@ -36,6 +36,8 @@ import {
 } from "../../core/ai/difficultyService";
 import { loadOllamaConfig } from "../../core/ai/ollamaConfig";
 import { analyzeRegionImage } from "../../core/ai/regionService";
+import type { AiPrivacyMode } from "../../core/ai/privacy";
+import type { StructuredReadingAnalysis } from "../../core/ai/readingStructured";
 import {
   streamReadingSelection,
   type ReadingAnalysisMode,
@@ -54,6 +56,10 @@ import {
   updateBookCover,
   updateBookMetadata,
 } from "../../core/books/library";
+import {
+  loadBookPrivacyMode,
+  saveBookPrivacyMode,
+} from "../../core/books/bookPrivacy";
 import { createReaderNote } from "../../core/notes/notes";
 import type {
   PdfMetadataSummary,
@@ -92,6 +98,7 @@ import {
   type KindleSelection,
 } from "./MobiDocumentView";
 import { PdfDocumentView } from "./PdfDocumentView";
+import { StructuredAnalysisView } from "./StructuredAnalysisView";
 import { getPdfPageText, locatePdfTextRects } from "./pdfTextDom";
 import {
   capturePdfRegion,
@@ -109,6 +116,9 @@ interface AiResultState {
   title: string;
   text: string;
   model: string;
+  analysis?: StructuredReadingAnalysis;
+  source?: string;
+  fallbackUsed?: boolean;
 }
 
 interface ActiveReaderSelection extends ReadingSelection {
@@ -174,6 +184,8 @@ export function ReaderView({
   const [aiBusy, setAiBusy] = useState(false);
   const [question, setQuestion] = useState("");
   const [configuredModel, setConfiguredModel] = useState<string | null>(null);
+  const [bookPrivacyMode, setBookPrivacyMode] =
+    useState<AiPrivacyMode | null>(null);
   const [noteStatus, setNoteStatus] =
     useState<"idle" | "saving" | "saved">("idle");
   const [highlightStatus, setHighlightStatus] =
@@ -305,6 +317,7 @@ export function ReaderView({
     setKindleAutoTerms([]);
     setKindleDifficultyBusy(false);
     setKindleDifficultyError(null);
+    setBookPrivacyMode(null);
 
     if (!bookPath) {
       setPositionLoaded(true);
@@ -312,6 +325,14 @@ export function ReaderView({
         cancelled = true;
       };
     }
+
+    void loadBookPrivacyMode(bookPath)
+      .then((mode) => {
+        if (!cancelled) setBookPrivacyMode(mode);
+      })
+      .catch((error) => {
+        console.error("Unable to load book privacy mode", error);
+      });
 
     if (isPdfPath(bookPath)) {
       void loadPdfReadingPosition(bookPath)
@@ -471,7 +492,7 @@ export function ReaderView({
     setDifficultyBusyPage(currentPage);
     setDifficultyError(null);
 
-    void detectDifficultTerms(pageText, readingLevel)
+    void detectDifficultTerms(pageText, readingLevel, bookPath)
       .then(async (result) => {
         if (cancelled) return;
 
@@ -565,7 +586,7 @@ export function ReaderView({
     setEpubDifficultyBusy(true);
     setEpubDifficultyError(null);
 
-    void detectDifficultTerms(epubContext, readingLevel)
+    void detectDifficultTerms(epubContext, readingLevel, bookPath)
       .then((result) => {
         if (cancelled) return;
 
@@ -621,7 +642,7 @@ export function ReaderView({
     setKindleDifficultyBusy(true);
     setKindleDifficultyError(null);
 
-    void detectDifficultTerms(kindleContext, readingLevel)
+    void detectDifficultTerms(kindleContext, readingLevel, bookPath)
       .then((result) => {
         if (cancelled) return;
 
@@ -1105,6 +1126,8 @@ export function ReaderView({
       const result = await analyzeRegionImage(
         regionCapture.imageDataUrl,
         pageTexts[regionCapture.page] || getPdfPageText(regionCapture.page),
+        undefined,
+        bookPath,
       );
 
       setConfiguredModel(result.model);
@@ -1319,14 +1342,17 @@ export function ReaderView({
 
     try {
       const result = await streamReadingSelection(
-        targetSelection,
+        {
+          ...targetSelection,
+          bookPath,
+        },
         mode,
         readerQuestion,
         (accumulatedText) => {
           setAiResult((current) => ({
             title,
             text: accumulatedText,
-            model: current?.model || configuredModel || "Streaming…",
+            model: current?.model || configuredModel || "Structuring…",
           }));
         },
       );
@@ -1336,6 +1362,9 @@ export function ReaderView({
         title,
         text: result.text,
         model: result.model,
+        analysis: result.analysis,
+        source: result.source,
+        fallbackUsed: result.fallbackUsed,
       });
     } catch (error) {
       setAiResult(null);
@@ -1620,6 +1649,30 @@ export function ReaderView({
     }
   }
 
+  async function changeBookPrivacy(value: string) {
+    if (!bookPath) return;
+
+    const mode =
+      value === "inherit" ? null : (value as AiPrivacyMode);
+
+    setBookPrivacyMode(mode);
+
+    try {
+      await saveBookPrivacyMode(bookPath, mode);
+
+      // Re-evaluate automatic assistance under the new privacy policy.
+      setAutoTermsByPage({});
+      setEpubAutoTerms([]);
+      setEpubAnalyzedContextKey("");
+      setKindleAutoTerms([]);
+      setKindleAnalyzedContextKey("");
+      setAiResult(null);
+      setAiError(null);
+    } catch (error) {
+      console.error("Unable to save book privacy mode", error);
+    }
+  }
+
   function submitQuestion(event: FormEvent) {
     event.preventDefault();
     const trimmed = question.trim();
@@ -1713,6 +1766,26 @@ export function ReaderView({
           >
             {regionMode ? "Cancel region" : "Region select"}
           </button>
+          )}
+          {bookPath && (
+            <label
+              className="book-privacy-control"
+              title="Override the global AI privacy policy for this book"
+            >
+              <span>Privacy</span>
+              <select
+                value={bookPrivacyMode ?? "inherit"}
+                onChange={(event) =>
+                  void changeBookPrivacy(event.target.value)
+                }
+              >
+                <option value="inherit">Global</option>
+                <option value="local-only">Local only</option>
+                <option value="prefer-local">Prefer local</option>
+                <option value="automatic">Automatic</option>
+                <option value="cloud-only">Cloud only</option>
+              </select>
+            </label>
           )}
           <button className="ghost-button">Notes</button>
           <button className="primary-button compact" onClick={onOpenBook}>
@@ -2216,9 +2289,16 @@ export function ReaderView({
                     <span className="assist-type yellow">AI analysis</span>
                     <h3>{aiResult.title}</h3>
                   </div>
-                  <small>{aiResult.model}</small>
+                  <small>
+                    {aiResult.source || aiResult.model}
+                    {aiResult.fallbackUsed ? " · fallback" : ""}
+                  </small>
                 </div>
-                <div className="ai-answer-text">{aiResult.text}</div>
+                {aiResult.analysis ? (
+                  <StructuredAnalysisView analysis={aiResult.analysis} />
+                ) : (
+                  <div className="ai-answer-text">{aiResult.text}</div>
+                )}
               </section>
             )}
 

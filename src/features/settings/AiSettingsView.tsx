@@ -17,9 +17,10 @@ import {
 import { OllamaProvider } from "../../core/ai/providers/ollama";
 import { providerCatalog } from "../../core/ai/registry";
 import {
-  loadTaskRouteTarget,
-  saveTaskRouteTarget,
+  loadTaskRoutePlan,
+  saveTaskRoutePlan,
   type ReadingTaskType,
+  type TaskRoutePlan,
   type TaskRouteTarget,
 } from "../../core/ai/taskRouting";
 import type { ModelInfo } from "../../core/ai/types";
@@ -152,8 +153,8 @@ export function AiSettingsView() {
   const [selectedModel, setSelectedModel] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>("B2");
-  const [routes, setRoutes] =
-    useState<Partial<Record<ReadingTaskType, TaskRouteTarget>>>({});
+  const [routePlans, setRoutePlans] =
+    useState<Partial<Record<ReadingTaskType, TaskRoutePlan>>>({});
   const [providerConfigs, setProviderConfigs] =
     useState<ProviderConfig[]>([]);
   const [privacyMode, setPrivacyMode] =
@@ -182,7 +183,7 @@ export function AiSettingsView() {
       loadAiPrivacyMode(),
       listProviderConfigs(),
       getReadingProfileSummary(),
-      ...taskRoutes.map((task) => loadTaskRouteTarget(task.id)),
+      ...taskRoutes.map((task) => loadTaskRoutePlan(task.id)),
     ]);
 
     setReadingLevel(level);
@@ -193,14 +194,14 @@ export function AiSettingsView() {
       configuredProviders.filter((config) => config.enabled),
     );
 
-    const nextRoutes: Partial<
-      Record<ReadingTaskType, TaskRouteTarget>
+    const nextPlans: Partial<
+      Record<ReadingTaskType, TaskRoutePlan>
     > = {};
     taskRoutes.forEach((task, index) => {
-      const value = routeValues[index] as TaskRouteTarget | null;
-      if (value) nextRoutes[task.id] = value;
+      const value = routeValues[index] as TaskRoutePlan;
+      nextPlans[task.id] = value;
     });
-    setRoutes(nextRoutes);
+    setRoutePlans(nextPlans);
   }
 
   async function refreshOllama() {
@@ -277,24 +278,59 @@ export function AiSettingsView() {
 
   async function changeTaskRoute(
     task: ReadingTaskType,
+    slot: "primary" | 0 | 1,
     encoded: string,
   ) {
-    const target = decodeRoute(encoded);
-    if (!target) return;
+    const current = routePlans[task] ?? {
+      primary: null,
+      fallbacks: [],
+    };
+    const target = encoded ? decodeRoute(encoded) : null;
 
-    setRoutes((current) => ({
-      ...current,
-      [task]: target,
-    }));
-    await saveTaskRouteTarget(task, target);
+    if (slot === "primary" && !target) return;
+
+    const nextFallbacks = [...current.fallbacks];
+
+    if (slot === "primary") {
+      const next: TaskRoutePlan = {
+        primary: target,
+        fallbacks: nextFallbacks,
+      };
+      setRoutePlans((plans) => ({ ...plans, [task]: next }));
+      await saveTaskRoutePlan(task, next);
+      return;
+    }
+
+    if (target) {
+      nextFallbacks[slot] = target;
+    } else {
+      nextFallbacks.splice(slot, 1);
+    }
+
+    const next: TaskRoutePlan = {
+      primary: current.primary,
+      fallbacks: nextFallbacks.filter(Boolean).slice(0, 2),
+    };
+    setRoutePlans((plans) => ({ ...plans, [task]: next }));
+    await saveTaskRoutePlan(task, next);
   }
 
-  function currentRouteValue(task: ReadingTaskType): string {
-    const target = routes[task];
+  function currentRouteValue(
+    task: ReadingTaskType,
+    slot: "primary" | 0 | 1,
+  ): string {
+    const plan = routePlans[task];
+
+    const target =
+      slot === "primary"
+        ? plan?.primary
+        : plan?.fallbacks[slot];
 
     if (target) {
       return encodeRoute(target);
     }
+
+    if (slot !== "primary") return "";
 
     return selectedModel
       ? encodeRoute({
@@ -468,10 +504,11 @@ export function AiSettingsView() {
 
         <section className="settings-card routing-card">
           <span className="eyebrow">Task routing</span>
-          <h2>Choose a provider and model per task</h2>
+          <h2>Primary route + ordered fallbacks</h2>
           <p>
-            Automatic page analysis can stay on a fast local model while
-            grammar and difficult questions use a stronger configured model.
+            Each task tries its primary model first, then Fallback 1 and
+            Fallback 2. Privacy policy filters out routes that are not allowed
+            for the current book.
           </p>
           <div className="task-route-list">
             {taskRoutes.map((task) => {
@@ -479,73 +516,120 @@ export function AiSettingsView() {
               const noRoutes =
                 models.length === 0 && clouds.length === 0;
 
+              const renderRouteOptions = () => (
+                <>
+                  {models.length > 0 && (
+                    <optgroup label="Ollama · local">
+                      {models.map((model) => {
+                        const target: TaskRouteTarget = {
+                          kind: "ollama",
+                          model: model.id,
+                        };
+                        return (
+                          <option
+                            key={"ollama:" + model.id}
+                            value={encodeRoute(target)}
+                          >
+                            {model.name}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
+
+                  {clouds.length > 0 && (
+                    <optgroup label="Configured providers">
+                      {clouds.map((config) => {
+                        const model = config.settings.model ?? "";
+                        const target: TaskRouteTarget = {
+                          kind: "provider",
+                          configId: config.id,
+                          model,
+                        };
+                        return (
+                          <option
+                            key={
+                              "provider:" +
+                              config.id +
+                              ":" +
+                              model
+                            }
+                            value={encodeRoute(target)}
+                          >
+                            {config.displayName} · {model}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
+                </>
+              );
+
               return (
-                <label key={task.id} className="task-route-row">
+                <div key={task.id} className="task-route-row fallback-route-row">
                   <span>
                     <strong>{task.label}</strong>
                     <small>{task.description}</small>
                   </span>
-                  <select
-                    value={currentRouteValue(task.id)}
-                    disabled={noRoutes}
-                    onChange={(event) =>
-                      void changeTaskRoute(
-                        task.id,
-                        event.target.value,
-                      )
-                    }
-                  >
-                    {noRoutes && (
-                      <option value="">No model available</option>
-                    )}
 
-                    {models.length > 0 && (
-                      <optgroup label="Ollama · local">
-                        {models.map((model) => {
-                          const target: TaskRouteTarget = {
-                            kind: "ollama",
-                            model: model.id,
-                          };
-                          return (
-                            <option
-                              key={"ollama:" + model.id}
-                              value={encodeRoute(target)}
-                            >
-                              {model.name}
-                            </option>
-                          );
-                        })}
-                      </optgroup>
-                    )}
+                  <div className="task-route-selects">
+                    <label>
+                      <span>Primary</span>
+                      <select
+                        value={currentRouteValue(task.id, "primary")}
+                        disabled={noRoutes}
+                        onChange={(event) =>
+                          void changeTaskRoute(
+                            task.id,
+                            "primary",
+                            event.target.value,
+                          )
+                        }
+                      >
+                        {noRoutes && (
+                          <option value="">No model available</option>
+                        )}
+                        {renderRouteOptions()}
+                      </select>
+                    </label>
 
-                    {clouds.length > 0 && (
-                      <optgroup label="Configured providers">
-                        {clouds.map((config) => {
-                          const model =
-                            config.settings.model ?? "";
-                          const target: TaskRouteTarget = {
-                            kind: "provider",
-                            configId: config.id,
-                            model,
-                          };
-                          return (
-                            <option
-                              key={
-                                "provider:" +
-                                config.id +
-                                ":" +
-                                model
-                              }
-                              value={encodeRoute(target)}
-                            >
-                              {config.displayName} · {model}
-                            </option>
-                          );
-                        })}
-                      </optgroup>
-                    )}
-                  </select>
-                </label>
+                    <label>
+                      <span>Fallback 1</span>
+                      <select
+                        value={currentRouteValue(task.id, 0)}
+                        disabled={noRoutes}
+                        onChange={(event) =>
+                          void changeTaskRoute(
+                            task.id,
+                            0,
+                            event.target.value,
+                          )
+                        }
+                      >
+                        <option value="">None</option>
+                        {renderRouteOptions()}
+                      </select>
+                    </label>
+
+                    <label>
+                      <span>Fallback 2</span>
+                      <select
+                        value={currentRouteValue(task.id, 1)}
+                        disabled={noRoutes}
+                        onChange={(event) =>
+                          void changeTaskRoute(
+                            task.id,
+                            1,
+                            event.target.value,
+                          )
+                        }
+                      >
+                        <option value="">None</option>
+                        {renderRouteOptions()}
+                      </select>
+                    </label>
+                  </div>
+                </div>
               );
             })}
           </div>
