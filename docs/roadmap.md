@@ -67,6 +67,7 @@ Implemented:
 - contextual explanation
 - grammar/structure analysis
 - custom questions about the selection
+- double-click sentence detection with automatic grammar/structure analysis
 
 Next:
 
@@ -75,7 +76,6 @@ Next:
 - configurable reader language level
 - automatic word/phrase highlights
 - Known / Remove feedback
-- double-click sentence analysis
 - structured-output validation
 - AI result caching
 - task router with per-task model selection

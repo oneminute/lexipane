@@ -24,6 +24,7 @@ The current desktop build already includes a usable PDF-first vertical slice:
 - contextual explanation of selected PDF text
 - grammar/structure analysis of selected text
 - questions about selected text with surrounding page context
+- double-click sentence selection with automatic grammar/structure analysis
 - persistent Notebook entries containing source text, AI explanation, and editable user notes
 - provider registry covering major local, global-cloud, and China-cloud AI families
 
@@ -34,7 +35,7 @@ The first live AI path is intentionally local: Ollama at `http://127.0.0.1:11434
 1. Open or drag in a PDF.
 2. LexiPane adds it to the local bookshelf.
 3. Read continuously and zoom as needed.
-4. Select a word, phrase, or sentence.
+4. Select a word or phrase for contextual help, or double-click inside a sentence for automatic sentence grammar analysis.
 5. Use **Explain** or **Analyze grammar** in the AI pane.
 6. Ask a custom question about the selection.
 7. Use **Highlight** to keep the selection visually attached to the PDF.
