@@ -38,6 +38,11 @@ export function ReaderView({
     setScale((value) => Math.min(2.5, Math.round((value + 0.1) * 10) / 10));
   }, []);
 
+  const handleDocumentLoaded = useCallback((count: number) => {
+    setPageCount(count);
+    setCurrentPage(1);
+  }, []);
+
   function captureSelection() {
     const selection = window.getSelection();
     const text = selection?.toString().replace(/\s+/g, " ").trim() ?? "";
@@ -109,10 +114,7 @@ export function ReaderView({
               <PdfDocumentView
                 path={bookPath}
                 scale={scale}
-                onDocumentLoaded={(count) => {
-                  setPageCount(count);
-                  setCurrentPage(1);
-                }}
+                onDocumentLoaded={handleDocumentLoaded}
                 onCurrentPageChange={setCurrentPage}
               />
             )}

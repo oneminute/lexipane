@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
-import { loadPdfFromPath } from "../../core/documents/pdf/pdfRuntime";
+import {
+  loadPdfFromPath,
+  type LoadedPdfDocument,
+} from "../../core/documents/pdf/pdfRuntime";
 import { PdfPageView } from "./PdfPageView";
 
 interface Props {
@@ -17,29 +20,32 @@ export function PdfDocumentView({
   onDocumentLoaded,
   onCurrentPageChange,
 }: Props) {
+  const [session, setSession] = useState<LoadedPdfDocument | null>(null);
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    let loadedDocument: PDFDocumentProxy | null = null;
+    let loadedSession: LoadedPdfDocument | null = null;
 
+    setSession(null);
     setDocument(null);
     setLoading(true);
     setError(null);
 
     void loadPdfFromPath(path)
-      .then((pdf) => {
-        loadedDocument = pdf;
+      .then((nextSession) => {
+        loadedSession = nextSession;
         if (cancelled) {
-          void pdf.destroy();
+          void nextSession.destroy();
           return;
         }
 
-        setDocument(pdf);
+        setSession(nextSession);
+        setDocument(nextSession.document);
         setLoading(false);
-        onDocumentLoaded?.(pdf.numPages);
+        onDocumentLoaded?.(nextSession.document.numPages);
       })
       .catch((loadError) => {
         if (cancelled) return;
@@ -53,8 +59,8 @@ export function PdfDocumentView({
 
     return () => {
       cancelled = true;
-      if (loadedDocument) {
-        void loadedDocument.destroy();
+      if (loadedSession) {
+        void loadedSession.destroy();
       }
     };
   }, [onDocumentLoaded, path]);
@@ -74,7 +80,7 @@ export function PdfDocumentView({
     );
   }
 
-  if (error || !document) {
+  if (error || !document || !session) {
     return (
       <div className="pdf-state-card error">
         <strong>Unable to open this PDF.</strong>
@@ -89,6 +95,7 @@ export function PdfDocumentView({
         <PdfPageView
           key={pageNumber}
           document={document}
+          session={session}
           pageNumber={pageNumber}
           scale={scale}
           onVisible={onCurrentPageChange}

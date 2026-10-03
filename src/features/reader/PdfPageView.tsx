@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { TextLayerBuilder } from "pdfjs-dist/web/pdf_viewer.mjs";
+import type { LoadedPdfDocument } from "../../core/documents/pdf/pdfRuntime";
 
 interface Props {
   document: PDFDocumentProxy;
+  session: LoadedPdfDocument;
   pageNumber: number;
   scale: number;
   onVisible?: (pageNumber: number) => void;
@@ -16,6 +18,7 @@ interface PageSize {
 
 export function PdfPageView({
   document,
+  session,
   pageNumber,
   scale,
   onVisible,
@@ -100,7 +103,7 @@ export function PdfPageView({
 
         await textLayer.render({
           viewport,
-          images: null,
+          images: session.createEmptyTextLayerImages(viewport, canvas),
         });
       } catch (renderError) {
         if (cancelled) return;
@@ -129,7 +132,7 @@ export function PdfPageView({
       renderTask?.cancel();
       textLayer?.cancel();
     };
-  }, [document, pageNumber, scale]);
+  }, [document, pageNumber, scale, session]);
 
   return (
     <div
