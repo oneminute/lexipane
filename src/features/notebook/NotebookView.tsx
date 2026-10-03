@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  deleteReaderNote,
   listReaderNotes,
+  parseNoteTags,
+  updateReaderNoteTags,
   updateReaderNoteUserContent,
   type ReaderNote,
 } from "../../core/notes/notes";
@@ -8,22 +11,46 @@ import {
 interface NoteCardProps {
   note: ReaderNote;
   onOpenBook?: (path: string) => void | Promise<void>;
+  onDelete: (noteId: string) => void;
 }
 
-function NoteCard({ note, onOpenBook }: NoteCardProps) {
+function NoteCard({ note, onOpenBook, onDelete }: NoteCardProps) {
   const [userContent, setUserContent] = useState(note.user_content ?? "");
+  const [tagsText, setTagsText] = useState(
+    parseNoteTags(note.tags_json).join(", "),
+  );
   const [saveState, setSaveState] =
     useState<"idle" | "saving" | "saved">("idle");
 
   async function saveUserNote() {
     setSaveState("saving");
     try {
-      await updateReaderNoteUserContent(note.id, userContent);
+      const tags = tagsText
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+
+      await Promise.all([
+        updateReaderNoteUserContent(note.id, userContent),
+        updateReaderNoteTags(note.id, tags),
+      ]);
+
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 1400);
     } catch (error) {
       console.error("Unable to update note", error);
       setSaveState("idle");
+    }
+  }
+
+  async function removeNote() {
+    if (!window.confirm("Delete this notebook entry?")) return;
+
+    try {
+      await deleteReaderNote(note.id);
+      onDelete(note.id);
+    } catch (error) {
+      console.error("Unable to delete note", error);
     }
   }
 
@@ -34,14 +61,19 @@ function NoteCard({ note, onOpenBook }: NoteCardProps) {
           <span className="eyebrow">Reading note</span>
           <h2>{note.book_title || "Untitled book"}</h2>
         </div>
-        {note.book_path && onOpenBook && (
-          <button
-            className="ghost-button"
-            onClick={() => void onOpenBook(note.book_path!)}
-          >
-            Open book
+        <div className="notebook-card-actions">
+          {note.book_path && onOpenBook && (
+            <button
+              className="ghost-button"
+              onClick={() => void onOpenBook(note.book_path!)}
+            >
+              Open book
+            </button>
+          )}
+          <button className="danger-button" onClick={() => void removeNote()}>
+            Delete
           </button>
-        )}
+        </div>
       </header>
 
       {note.source_text && (
@@ -69,6 +101,7 @@ function NoteCard({ note, onOpenBook }: NoteCardProps) {
                 : ""}
           </small>
         </div>
+
         <textarea
           rows={4}
           value={userContent}
@@ -78,6 +111,20 @@ function NoteCard({ note, onOpenBook }: NoteCardProps) {
             setSaveState("idle");
           }}
         />
+
+        <label className="note-tags-field">
+          <span>Tags</span>
+          <input
+            value={tagsText}
+            placeholder="grammar, idiom, chapter 3"
+            onChange={(event) => {
+              setTagsText(event.target.value);
+              setSaveState("idle");
+            }}
+          />
+          <small>Separate tags with commas.</small>
+        </label>
+
         <button
           className="ghost-button"
           disabled={saveState === "saving"}
@@ -101,6 +148,7 @@ interface Props {
 export function NotebookView({ onOpenBook }: Props) {
   const [notes, setNotes] = useState<ReaderNote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -121,9 +169,29 @@ export function NotebookView({ onOpenBook }: Props) {
     };
   }, []);
 
+  const filteredNotes = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase();
+    if (!normalized) return notes;
+
+    return notes.filter((note) => {
+      const haystack = [
+        note.book_title,
+        note.source_text,
+        note.ai_content,
+        note.user_content,
+        ...parseNoteTags(note.tags_json),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase();
+
+      return haystack.includes(normalized);
+    });
+  }, [notes, query]);
+
   return (
     <section className="page notebook-page">
-      <header className="page-header">
+      <header className="page-header notebook-header">
         <div>
           <span className="eyebrow">Notebook</span>
           <h1>Keep what was worth understanding.</h1>
@@ -132,6 +200,12 @@ export function NotebookView({ onOpenBook }: Props) {
             separate from your own editable notes.
           </p>
         </div>
+        <input
+          className="search-input notebook-search"
+          value={query}
+          placeholder="Search notes, books, or tags"
+          onChange={(event) => setQuery(event.target.value)}
+        />
       </header>
 
       {loading ? (
@@ -145,13 +219,23 @@ export function NotebookView({ onOpenBook }: Props) {
             Select text in a PDF and use Save note in the AI pane.
           </span>
         </div>
+      ) : filteredNotes.length === 0 ? (
+        <div className="library-empty">
+          <strong>No matching notes.</strong>
+          <span>Try another search term or tag.</span>
+        </div>
       ) : (
         <div className="notebook-list">
-          {notes.map((note) => (
+          {filteredNotes.map((note) => (
             <NoteCard
               key={note.id}
               note={note}
               onOpenBook={onOpenBook}
+              onDelete={(noteId) =>
+                setNotes((items) =>
+                  items.filter((item) => item.id !== noteId),
+                )
+              }
             />
           ))}
         </div>

@@ -1713,3 +1713,68 @@ button { cursor: pointer; }
     max-height: none;
   }
 }
+
+
+/* Notebook search, tags, and lifecycle controls */
+
+.notebook-header {
+  align-items: end;
+}
+
+.notebook-search {
+  flex: 0 0 min(320px, 35vw);
+}
+
+.notebook-card-actions {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.danger-button {
+  padding: 7px 9px;
+  font-size: 9px;
+  color: #914950;
+  background: #fae9eb;
+  border: 0;
+  border-radius: 9px;
+}
+
+.note-tags-field {
+  display: grid;
+  gap: 5px;
+}
+
+.note-tags-field > span {
+  font-size: 9px;
+  font-weight: 800;
+  color: #777d8b;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.note-tags-field input {
+  width: 100%;
+  padding: 9px 10px;
+  color: #3f4452;
+  background: #fafafc;
+  border: 1px solid #dfe1e7;
+  border-radius: 9px;
+  outline: none;
+}
+
+.note-tags-field small {
+  color: #9a9eaa;
+}
+
+@media (max-width: 760px) {
+  .notebook-search {
+    flex: none;
+    width: 100%;
+  }
+
+  .notebook-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
