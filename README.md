@@ -6,20 +6,25 @@ The book remains the primary reading surface. AI assistance sits beside it and s
 
 ## What works now
 
-The current desktop build already includes a usable PDF-first vertical slice:
+The current desktop build now includes PDF, EPUB, and Kindle-family reading flows rather than only a PDF-first prototype:
 
 - Tauri 2 + React + TypeScript + Rust desktop shell
 - local SQLite bookshelf
+- bookshelf favorites, finished state, search, recent filter, covers, and reading progress
 - open books through the native file picker
 - drag supported ebook files into the application
-- real PDF.js rendering
+- real PDF.js rendering with metadata, contents navigation, protected-PDF handling, lazy rendering, and quote-recoverable highlights
 - continuous multi-page PDF reading
 - zoom controls
 - selectable PDF text layer
 - reading-position persistence and restore
 - persistent user highlights
+- EPUB.js reading with CFI position/highlights, typography controls, AI assistance, and Notebook anchors
+- MOBI/AZW/AZW3 reading with local chapter navigation, highlights, AI assistance, and Notebook anchors
 - versioned PDF text anchors containing page, exact quote, quote context, and normalized highlight rectangles
 - local Ollama model discovery
+- automatic difficult-word and phrase detection with A2/B1/B2/C1 reader levels
+- Known / Remove / Difficult feedback and the first personalized reading profile
 - automatic preference for an installed Qwen 3.5/Qwen model when no model was chosen
 - contextual explanation of selected PDF text
 - grammar/structure analysis of selected text
@@ -27,6 +32,8 @@ The current desktop build already includes a usable PDF-first vertical slice:
 - double-click sentence selection with automatic grammar/structure analysis
 - persistent Notebook entries containing source text, AI explanation, and editable user notes
 - provider registry covering major local, global-cloud, and China-cloud AI families
+- secure cloud/provider credentials in the native OS credential store
+- per-task local/cloud routing, privacy modes, streaming responses, and multimodal region analysis
 
 The first live AI path is intentionally local: Ollama at `http://127.0.0.1:11434`.
 
