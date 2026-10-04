@@ -126,6 +126,8 @@ async function persistNativeTransferEvent(
 ): Promise<void> {
   try {
     if (event.state === "downloaded") {
+      const current = await getTransferJob(event.jobId);
+
       await updateTransferJob(event.jobId, {
         state: "downloaded",
         progress: 1,
@@ -134,6 +136,13 @@ async function persistNativeTransferEvent(
         downloadRate: event.downloadRate,
         temporaryPath: event.tempPath,
         error: null,
+        resumeData: {
+          ...(current?.resumeData ?? {}),
+          detectedFormat: event.detectedFormat,
+          finalUrl: event.finalUrl,
+          contentType: event.contentType,
+          fileName: event.fileName,
+        },
       });
       dispatchTransferUpdated(event.jobId);
 
