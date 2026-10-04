@@ -11,6 +11,18 @@ import {
 } from "../../core/resources/acquisition";
 import { getResourceNativeCapabilities } from "../../core/resources/native";
 import {
+  cancelTorrentDownload,
+  discardTorrentTransfer,
+  inspectTorrent,
+  pauseTorrentDownload,
+  prepareTorrentAcquisition,
+  resumeTorrentTransfer,
+  startPreparedTorrentAcquisition,
+} from "../../core/resources/torrentAcquisition";
+import type {
+  TorrentPreviewResult,
+} from "../../core/resources/torrentTransport";
+import {
   fetchOpdsCatalog,
   searchOpdsCatalog,
   type OpdsEntry,
@@ -199,6 +211,10 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<ResourceNativeCapabilities | null>(null);
   const [httpPreparation, setHttpPreparation] =
     useState<HttpAcquisitionPreparation | null>(null);
+  const [torrentPreview, setTorrentPreview] =
+    useState<TorrentPreviewResult | null>(null);
+  const [torrentSelectedFileIndex, setTorrentSelectedFileIndex] =
+    useState<number | null>(null);
   const [networkBusy, setNetworkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -291,9 +307,87 @@ export function ResourceHubView({ onOpenBook }: Props) {
     const next = classifyResourceInput(input);
     setClassification(next);
     setHttpPreparation(null);
+    setTorrentPreview(null);
+    setTorrentSelectedFileIndex(null);
     setMessage(
       "Classification only — no network request was sent.",
     );
+  }
+
+  async function previewCurrentTorrent() {
+    if (
+      !classification ||
+      (classification.kind !== "magnet" &&
+        classification.kind !== "torrent")
+    ) {
+      return;
+    }
+
+    setNetworkBusy(true);
+    setMessage("");
+
+    try {
+      const preview = await inspectTorrent(
+        classification.normalizedInput,
+      );
+      setTorrentPreview(preview);
+
+      const firstBook = preview.files.find(
+        (file) => file.bookCandidate,
+      );
+      setTorrentSelectedFileIndex(firstBook?.index ?? null);
+      setMessage(
+        "Torrent metadata resolved. No book file has been downloaded yet.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to resolve torrent metadata.",
+      );
+    } finally {
+      setNetworkBusy(false);
+    }
+  }
+
+  async function downloadSelectedTorrentFile() {
+    if (
+      !classification ||
+      !torrentPreview ||
+      torrentSelectedFileIndex === null
+    ) {
+      return;
+    }
+
+    const selectedFile = torrentPreview.files.find(
+      (file) => file.index === torrentSelectedFileIndex,
+    );
+    if (!selectedFile) return;
+
+    setNetworkBusy(true);
+    setMessage("");
+
+    try {
+      const preparation = await prepareTorrentAcquisition(
+        classification.normalizedInput,
+        torrentPreview,
+        selectedFile,
+      );
+      await startPreparedTorrentAcquisition(preparation);
+      setMessage(
+        "BitTorrent download started. It continues outside the Resources page.",
+      );
+      setTab("downloads");
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to start BitTorrent download.",
+      );
+    } finally {
+      setNetworkBusy(false);
+    }
   }
 
   async function probeCurrentHttp() {
@@ -548,13 +642,29 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setMessage("");
 
     try {
+      const torrent = job.providerId === "bittorrent";
+
       if (action === "pause") {
-        await pauseHttpDownload(job.id);
+        if (torrent) {
+          await pauseTorrentDownload(job.id);
+        } else {
+          await pauseHttpDownload(job.id);
+        }
       } else if (action === "cancel") {
-        await cancelHttpDownload(job.id);
+        if (torrent) {
+          await cancelTorrentDownload(job.id);
+        } else {
+          await cancelHttpDownload(job.id);
+        }
       } else if (action === "discard") {
-        await discardHttpTransfer(job);
+        if (torrent) {
+          await discardTorrentTransfer(job);
+        } else {
+          await discardHttpTransfer(job);
+        }
         await refreshResourceCore();
+      } else if (torrent) {
+        await resumeTorrentTransfer(job);
       } else {
         await resumeHttpTransfer(job);
       }
@@ -569,6 +679,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
   const canProbeHttp = classification?.kind === "http";
   const canBrowseOpds = classification?.kind === "opds";
+  const canPreviewTorrent =
+    classification?.kind === "magnet" ||
+    classification?.kind === "torrent";
 
   return (
     <div className="page resource-hub-page">
