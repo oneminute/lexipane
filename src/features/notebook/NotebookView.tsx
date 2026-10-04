@@ -238,6 +238,8 @@ export function NotebookView({ onOpenBook }: Props) {
   const [assets, setAssets] = useState<NoteAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [bookFilter, setBookFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
 
@@ -266,17 +268,55 @@ export function NotebookView({ onOpenBook }: Props) {
     };
   }, []);
 
+  const filterBooks = useMemo(() => {
+    const values = new Map<string, string>();
+
+    for (const note of notes) {
+      if (!note.book_id) continue;
+      values.set(
+        note.book_id,
+        note.book_title || "Untitled book",
+      );
+    }
+
+    return Array.from(values.entries())
+      .map(([id, title]) => ({ id, title }))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [notes]);
+
+  const filterTags = useMemo(() => {
+    const tags = new Set<string>();
+
+    for (const note of notes) {
+      for (const tag of parseNoteTags(note.tags_json)) {
+        tags.add(tag);
+      }
+    }
+
+    return Array.from(tags).sort((a, b) => a.localeCompare(b));
+  }, [notes]);
+
   const filteredNotes = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
-    if (!normalized) return notes;
 
     return notes.filter((note) => {
+      if (bookFilter && note.book_id !== bookFilter) {
+        return false;
+      }
+
+      const tags = parseNoteTags(note.tags_json);
+      if (tagFilter && !tags.includes(tagFilter)) {
+        return false;
+      }
+
+      if (!normalized) return true;
+
       const haystack = [
         note.book_title,
         note.source_text,
         note.ai_content,
         note.user_content,
-        ...parseNoteTags(note.tags_json),
+        ...tags,
       ]
         .filter(Boolean)
         .join(" ")
@@ -284,7 +324,7 @@ export function NotebookView({ onOpenBook }: Props) {
 
       return haystack.includes(normalized);
     });
-  }, [notes, query]);
+  }, [bookFilter, notes, query, tagFilter]);
 
   async function exportNotebook() {
     if (filteredNotes.length === 0 || exporting) return;
@@ -329,12 +369,44 @@ export function NotebookView({ onOpenBook }: Props) {
             placeholder="Search notes, books, or tags"
             onChange={(event) => setQuery(event.target.value)}
           />
+
+          <select
+            className="notebook-filter-select"
+            value={bookFilter}
+            onChange={(event) => setBookFilter(event.target.value)}
+          >
+            <option value="">All books</option>
+            {filterBooks.map((book) => (
+              <option key={book.id} value={book.id}>
+                {book.title}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="notebook-filter-select"
+            value={tagFilter}
+            onChange={(event) => setTagFilter(event.target.value)}
+          >
+            <option value="">All tags</option>
+            {filterTags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
+
           <button
             className="primary-button"
             disabled={filteredNotes.length === 0 || exporting}
             onClick={() => void exportNotebook()}
           >
-            {exporting ? "Exporting…" : "Export Markdown"}
+            {exporting
+              ? "Exporting…"
+              : "Export " +
+                filteredNotes.length +
+                " Markdown note" +
+                (filteredNotes.length === 1 ? "" : "s")}
           </button>
         </div>
       </header>

@@ -2966,3 +2966,25 @@ button { cursor: pointer; }
   color: #91525a;
   background: #fff0f1;
 }
+
+
+.notebook-filter-select {
+  min-height: 38px;
+  min-width: 130px;
+  padding: 7px 9px;
+  color: #4d5361;
+  background: #f8f9fb;
+  border: 1px solid #dfe1e7;
+  border-radius: 9px;
+  outline: none;
+}
+
+@media (max-width: 980px) {
+  .notebook-header-actions {
+    flex-wrap: wrap;
+  }
+
+  .notebook-filter-select {
+    flex: 1 1 150px;
+  }
+}

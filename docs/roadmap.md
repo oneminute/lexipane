@@ -131,10 +131,11 @@ Implemented:
 - durable content-addressed region/image attachments in app data
 - note-asset persistence and Notebook image rendering
 - shared attachment files retained until the final referencing note is deleted
+- batch Markdown export of the current Notebook view
+- explicit book and tag filters for targeted Markdown export
 
 Next:
 
-- batch/tag-filtered Markdown export
 - Notebook asset cleanup/diagnostic tooling
 
 ## Phase 4 — EPUB
