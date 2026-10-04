@@ -89,6 +89,12 @@ Reader interaction hardening is live on `main`, including:
 - structured-output recovery/fallback work for local models;
 - viewport-contained Reader scrolling.
 
+## Development status history
+
+| Date | Task | Final status | Validation / evidence | Next |
+| --- | --- | --- | --- | --- |
+| 2026-10-04 | PLAN-001 — Establish authoritative development plan and Resource Hub roadmap | COMPLETE | Added `docs/development-plan.md`, root `AGENTS.md`, README workflow entry, and Resource Hub roadmap summary. Documentation-only change; no runtime validation required. | RESOURCE-001 |
+
 ## Next selected task
 
 **RESOURCE-001 — Resource Core**
