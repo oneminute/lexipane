@@ -374,6 +374,13 @@ export function ReaderView({
     setPositionLoaded(false);
     setSelection(null);
     setSentenceNavigation(null);
+    setProgressNavigation(null);
+    setProgressDraft(null);
+    setPeekOrigin(null);
+    peekOriginRef.current = null;
+    setBookmarks([]);
+    setBookmarksOpen(false);
+    setBookmarkStatus("idle");
     setAiResult(null);
     setAiError(null);
     setQuestion("");
@@ -391,6 +398,7 @@ export function ReaderView({
     setRegionCapture(null);
     setImagePreview(null);
     setEpubInitialCfi(null);
+    setEpubCurrentCfi(null);
     setEpubProgress(null);
     setEpubMetadata({ title: null, author: null });
     setEpubOutline([]);
@@ -404,6 +412,7 @@ export function ReaderView({
     setEpubDifficultyBusy(false);
     setEpubDifficultyError(null);
     setKindleInitialChapterId(null);
+    setKindleCurrentChapterId(null);
     setKindleProgress(null);
     setKindleMetadata({ title: null, author: null });
     setKindleOutline([]);
@@ -505,6 +514,30 @@ export function ReaderView({
   useEffect(() => {
     annotationsRef.current = annotations;
   }, [annotations]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!bookPath) {
+      setBookmarks([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void listReaderBookmarks(bookPath)
+      .then((items) => {
+        if (!cancelled) setBookmarks(items);
+      })
+      .catch((error) => {
+        console.error("Unable to load reader bookmarks", error);
+        if (!cancelled) setBookmarks([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookPath]);
 
   useEffect(() => {
     let cancelled = false;
