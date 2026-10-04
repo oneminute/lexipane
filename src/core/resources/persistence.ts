@@ -725,3 +725,77 @@ export async function resetTransferJobForRetry(
     completedAt: null,
   });
 }
+
+
+export async function recordResourceContentHash(
+  resourceItemId: string | undefined,
+  fileId: string | undefined,
+  sha256: string,
+): Promise<void> {
+  if (!isTauri() || !resourceItemId || !sha256.trim()) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  const itemRows = await db.select<Array<{ identifiers_json: string }>>(
+    "SELECT identifiers_json FROM resource_items WHERE id = $1 LIMIT 1",
+    [resourceItemId],
+  );
+  const itemIdentifiers = parseJson<Record<string, unknown>>(
+    itemRows[0]?.identifiers_json ?? "{}",
+    {},
+  );
+  itemIdentifiers.sha256 = sha256.trim().toLowerCase();
+
+  await db.execute(
+    "UPDATE resource_items SET identifiers_json = $2, updated_at = $3 WHERE id = $1",
+    [
+      resourceItemId,
+      JSON.stringify(itemIdentifiers),
+      new Date().toISOString(),
+    ],
+  );
+
+  if (!fileId) return;
+
+  const fileRows = await db.select<Array<{ identifiers_json: string }>>(
+    "SELECT identifiers_json FROM resource_files WHERE id = $1 LIMIT 1",
+    [fileId],
+  );
+  const fileIdentifiers = parseJson<Record<string, unknown>>(
+    fileRows[0]?.identifiers_json ?? "{}",
+    {},
+  );
+  fileIdentifiers.sha256 = sha256.trim().toLowerCase();
+
+  await db.execute(
+    "UPDATE resource_files SET identifiers_json = $2 WHERE id = $1",
+    [fileId, JSON.stringify(fileIdentifiers)],
+  );
+}
+
+export async function appendResourceHistory(
+  resourceItemId: string | undefined,
+  providerId: string | undefined,
+  action: string,
+  details: Record<string, unknown> = {},
+): Promise<void> {
+  if (!isTauri()) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  await db.execute(
+    "INSERT INTO resource_history " +
+      "(id, resource_item_id, provider_id, action, details_json, created_at) " +
+      "VALUES ($1,$2,$3,$4,$5,$6)",
+    [
+      createResourceRecordId("history"),
+      resourceItemId ?? null,
+      providerId ?? null,
+      action,
+      JSON.stringify(details),
+      new Date().toISOString(),
+    ],
+  );
+}
