@@ -36,6 +36,7 @@ interface OllamaChatResponse {
   message?: {
     role: string;
     content: string;
+    thinking?: string;
   };
   prompt_eval_count?: number;
   eval_count?: number;
@@ -211,6 +212,10 @@ export class OllamaProvider implements AIProvider {
         messages: request.messages,
         stream: false,
         format: request.responseFormat === "json" ? "json" : undefined,
+        think:
+          typeof request.thinking === "boolean"
+            ? request.thinking
+            : undefined,
         options:
           typeof request.temperature === "number"
             ? { temperature: request.temperature }
@@ -248,6 +253,10 @@ export class OllamaProvider implements AIProvider {
         messages: request.messages,
         stream: true,
         format: request.responseFormat === "json" ? "json" : undefined,
+        think:
+          typeof request.thinking === "boolean"
+            ? request.thinking
+            : undefined,
         options:
           typeof request.temperature === "number"
             ? { temperature: request.temperature }
