@@ -7,7 +7,7 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     kind: "transport",
     description: "Direct web resources and future resumable downloads.",
     builtin: true,
-    live: false,
+    live: true,
     capabilities: {
       resolve: true,
       preview: true,
