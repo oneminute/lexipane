@@ -2,6 +2,10 @@
 
 LexiPane is being built as vertical slices. Each phase should leave the application usable instead of adding disconnected infrastructure.
 
+> Execution note: `docs/development-plan.md` is the authoritative development
+> plan and active status ledger. Every development task must update its Current
+> Development Status before implementation and after validation.
+
 ## Current status
 
 Desktop development has moved beyond the prototype stage. The current main branch already contains live PDF, EPUB, MOBI/AZW/AZW3 reading paths, local/cloud AI routing, persistent annotations, Notebook, region analysis, secure provider credentials, streaming text responses, bookshelf progress, and the first personal reading model signals.
@@ -193,6 +197,34 @@ Next:
 
 - wider KF8/AZW3 compatibility testing
 - better resource handling for unusual books
+
+## Phase 8 — Resource Acquisition Platform / Resource Hub
+
+Status: **ready to begin — RESOURCE-001 selected**
+
+Purpose:
+
+- unify resource discovery, preview, acquisition, verification, ingestion, and provenance;
+- treat ED2K, BitTorrent, cloud storage, HTTP, OPDS, WebDAV, and future sources as providers behind common contracts;
+- keep discovery separate from transfer;
+- route acquired files through validation, content identity, de-duplication, and the existing Library pipeline;
+- keep OAuth/service credentials in native secure storage rather than SQLite;
+- expose explicit P2P privacy/network controls.
+
+Milestones:
+
+- **RESOURCE-001 — Resource Core:** shared domain model, provider capabilities, resolver/classification, SQLite persistence, Resources UI shell, Rust/Tauri resource boundary.
+- **RESOURCE-002 — HTTP + OPDS:** first complete discovery/download/ingestion vertical slice.
+- **RESOURCE-003 — Cloud accounts:** Google Drive, Dropbox, OneDrive/SharePoint.
+- **RESOURCE-004 — Download Manager hardening:** persistent queue, pause/resume/cancel, restart recovery, disk/temp lifecycle.
+- **RESOURCE-005 — BitTorrent:** magnet/torrent metadata, file selection, native transfer engine, explicit P2P settings.
+- **RESOURCE-006 — ED2K:** normalized search/acquisition through an adapter/sidecar before any native ED2K rewrite.
+- **RESOURCE-007 — Advanced Preview:** progressive/partial preview where technically safe and supported.
+- **RESOURCE-008 — Federated Search:** parallel provider search, result merge, source aggregation, duplicate detection.
+- **RESOURCE-009 — Extended Providers:** WebDAV/Nextcloud, S3, SFTP, Calibre/OPDS variants, Zotero, public/open catalogs, academic sources.
+- **RESOURCE-010 — Smart Acquisition:** source selection by identity, reliability, availability, format, privacy, and transfer characteristics.
+
+Detailed architecture, persistence plan, security baseline, acceptance criteria, and the live task status are maintained in `docs/development-plan.md`.
 
 ## Phase 6 — Mobile
 
