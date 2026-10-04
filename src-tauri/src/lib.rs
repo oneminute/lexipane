@@ -14,6 +14,8 @@ pub fn run() {
             library_files::book_file_sha256,
             library_files::check_book_files,
             library_files::copy_book_to_managed_library,
+            library_files::delete_managed_book_copy,
+            library_files::cleanup_managed_library,
             ocr::local_ocr_status,
             ocr::ocr_image,
             secrets::secret_set,

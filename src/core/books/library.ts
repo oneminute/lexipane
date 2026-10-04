@@ -1,7 +1,12 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { initializeDatabase } from "../db/database";
 import { computeBookFileHash } from "./fileIdentity";
-import { copyBookToManagedLibrary } from "./managedLibrary";
+import {
+  cleanupManagedLibrary as cleanupManagedFiles,
+  copyBookToManagedLibrary,
+  deleteManagedBookCopy,
+  type ManagedCleanupResult,
+} from "./managedLibrary";
 import { getBookExtension } from "./openBook";
 
 export type BookReadingStatus = "reading" | "finished";
@@ -147,6 +152,15 @@ export async function relinkLibraryBook(
     throw new Error("The library book no longer exists.");
   }
 
+  if (book.managed_copy === 1 && path === book.file_path) {
+    throw new Error(
+      "Choose an external copy of this book, not the LexiPane-managed file itself.",
+    );
+  }
+
+  const previousManagedPath =
+    book.managed_copy === 1 ? book.file_path : null;
+
   const fileHash = await computeBookFileHash(path);
   if (!fileHash) {
     throw new Error("Unable to identify the selected book file.");
@@ -186,6 +200,15 @@ export async function relinkLibraryBook(
 
   if (!rows[0]) {
     throw new Error("Relinked book could not be reloaded.");
+  }
+
+  if (previousManagedPath) {
+    await deleteManagedBookCopy(previousManagedPath).catch((error) => {
+      console.warn(
+        "Book was relinked, but the old managed copy could not be deleted",
+        error,
+      );
+    });
   }
 
   return rows[0];
@@ -276,6 +299,26 @@ export async function backfillLibraryBookHashes(
   }
 
   return updated;
+}
+
+export async function cleanupManagedLibraryStorage(): Promise<ManagedCleanupResult> {
+  if (!isTauri()) {
+    return {
+      filesRemoved: 0,
+      bytesRemoved: 0,
+    };
+  }
+
+  const db = await initializeDatabase();
+  if (!db) {
+    throw new Error("Database is unavailable.");
+  }
+
+  const rows = await db.select<Array<{ file_path: string }>>(
+    "SELECT file_path FROM books WHERE managed_copy = 1",
+  );
+
+  return cleanupManagedFiles(rows.map((row) => row.file_path));
 }
 
 export async function listLibraryBooks(): Promise<LibraryBook[]> {

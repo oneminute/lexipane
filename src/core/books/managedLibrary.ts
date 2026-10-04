@@ -14,3 +14,32 @@ export async function copyBookToManagedLibrary(
 
   return invoke<ManagedBookCopy>("copy_book_to_managed_library", { path });
 }
+
+
+export interface ManagedCleanupResult {
+  filesRemoved: number;
+  bytesRemoved: number;
+}
+
+export async function deleteManagedBookCopy(
+  path: string,
+): Promise<boolean> {
+  if (!isTauri()) return false;
+
+  return invoke<boolean>("delete_managed_book_copy", { path });
+}
+
+export async function cleanupManagedLibrary(
+  keepPaths: string[],
+): Promise<ManagedCleanupResult> {
+  if (!isTauri()) {
+    return {
+      filesRemoved: 0,
+      bytesRemoved: 0,
+    };
+  }
+
+  return invoke<ManagedCleanupResult>("cleanup_managed_library", {
+    keepPaths,
+  });
+}

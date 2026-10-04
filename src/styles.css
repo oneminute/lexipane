@@ -2895,3 +2895,18 @@ button { cursor: pointer; }
   background: #e1f3ea;
   border-radius: 999px;
 }
+
+
+.library-header-actions {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+@media (max-width: 760px) {
+  .library-header-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   backfillLibraryBookHashes,
+  cleanupManagedLibraryStorage,
   copyLibraryBookToManagedStorage,
   listLibraryBooks,
   relinkLibraryBook,
@@ -159,13 +160,44 @@ export function LibraryView({
       await relinkLibraryBook(book.id, path);
       await refreshBooks();
       setMessage(
-        "Relinked “" + (book.title || "Untitled") + "” to its new location.",
+        book.managed_copy === 1
+          ? "Switched “" +
+              (book.title || "Untitled") +
+              "” back to the verified external file and removed the managed copy."
+          : "Relinked “" +
+              (book.title || "Untitled") +
+              "” to its new location.",
       );
     } catch (error) {
       setMessage(
         error instanceof Error
           ? error.message
           : "Unable to relink this book.",
+      );
+    }
+  }
+
+  async function cleanManagedStorage() {
+    setMessage("");
+
+    try {
+      const result = await cleanupManagedLibraryStorage();
+      const megabytes = result.bytesRemoved / (1024 * 1024);
+
+      setMessage(
+        result.filesRemoved === 0
+          ? "Managed storage is already clean."
+          : "Removed " +
+              result.filesRemoved +
+              " orphan managed file(s), freeing " +
+              megabytes.toFixed(megabytes >= 10 ? 0 : 1) +
+              " MB.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to clean managed storage.",
       );
     }
   }
@@ -181,9 +213,19 @@ export function LibraryView({
             reading progress, annotations, AI assistance, and Notebook.
           </p>
         </div>
-        <button className="primary-button" onClick={onOpenBook}>
-          Open book
-        </button>
+        <div className="library-header-actions">
+          {books.some((book) => book.managed_copy === 1) && (
+            <button
+              className="ghost-button"
+              onClick={() => void cleanManagedStorage()}
+            >
+              Clean managed storage
+            </button>
+          )}
+          <button className="primary-button" onClick={onOpenBook}>
+            Open book
+          </button>
+        </div>
       </header>
 
       <div className="library-toolbar">
@@ -324,6 +366,15 @@ export function LibraryView({
                     onClick={() => void makeManagedCopy(book)}
                   >
                     ⇩
+                  </button>
+                )}
+                {!missing && book.managed_copy === 1 && (
+                  <button
+                    aria-label="Use an external copy instead"
+                    title="Switch back to an external copy"
+                    onClick={() => void relinkBook(book)}
+                  >
+                    ↗
                   </button>
                 )}
                 {missing && (
