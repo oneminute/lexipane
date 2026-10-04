@@ -219,6 +219,13 @@ export function ReaderView({
     useState<SentenceNavigationRequest | null>(null);
   const sentenceNavigationTokenRef = useRef(0);
   const wordSelectionTimerRef = useRef<number | null>(null);
+  const runAiRef = useRef<
+    ((
+      mode: ReadingAnalysisMode,
+      readerQuestion?: string,
+      overrideSelection?: ActiveReaderSelection,
+    ) => Promise<void>) | null
+  >(null);
   const [aiResult, setAiResult] = useState<AiResultState | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
@@ -770,22 +777,54 @@ export function ReaderView({
   const handleEpubSelection = useCallback(
     (selected: EpubSelection) => {
       setEpubSelectionCfi(selected.cfi);
-      const normalizedContext = normalizedText(selected.context).slice(0, 9000);
-      if (normalizedContext) {
-        setEpubContext(normalizedContext);
-        setEpubContextKey(stableHash(normalizedContext));
-      }
       setSelection({
         text: selected.text,
         context: selected.context,
         page: 0,
         rects: [],
+        kind: "manual",
       });
       setAiResult(null);
       setAiError(null);
       setQuestion("");
       setNoteStatus("idle");
       setHighlightStatus("idle");
+    },
+    [],
+  );
+
+  const handleEpubWordSelection = useCallback(
+    (selected: EpubSelection) => {
+      const nextSelection: ActiveReaderSelection = {
+        text: selected.text,
+        context: selected.context,
+        page: 0,
+        rects: [],
+        kind: "word",
+      };
+
+      setEpubSelectionCfi(selected.cfi);
+      applyReaderSelection(nextSelection);
+      void runAiRef.current?.("explain", undefined, nextSelection);
+    },
+    [],
+  );
+
+  const handleEpubSentenceSelection = useCallback(
+    (selected: EpubSentenceSelection) => {
+      const nextSelection: ActiveReaderSelection = {
+        text: selected.text,
+        context: selected.context,
+        page: 0,
+        rects: [],
+        kind: "sentence",
+        sentenceIndex: selected.sentenceIndex,
+        sentenceCount: selected.sentenceCount,
+      };
+
+      setEpubSelectionCfi(selected.cfi);
+      applyReaderSelection(nextSelection);
+      void runAiRef.current?.("grammar", undefined, nextSelection);
     },
     [],
   );
@@ -858,26 +897,54 @@ export function ReaderView({
   const handleKindleSelection = useCallback(
     (selected: KindleSelection) => {
       setKindleSelectionChapterId(selected.chapterId);
-
-      const normalizedContext = normalizedText(
-        selected.context,
-      ).slice(0, 9000);
-      if (normalizedContext) {
-        setKindleContext(normalizedContext);
-        setKindleContextKey(stableHash(normalizedContext));
-      }
-
       setSelection({
         text: selected.text,
         context: selected.context,
         page: 0,
         rects: [],
+        kind: "manual",
       });
       setAiResult(null);
       setAiError(null);
       setQuestion("");
       setNoteStatus("idle");
       setHighlightStatus("idle");
+    },
+    [],
+  );
+
+  const handleKindleWordSelection = useCallback(
+    (selected: KindleSelection) => {
+      const nextSelection: ActiveReaderSelection = {
+        text: selected.text,
+        context: selected.context,
+        page: 0,
+        rects: [],
+        kind: "word",
+      };
+
+      setKindleSelectionChapterId(selected.chapterId);
+      applyReaderSelection(nextSelection);
+      void runAiRef.current?.("explain", undefined, nextSelection);
+    },
+    [],
+  );
+
+  const handleKindleSentenceSelection = useCallback(
+    (selected: KindleSentenceSelection) => {
+      const nextSelection: ActiveReaderSelection = {
+        text: selected.text,
+        context: selected.context,
+        page: 0,
+        rects: [],
+        kind: "sentence",
+        sentenceIndex: selected.sentenceIndex,
+        sentenceCount: selected.sentenceCount,
+      };
+
+      setKindleSelectionChapterId(selected.chapterId);
+      applyReaderSelection(nextSelection);
+      void runAiRef.current?.("grammar", undefined, nextSelection);
     },
     [],
   );
@@ -1535,6 +1602,8 @@ export function ReaderView({
       setAiBusy(false);
     }
   }
+
+  runAiRef.current = runAi;
 
   async function saveCurrentHighlight() {
     if (
