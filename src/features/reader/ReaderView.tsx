@@ -2177,8 +2177,8 @@ export function ReaderView({
 
           <div
             className={regionMode ? "document-stage region-mode" : "document-stage"}
-            onMouseUp={captureSelection}
-            onDoubleClick={captureSentence}
+            onMouseDown={handleDocumentMouseDown}
+            onMouseUp={handleDocumentMouseUp}
             onPointerDown={beginRegionSelection}
             onPointerMove={moveRegionSelection}
             onPointerUp={finishRegionSelection}
@@ -2225,6 +2225,14 @@ export function ReaderView({
                 scale={scale}
                 initialPage={initialPage}
                 annotations={annotations}
+                activeSentence={
+                  selection?.kind === "sentence" && selection.page > 0
+                    ? {
+                        page: selection.page,
+                        rects: selection.rects,
+                      }
+                    : null
+                }
                 onDocumentLoaded={handleDocumentLoaded}
                 onCurrentPageChange={handleCurrentPageChange}
                 onPageTextReady={handlePageTextReady}
@@ -2243,13 +2251,14 @@ export function ReaderView({
                 initialCfi={epubInitialCfi}
                 navigationTarget={epubNavigationTarget}
                 annotations={epubAnnotations}
-                autoTerms={epubAutoTerms}
+                sentenceNavigation={sentenceNavigation}
                 onMetadataReady={handleEpubMetadataReady}
                 onOutlineReady={handleEpubOutlineReady}
                 onCoverReady={handleEpubCoverReady}
                 onRelocated={handleEpubRelocated}
-                onContextReady={handleEpubContextReady}
                 onSelection={handleEpubSelection}
+                onWordSelection={handleEpubWordSelection}
+                onSentenceSelection={handleEpubSentenceSelection}
                 onImageOpen={handleReaderImageOpen}
               />
             )}
@@ -2262,13 +2271,14 @@ export function ReaderView({
                 initialChapterId={kindleInitialChapterId}
                 navigationChapterId={kindleNavigationChapterId}
                 annotations={kindleAnnotations}
-                autoTerms={kindleAutoTerms}
+                sentenceNavigation={sentenceNavigation}
                 onMetadataReady={handleKindleMetadataReady}
                 onOutlineReady={handleKindleOutlineReady}
                 onCoverReady={handleKindleCoverReady}
                 onRelocated={handleKindleRelocated}
-                onContextReady={handleKindleContextReady}
                 onSelection={handleKindleSelection}
+                onWordSelection={handleKindleWordSelection}
+                onSentenceSelection={handleKindleSentenceSelection}
                 onImageOpen={handleReaderImageOpen}
               />
             )}
@@ -2318,7 +2328,15 @@ export function ReaderView({
                   ? "Chapter"
                   : "Continuous"}
             </span>
-            <span>{selection ? "Selection ready" : "Select text for AI"}</span>
+            <span>
+              {selection?.kind === "sentence"
+                ? "Sentence selected"
+                : selection?.kind === "word"
+                  ? "Word selected"
+                  : selection
+                    ? "Selection ready"
+                    : "Double-click a word · triple-click a sentence"}
+            </span>
           </footer>
         </section>
 
@@ -2326,7 +2344,7 @@ export function ReaderView({
           <header className="ai-pane-header">
             <div>
               <span className="eyebrow">AI Reading</span>
-              <strong>Context assistance</strong>
+              <strong>Sentence & word assistance</strong>
             </div>
             <div className="ai-pane-meta">
               <span>{readingLevel} reader</span>
@@ -2403,152 +2421,74 @@ export function ReaderView({
               </section>
             )}
 
-            <section className="assist-card auto-difficulty-card">
-              <div className="auto-difficulty-heading">
-                <div>
-                  <span className="assist-type yellow">Auto reading help</span>
-                  <h3>
-                    {isEpub
-                      ? "Current EPUB section"
-                      : isKindle
-                        ? "Current Kindle chapter"
-                        : "Page " + currentPage}
-                  </h3>
-                </div>
-                <small>{readingLevel}</small>
-              </div>
-
-              {currentPdfNeedsOcr && (
-                <div className="scanned-page-help">
-                  <strong>This page looks scanned.</strong>
-                  <span>
-                    {ocrStatus?.available
-                      ? "Run local OCR so reading assistance can use the page text without sending the page image to a cloud service."
-                      : "Local OCR is not installed. Tesseract can be installed locally, or you can use Region select with a vision-capable model."}
-                  </span>
-                  <button
-                    disabled={ocrBusy || !ocrStatus?.available}
-                    onClick={() => void ocrCurrentPdfPage()}
-                  >
-                    {ocrBusy ? "Running OCR…" : "OCR this page locally"}
-                  </button>
-                  {!ocrStatus?.available && (
-                    <small>
-                      Windows: winget install UB-Mannheim.TesseractOCR
-                    </small>
-                  )}
-                </div>
-              )}
-
-              {(isEpub
-                ? epubDifficultyBusy
-                : isKindle
-                  ? kindleDifficultyBusy
-                  : difficultyBusyPage === currentPage) && (
-                <div className="auto-difficulty-loading">
-                  <span className="pdf-spinner" />
-                  <span>Finding words and phrases that may slow you down…</span>
-                </div>
-              )}
-
-              {(isEpub
-                ? epubDifficultyError
-                : isKindle
-                  ? kindleDifficultyError
-                  : difficultyError) &&
-                (isEpub
-                  ? !epubDifficultyBusy
-                  : isKindle
-                    ? !kindleDifficultyBusy
-                    : difficultyBusyPage === null) && (
-                  <p className="auto-difficulty-error">
-                    {isEpub
-                      ? epubDifficultyError
-                      : isKindle
-                        ? kindleDifficultyError
-                        : difficultyError}
-                  </p>
-                )}
-
-              {(isEpub
-                ? !epubDifficultyBusy
-                : isKindle
-                  ? !kindleDifficultyBusy
-                  : difficultyBusyPage !== currentPage) &&
-                currentAutoTerms.length === 0 &&
-                !currentPdfNeedsOcr &&
-                !(isEpub
-                  ? epubDifficultyError
-                  : isKindle
-                    ? kindleDifficultyError
-                    : difficultyError) && (
-                  <p className="muted">
-                    No high-value reading obstacles were found in the current
-                    reading context.
-                  </p>
-                )}
-
-              {currentAutoTerms.length > 0 && (
-                <div className="auto-term-list">
-                  {currentAutoTerms.map((term) => (
-                    <article
-                      key={term.type + ":" + normalizeTerm(term.text)}
-                      className={"auto-term " + term.type}
-                    >
-                      <div className="auto-term-copy">
-                        <div>
-                          <strong>{term.text}</strong>
-                          <span>
-                            {term.type}
-                            {term.cefr ? " · " + term.cefr : ""}
-                          </span>
-                        </div>
-                        <p>{term.meaning}</p>
-                        {term.reason && <small>{term.reason}</small>}
-                      </div>
-                      <div className="auto-term-actions">
-                        <button onClick={() => explainAutoTerm(term)}>
-                          Explain
-                        </button>
-                        <button
-                          onClick={() => void setAutoTermFeedback(term, "known")}
-                        >
-                          Known
-                        </button>
-                        <button
-                          onClick={() =>
-                            void setAutoTermFeedback(term, "suppressed")
-                          }
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-
             {selection ? (
               <section className="assist-card selected-source-card">
                 <div className="selection-card-heading">
-                  <span className="assist-type blue">Selected text</span>
+                  <span className="assist-type blue">
+                    {selection.kind === "sentence"
+                      ? "Current sentence"
+                      : selection.kind === "word"
+                        ? "Selected word"
+                        : "Selected text"}
+                  </span>
                   {selection.page && <small>Page {selection.page}</small>}
                 </div>
                 <blockquote>{selection.text}</blockquote>
+
+                {selection.kind === "sentence" && (
+                  <div className="sentence-navigation">
+                    <button
+                      type="button"
+                      disabled={
+                        aiBusy ||
+                        selection.sentenceIndex === undefined ||
+                        selection.sentenceIndex <= 0
+                      }
+                      onClick={() => navigateSentence(-1)}
+                    >
+                      ← Previous sentence
+                    </button>
+                    <span>
+                      {selection.sentenceIndex !== undefined &&
+                      selection.sentenceCount
+                        ? selection.sentenceIndex + 1 +
+                          " / " +
+                          selection.sentenceCount
+                        : "Sentence"}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={
+                        aiBusy ||
+                        selection.sentenceIndex === undefined ||
+                        selection.sentenceCount === undefined ||
+                        selection.sentenceIndex >=
+                          selection.sentenceCount - 1
+                      }
+                      onClick={() => navigateSentence(1)}
+                    >
+                      Next sentence →
+                    </button>
+                  </div>
+                )}
+
                 <div className="assist-actions">
-                  <button
-                    disabled={aiBusy}
-                    onClick={() => void runAi("explain")}
-                  >
-                    Explain
-                  </button>
-                  <button
-                    disabled={aiBusy}
-                    onClick={() => void runAi("grammar")}
-                  >
-                    Analyze grammar
-                  </button>
+                  {selection.kind !== "sentence" && (
+                    <button
+                      disabled={aiBusy}
+                      onClick={() => void runAi("explain")}
+                    >
+                      Explain
+                    </button>
+                  )}
+                  {selection.kind !== "word" && (
+                    <button
+                      disabled={aiBusy}
+                      onClick={() => void runAi("grammar")}
+                    >
+                      Analyze sentence
+                    </button>
+                  )}
                   <button
                     disabled={
                       aiBusy ||
@@ -2596,11 +2536,13 @@ export function ReaderView({
             ) : (
               <section className="assist-card reader-ai-empty">
                 <span className="assist-type yellow">Reading context</span>
-                <h3>Select text while reading.</h3>
+                <h3>Choose a sentence or a word while reading.</h3>
                 <p>
-                  Select a word, phrase, or sentence for contextual help.
-                  In PDF, double-click inside a sentence to run grammar
-                  analysis automatically.
+                  Triple-click a sentence to highlight it and automatically
+                  show its translation, structure, notable features, and
+                  contextual word meanings. Double-click a word to translate
+                  and explain that word in context. Drag-selection is still
+                  available for phrases or custom text.
                 </p>
               </section>
             )}
