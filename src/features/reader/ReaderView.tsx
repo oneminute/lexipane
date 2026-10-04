@@ -156,6 +156,14 @@ interface ActiveReaderSelection extends ReadingSelection {
   sentenceCount?: number;
 }
 
+interface ActiveSentenceState extends ActiveReaderSelection {
+  kind: "sentence";
+  sentenceIndex: number;
+  sentenceCount: number;
+  epubCfi?: string;
+  kindleChapterId?: string;
+}
+
 interface SentenceNavigationRequest {
   token: number;
   direction: -1 | 1;
@@ -226,6 +234,8 @@ export function ReaderView({
   const [positionLoaded, setPositionLoaded] = useState(false);
   const [selection, setSelection] =
     useState<ActiveReaderSelection | null>(null);
+  const [activeSentence, setActiveSentence] =
+    useState<ActiveSentenceState | null>(null);
   const [sentenceNavigation, setSentenceNavigation] =
     useState<SentenceNavigationRequest | null>(null);
   const sentenceNavigationTokenRef = useRef(0);
@@ -373,6 +383,7 @@ export function ReaderView({
     setInitialPage(null);
     setPositionLoaded(false);
     setSelection(null);
+    setActiveSentence(null);
     setSentenceNavigation(null);
     setProgressNavigation(null);
     setProgressDraft(null);
@@ -902,7 +913,7 @@ export function ReaderView({
 
   const handleEpubSentenceSelection = useCallback(
     (selected: EpubSentenceSelection) => {
-      const nextSelection: ActiveReaderSelection = {
+      const nextSentence: ActiveSentenceState = {
         text: selected.text,
         context: selected.context,
         page: 0,
@@ -910,11 +921,13 @@ export function ReaderView({
         kind: "sentence",
         sentenceIndex: selected.sentenceIndex,
         sentenceCount: selected.sentenceCount,
+        epubCfi: selected.cfi,
       };
 
       setEpubSelectionCfi(selected.cfi);
-      applyReaderSelection(nextSelection);
-      void runAiRef.current?.("grammar", undefined, nextSelection);
+      setActiveSentence(nextSentence);
+      applyReaderSelection(nextSentence);
+      void runAiRef.current?.("grammar", undefined, nextSentence);
     },
     [],
   );
@@ -1024,7 +1037,7 @@ export function ReaderView({
 
   const handleKindleSentenceSelection = useCallback(
     (selected: KindleSentenceSelection) => {
-      const nextSelection: ActiveReaderSelection = {
+      const nextSentence: ActiveSentenceState = {
         text: selected.text,
         context: selected.context,
         page: 0,
@@ -1032,11 +1045,13 @@ export function ReaderView({
         kind: "sentence",
         sentenceIndex: selected.sentenceIndex,
         sentenceCount: selected.sentenceCount,
+        kindleChapterId: selected.chapterId,
       };
 
       setKindleSelectionChapterId(selected.chapterId);
-      applyReaderSelection(nextSelection);
-      void runAiRef.current?.("grammar", undefined, nextSelection);
+      setActiveSentence(nextSentence);
+      applyReaderSelection(nextSentence);
+      void runAiRef.current?.("grammar", undefined, nextSentence);
     },
     [],
   );
@@ -1572,7 +1587,7 @@ export function ReaderView({
       Number.isInteger(pageValue) && pageValue > 0 ? pageValue : currentPage;
     const rects = locatePdfTextRects(selectedPage, sentence.text);
 
-    const nextSelection: ActiveReaderSelection = {
+    const nextSentence: ActiveSentenceState = {
       text: sentence.text,
       context: pageText,
       page: selectedPage,
@@ -1583,8 +1598,9 @@ export function ReaderView({
     };
 
     window.getSelection()?.removeAllRanges();
-    applyReaderSelection(nextSelection);
-    void runAi("grammar", undefined, nextSelection);
+    setActiveSentence(nextSentence);
+    applyReaderSelection(nextSentence);
+    void runAi("grammar", undefined, nextSentence);
   }
 
   function activatePdfSentence(
@@ -1606,7 +1622,7 @@ export function ReaderView({
     const sentence = sentences[sentenceIndex];
     if (!sentence) return false;
 
-    const nextSelection: ActiveReaderSelection = {
+    const nextSentence: ActiveSentenceState = {
       text: sentence.text,
       context,
       page,
@@ -1617,36 +1633,31 @@ export function ReaderView({
     };
 
     setCurrentPage(page);
-    applyReaderSelection(nextSelection);
-    void runAi("grammar", undefined, nextSelection);
+    setActiveSentence(nextSentence);
+    applyReaderSelection(nextSentence);
+    void runAi("grammar", undefined, nextSentence);
     return true;
   }
 
   function navigatePdfSentence(direction: -1 | 1) {
-    if (
-      !selection ||
-      selection.kind !== "sentence" ||
-      selection.sentenceIndex === undefined
-    ) {
-      return;
-    }
+    if (!activeSentence) return;
 
     const context =
-      normalizedText(selection.context) ||
-      pageTexts[selection.page] ||
-      getPdfPageText(selection.page);
+      normalizedText(activeSentence.context) ||
+      pageTexts[activeSentence.page] ||
+      getPdfPageText(activeSentence.page);
     const sentences = segmentSentences(context);
-    const nextIndex = selection.sentenceIndex + direction;
+    const nextIndex = activeSentence.sentenceIndex + direction;
 
     if (
       nextIndex >= 0 &&
       nextIndex < sentences.length &&
-      activatePdfSentence(selection.page, nextIndex, context)
+      activatePdfSentence(activeSentence.page, nextIndex, context)
     ) {
       return;
     }
 
-    const nextPage = selection.page + direction;
+    const nextPage = activeSentence.page + direction;
     if (nextPage < 1 || nextPage > pageCount) return;
 
     const targetIndex = direction > 0 ? 0 : -1;
@@ -1668,7 +1679,7 @@ export function ReaderView({
   }
 
   function navigateSentence(direction: -1 | 1) {
-    if (!selection || selection.kind !== "sentence" || aiBusy) return;
+    if (!activeSentence || aiBusy) return;
 
     if (isPdf) {
       navigatePdfSentence(direction);
