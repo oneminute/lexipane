@@ -4,6 +4,11 @@ import {
 } from "./cloudAccounts";
 import { cloudEntryIsBook, type CloudEntry } from "./cloudTransport";
 import {
+  searchEd2kEngine,
+  type Ed2kEngineAccount,
+} from "./ed2kAdapter";
+import type { Ed2kSearchResult } from "./ed2kTransport";
+import {
   searchOpdsCatalog,
   type OpdsEntry,
   type OpdsLink,
@@ -14,7 +19,11 @@ import {
   type ResourceCatalog,
 } from "./persistence";
 
-export type FederatedResourceKind = "local" | "opds" | "cloud";
+export type FederatedResourceKind =
+  | "local"
+  | "opds"
+  | "cloud"
+  | "ed2k";
 
 export interface FederatedResourceResult {
   key: string;
@@ -36,6 +45,11 @@ export interface FederatedResourceResult {
   cloud?: {
     accountId: string;
     entry: CloudEntry;
+  };
+  ed2k?: {
+    accountId: string;
+    query: string;
+    result: Ed2kSearchResult;
   };
 }
 
@@ -137,10 +151,40 @@ function cloudResults(
     }));
 }
 
+function ed2kResults(
+  account: Ed2kEngineAccount,
+  query: string,
+  entries: Ed2kSearchResult[],
+): FederatedResourceResult[] {
+  return entries
+    .filter((entry) => entry.bookCandidate)
+    .map((entry) => ({
+      key:
+        "ed2k:" +
+        account.id +
+        ":" +
+        entry.index +
+        ":" +
+        entry.name,
+      kind: "ed2k" as const,
+      providerId: "ed2k",
+      sourceLabel: account.displayName || "aMule ED2K",
+      title: entry.name.replace(/\.(pdf|epub)$/i, ""),
+      authors: [],
+      size: entry.size,
+      ed2k: {
+        accountId: account.id,
+        query,
+        result: entry,
+      },
+    }));
+}
+
 export async function federatedResourceSearch(
   query: string,
   catalogs: ResourceCatalog[],
   cloudAccounts: ConnectedCloudAccount[],
+  ed2kEngines: Ed2kEngineAccount[] = [],
 ): Promise<FederatedSearchResponse> {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) {
@@ -215,6 +259,30 @@ export async function federatedResourceSearch(
     );
   }
 
+  for (const engine of ed2kEngines) {
+    tasks.push(
+      searchEd2kEngine(engine, normalizedQuery, "global")
+        .then((response) => {
+          results.push(
+            ...ed2kResults(
+              engine,
+              normalizedQuery,
+              response.results,
+            ),
+          );
+        })
+        .catch((error) => {
+          errors.push(
+            (engine.displayName || "aMule ED2K") +
+              ": " +
+              (error instanceof Error
+                ? error.message
+                : String(error)),
+          );
+        }),
+    );
+  }
+
   await Promise.all(tasks);
 
   results.sort((left, right) => {
@@ -228,6 +296,7 @@ export async function federatedResourceSearch(
       local: 0,
       cloud: 1,
       opds: 2,
+      ed2k: 3,
     };
 
     return kindRank[left.kind] - kindRank[right.kind];
@@ -251,6 +320,9 @@ export async function federatedResourceSearch(
     results: unique,
     errors,
     searchedSources:
-      catalogs.length + cloudAccounts.length + 1,
+      catalogs.length +
+      cloudAccounts.length +
+      ed2kEngines.length +
+      1,
   };
 }
