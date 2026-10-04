@@ -10,7 +10,7 @@ export const APP_DEFAULTS = {
     },
     privacyMode: "prefer-local",
     healthCheck: {
-      timeoutMs: 30_000,
+      timeoutMs: 120_000,
     },
     execution: {
       explain: {
