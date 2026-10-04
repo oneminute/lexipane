@@ -3,7 +3,7 @@ import {
   copyLibraryBookToManagedStorage,
   findLibraryBookByHash,
   registerBookFile,
-  relinkLibraryBook,
+  restoreMissingLibraryBookToManagedStorage,
 } from "../books/library";
 import {
   checkBookFiles,
@@ -88,13 +88,11 @@ async function ingestDownloadedTransfer(
       bookId = existing.id;
       duplicate = true;
     } else {
-      const relinked = await relinkLibraryBook(
-        existing.id,
-        event.tempPath,
-      );
-      const managed = await copyLibraryBookToManagedStorage(
-        relinked.id,
-      );
+      const managed =
+        await restoreMissingLibraryBookToManagedStorage(
+          existing.id,
+          event.tempPath,
+        );
 
       destinationPath = managed.file_path;
       bookId = managed.id;
@@ -208,8 +206,6 @@ async function persistNativeTransferEvent(
       downloadRate: event.downloadRate,
       temporaryPath: event.tempPath,
       error: event.error ?? null,
-      startedAt:
-        event.state === "running" ? new Date().toISOString() : undefined,
       completedAt:
         event.state === "failed" || event.state === "canceled"
           ? new Date().toISOString()
