@@ -69,11 +69,18 @@ Last updated: **2026-10-04**
 
 ## Active program
 
-**Resource Acquisition Platform / Resource Hub**
+**LONGRUN-001 — Network Resources + Reader AI Persistence**
 
-Status: **VERIFYING**
+Status: **IN_PROGRESS**
 
-**RESOURCE-002 — HTTP + OPDS vertical slice** implementation is present on `main`. The final validation pass is running. HTTP/HTTPS and OPDS are the only newly live resource providers; cloud OAuth, BitTorrent, and ED2K remain disabled.
+This is a continuous implementation batch authorized to proceed without per-feature confirmation.
+
+Two workstreams are active:
+
+1. **Resource Acquisition Platform** — finish RESOURCE-002 verification, then advance as far as practical through durable Download Manager behavior, cloud/shared-storage providers, BitTorrent, ED2K adapter work, extended providers, federated discovery, and source aggregation.
+2. **Reader AI persistence** — persist every successful sentence explanation as a versioned database record; load database results before invoking AI; support regenerate/new-version, previous/next version browsing, and background pre-generation of the next sentences.
+
+RESOURCE-002 remains **VERIFYING** until its final native test gate passes. Subsequent Resource milestones may be advanced within this batch when their dependencies are satisfied.
 
 ## Most recently completed product work
 
@@ -90,6 +97,43 @@ Delivered:
 - Rust/Tauri Resource Core capability boundary;
 - Resources main-navigation entry and Search / Browse / Downloads / Accounts shell;
 - targeted resolver, identity, provider-registry, and schema migration tests.
+
+## Continuous batch status
+
+**LONGRUN-001 — Network Resources + Reader AI Persistence**
+
+Status: **IN_PROGRESS**
+
+Execution policy for this batch:
+
+- do not pause for routine design choices or milestone transitions;
+- choose implementation defaults autonomously and record them here;
+- keep provider-specific code behind the Resource Core contracts;
+- prefer working end-to-end vertical slices over placeholder-only UI;
+- when an external prerequisite cannot be supplied by code alone (for example provider OAuth client credentials), complete the reusable implementation and clearly mark only that external activation step blocked;
+- keep baseline and targeted tests running throughout the batch.
+
+Reader AI acceptance criteria:
+
+- successful sentence explanations are always persisted in SQLite;
+- sentence selection checks versioned SQLite history before making an AI request;
+- existing legacy `ai_cache` responses may be imported into sentence history on first use;
+- Regenerate bypasses cached/history output, performs a new inference, and appends a new immutable version;
+- users can browse older/newer explanation versions without another AI call;
+- after the current sentence is available, LexiPane pre-generates the next configurable number of sentences in the same text context;
+- pre-generation skips sentences already present in the version store and saves every successful result immediately;
+- background pre-generation never replaces the currently displayed sentence/result.
+
+Network-resource batch priorities:
+
+- complete RESOURCE-002 validation;
+- strengthen persistent download manager state and recovery;
+- add cloud/shared-link provider support that can work without provider-specific secrets where possible;
+- implement reusable OAuth/account contracts for Google Drive, Dropbox, and OneDrive so activation only needs client credentials;
+- integrate a Rust BitTorrent engine if dependency/build constraints allow;
+- implement an ED2K sidecar adapter boundary and control path;
+- add extended catalog/storage providers where they reuse the HTTP pipeline;
+- add federated search/result aggregation after at least two searchable providers are live.
 
 ## Development status history
 
