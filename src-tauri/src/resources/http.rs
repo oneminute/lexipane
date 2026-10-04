@@ -1,8 +1,8 @@
 use futures_util::StreamExt;
 use reqwest::{
     header::{
-        ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE,
-        CONTENT_TYPE, RANGE,
+        ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH,
+        CONTENT_RANGE, CONTENT_TYPE, RANGE,
     },
     Client, StatusCode, Url,
 };
@@ -227,6 +227,7 @@ fn default_name_for_content_type(content_type: Option<&str>) -> String {
 async fn probe_with_client(client: &Client, url: Url) -> Result<HttpProbeResult, String> {
     let mut response = client
         .head(url.clone())
+        .header(ACCEPT_ENCODING, "identity")
         .send()
         .await
         .map_err(|error| format!("HTTP probe failed: {error}"))?;
@@ -237,6 +238,7 @@ async fn probe_with_client(client: &Client, url: Url) -> Result<HttpProbeResult,
     {
         response = client
             .get(url.clone())
+            .header(ACCEPT_ENCODING, "identity")
             .header(RANGE, "bytes=0-0")
             .send()
             .await
@@ -611,7 +613,9 @@ async fn run_http_download(
         }
     }
 
-    let mut request = client.get(&probe.final_url);
+    let mut request = client
+        .get(&probe.final_url)
+        .header(ACCEPT_ENCODING, "identity");
     if existing > 0 {
         request = request.header(RANGE, format!("bytes={existing}-"));
     }
