@@ -332,6 +332,10 @@ export function formatStructuredReadingAnalysis(
     return lines.join("\n");
   }
 
+  if (analysis.kind === "region") {
+    return formatStructuredRegionAnalysis(analysis);
+  }
+
   return [
     analysis.answer,
     ...(analysis.keyPoints.length > 0
