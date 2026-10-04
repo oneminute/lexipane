@@ -21,9 +21,11 @@ import { normalizeTerm } from "../../core/reading/knownTerms";
 import type { EbookTheme } from "../../core/reading/ebookPreferences";
 import type { ReaderImagePreview } from "./readerImage";
 import {
+  clearDomSentenceHighlight,
   getDomSentenceCount,
   selectDomSentenceAtPoint,
   selectDomSentenceByIndex,
+  setDomSentenceHighlight,
 } from "./sentenceNavigation";
 
 type KindleParser = Mobi | Kf8;
@@ -573,6 +575,14 @@ export function MobiDocumentView({
       );
 
       if (sentence) {
+        const previous = activeSentenceRef.current;
+        if (previous && previous.document !== document) {
+          clearDomSentenceHighlight(previous.document);
+        }
+
+        setDomSentenceHighlight(document, sentence.range);
+        frameWindow.getSelection()?.removeAllRanges();
+
         activeSentenceRef.current = {
           document,
           index: sentence.index,
@@ -689,6 +699,14 @@ export function MobiDocumentView({
         );
 
         if (sentence) {
+          const previous = activeSentenceRef.current;
+          if (previous && previous.document !== document) {
+            clearDomSentenceHighlight(previous.document);
+          }
+
+          setDomSentenceHighlight(document, sentence.range);
+          frameWindow.getSelection()?.removeAllRanges();
+
           activeSentenceRef.current = {
             document,
             index: sentence.index,
@@ -831,6 +849,9 @@ export function MobiDocumentView({
         nextIndex,
       );
       if (!sentence) return;
+
+      setDomSentenceHighlight(active.document, sentence.range);
+      active.document.defaultView?.getSelection()?.removeAllRanges();
 
       activeSentenceRef.current = {
         document: active.document,
