@@ -1797,6 +1797,165 @@ export function ReaderView({
     captureSelection();
   }
 
+  function showSentenceVersion(
+    versions: SentenceAnalysisVersion[],
+    index: number,
+  ) {
+    const safeIndex = Math.max(
+      0,
+      Math.min(versions.length - 1, index),
+    );
+    const version = versions[safeIndex];
+    if (!version) return;
+
+    setSentenceVersions(versions);
+    setSentenceVersionIndex(safeIndex);
+    setConfiguredModel(version.model);
+    setAiRequestDebug(version.requestDebug ?? null);
+    setAiResult({
+      title: "Sentence analysis",
+      text: version.text,
+      model: version.model,
+      analysis: version.analysis,
+      source: version.source,
+      cached: true,
+      rawResponse: version.rawResponse,
+    });
+    setAiError(null);
+  }
+
+  async function prefetchFollowingSentenceAnalyses(
+    sentence: ActiveSentenceState,
+  ) {
+    if (!bookPath) return;
+
+    const context = normalizedText(sentence.context);
+    if (!context) return;
+
+    const sentences = segmentSentences(context);
+    const count = APP_DEFAULTS.reading.ai.sentencePrefetchCount;
+
+    for (let offset = 1; offset <= count; offset += 1) {
+      const sentenceIndex = sentence.sentenceIndex + offset;
+      const segment = sentences[sentenceIndex];
+
+      if (!segment) break;
+
+      const historyKey = createSentenceAnalysisKey({
+        format: sentence.sentenceFormat,
+        container: sentence.sentenceContainer,
+        sentenceIndex,
+        text: segment.text,
+      });
+
+      try {
+        await resolveSentenceAnalysis({
+          bookPath,
+          sentenceKey: historyKey,
+          selection: {
+            text: segment.text,
+            context,
+            page: sentence.page,
+            bookPath,
+          },
+        });
+      } catch (error) {
+        console.warn(
+          "Unable to pre-generate sentence analysis",
+          sentenceIndex,
+          error,
+        );
+        break;
+      }
+    }
+  }
+
+  async function runSentenceAi(
+    sentence: ActiveSentenceState,
+    options: { forceNew?: boolean } = {},
+  ) {
+    if (!bookPath) return;
+
+    const requestToken = ++sentenceAiRequestTokenRef.current;
+    const requestSelection = {
+      ...sentence,
+      bookPath,
+    };
+    const requestDebug = buildReadingRequestDebug(
+      requestSelection,
+      "grammar",
+    );
+
+    setAiBusy(true);
+    setAiError(null);
+    setAiRequestDebug(requestDebug);
+    setSentenceVersions([]);
+    setSentenceVersionIndex(-1);
+    setAiResult({
+      title: "Sentence analysis",
+      text: "",
+      model: configuredModel || "Checking saved analysis…",
+    });
+
+    try {
+      const resolution = await resolveSentenceAnalysis(
+        {
+          bookPath,
+          sentenceKey: sentence.historyKey,
+          selection: requestSelection,
+        },
+        {
+          forceNew: Boolean(options.forceNew),
+          onStream: (accumulatedText) => {
+            if (sentenceAiRequestTokenRef.current !== requestToken) {
+              return;
+            }
+
+            setAiResult((current) => ({
+              title: "Sentence analysis",
+              text: accumulatedText,
+              model:
+                current?.model ||
+                configuredModel ||
+                "Generating new version…",
+            }));
+          },
+        },
+      );
+
+      if (sentenceAiRequestTokenRef.current !== requestToken) {
+        return;
+      }
+
+      const index = Math.max(
+        0,
+        resolution.versions.findIndex(
+          (item) => item.id === resolution.version.id,
+        ),
+      );
+
+      showSentenceVersion(resolution.versions, index);
+      void prefetchFollowingSentenceAnalyses(sentence);
+    } catch (error) {
+      if (sentenceAiRequestTokenRef.current !== requestToken) {
+        return;
+      }
+
+      setAiResult(null);
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : "Sentence analysis failed.",
+      );
+    } finally {
+      if (sentenceAiRequestTokenRef.current === requestToken) {
+        setAiBusy(false);
+      }
+    }
+  }
+
+  runSentenceAiRef.current = runSentenceAi;
+
   async function runAi(
     mode: ReadingAnalysisMode,
     readerQuestion?: string,
