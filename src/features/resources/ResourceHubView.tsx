@@ -11,6 +11,25 @@ import {
 } from "../../core/resources/acquisition";
 import { getResourceNativeCapabilities } from "../../core/resources/native";
 import {
+  browseCloudAccount,
+  cancelCloudDownload,
+  connectCloudAccount,
+  disconnectCloudAccount,
+  discardCloudTransfer,
+  listConnectedCloudAccounts,
+  pauseCloudDownload,
+  resumeCloudTransfer,
+  searchCloudAccount,
+  startCloudEntryAcquisition,
+  type ConnectedCloudAccount,
+} from "../../core/resources/cloudAccounts";
+import {
+  cloudEntryIsBook,
+  cloudFolderLocator,
+  type CloudEntry,
+  type CloudProviderId,
+} from "../../core/resources/cloudTransport";
+import {
   cancelTorrentDownload,
   discardTorrentTransfer,
   inspectTorrent,
@@ -227,6 +246,23 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [opdsFeed, setOpdsFeed] = useState<OpdsFeed | null>(null);
   const [opdsQuery, setOpdsQuery] = useState("");
   const [opdsBusy, setOpdsBusy] = useState(false);
+  const [cloudAccounts, setCloudAccounts] =
+    useState<ConnectedCloudAccount[]>([]);
+  const [activeCloudAccountId, setActiveCloudAccountId] =
+    useState<string | null>(null);
+  const [cloudEntries, setCloudEntries] = useState<CloudEntry[]>([]);
+  const [cloudFolder, setCloudFolder] = useState<string | undefined>(
+    undefined,
+  );
+  const [cloudFolderStack, setCloudFolderStack] = useState<
+    Array<{ label: string; locator?: string }>
+  >([{ label: "Root" }]);
+  const [cloudQuery, setCloudQuery] = useState("");
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [connectProvider, setConnectProvider] =
+    useState<CloudProviderId>("google-drive");
+  const [connectDisplayName, setConnectDisplayName] = useState("");
+  const [connectToken, setConnectToken] = useState("");
 
   const liveTransportCount = useMemo(() => {
     if (!nativeCapabilities) return 0;
@@ -235,14 +271,21 @@ export function ResourceHubView({ onOpenBook }: Props) {
   }, [nativeCapabilities]);
 
   async function refreshResourceCore() {
-    const [native, persistedProviders, jobs, items, savedCatalogs] =
-      await Promise.all([
-        getResourceNativeCapabilities(),
-        listPersistedResourceProviders(),
-        listTransferJobs(),
-        listResourceItems(),
-        listResourceCatalogs(),
-      ]);
+    const [
+      native,
+      persistedProviders,
+      jobs,
+      items,
+      savedCatalogs,
+      connectedCloudAccounts,
+    ] = await Promise.all([
+      getResourceNativeCapabilities(),
+      listPersistedResourceProviders(),
+      listTransferJobs(),
+      listResourceItems(),
+      listResourceCatalogs(),
+      listConnectedCloudAccounts(),
+    ]);
 
     setNativeCapabilities(native);
     setProviders(
@@ -253,6 +296,13 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setTransfers(jobs);
     setResources(items);
     setCatalogs(savedCatalogs);
+    setCloudAccounts(connectedCloudAccounts);
+    setActiveCloudAccountId((current) =>
+      current &&
+      connectedCloudAccounts.some((account) => account.id === current)
+        ? current
+        : connectedCloudAccounts[0]?.id ?? null,
+    );
   }
 
   useEffect(() => {
