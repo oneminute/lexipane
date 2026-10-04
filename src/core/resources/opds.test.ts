@@ -59,6 +59,40 @@ describe("OPDS parser", () => {
     );
   });
 
+  it("normalizes OPDS navigation entries for nested browsing", () => {
+    const feed = parseOpdsFeed(
+      JSON.stringify({
+        metadata: { title: "Root" },
+        navigation: [
+          {
+            metadata: {
+              identifier: "history",
+              title: "History",
+            },
+            links: [
+              {
+                rel: "self",
+                href: "/opds/history",
+                type: "application/opds+json",
+                title: "History",
+              },
+            ],
+          },
+        ],
+      }),
+      "https://example.test/opds",
+      "application/opds+json",
+    );
+
+    expect(feed.entries).toHaveLength(1);
+    expect(feed.entries[0].navigation).toHaveLength(1);
+    expect(feed.entries[0].navigation[0]).toMatchObject({
+      href: "https://example.test/opds/history",
+      type: "application/opds+json",
+    });
+    expect(feed.entries[0].acquisitions).toHaveLength(0);
+  });
+
   it("does not treat cover links as acquisitions", () => {
     const feed = parseOpdsFeed(
       JSON.stringify({
