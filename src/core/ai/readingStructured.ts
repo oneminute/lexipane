@@ -45,6 +45,12 @@ export interface AnswerAnalysis {
   evidence: string[];
 }
 
+export interface RawReadingAnalysis {
+  kind: "raw";
+  text: string;
+  note: string;
+}
+
 export interface RegionAnalysis {
   kind: "region";
   contentType:
@@ -66,6 +72,7 @@ export type StructuredReadingAnalysis =
   | ExplanationAnalysis
   | GrammarAnalysis
   | AnswerAnalysis
+  | RawReadingAnalysis
   | RegionAnalysis;
 
 function text(value: unknown): string {
@@ -73,6 +80,11 @@ function text(value: unknown): string {
 }
 
 function stringArray(value: unknown, limit = 12): string[] {
+  if (typeof value === "string") {
+    const item = value.trim();
+    return item ? [item] : [];
+  }
+
   if (!Array.isArray(value)) return [];
 
   return value
@@ -194,8 +206,14 @@ export function parseStructuredReadingAnalysis(
   const record = parsed as Record<string, unknown>;
 
   if (mode === "explain") {
-    const meaningInContext = text(record.meaningInContext);
-    const naturalChinese = text(record.naturalChinese);
+    const meaningInContext =
+      text(record.meaningInContext) ||
+      text(record.meaning) ||
+      text(record.definition);
+    const naturalChinese =
+      text(record.naturalChinese) ||
+      text(record.chinese) ||
+      text(record.translation);
 
     if (!meaningInContext || !naturalChinese) {
       throw new Error(
@@ -218,8 +236,15 @@ export function parseStructuredReadingAnalysis(
   }
 
   if (mode === "grammar") {
-    const naturalChinese = text(record.naturalChinese);
-    const meaning = text(record.meaning);
+    const naturalChinese =
+      text(record.naturalChinese) ||
+      text(record.translation) ||
+      text(record.chineseTranslation);
+    const meaning =
+      text(record.meaning) ||
+      text(record.overallMeaning) ||
+      text(record.summary) ||
+      naturalChinese;
 
     if (!naturalChinese || !meaning) {
       throw new Error(
@@ -238,7 +263,10 @@ export function parseStructuredReadingAnalysis(
     };
   }
 
-  const answer = text(record.answer);
+  const answer =
+    text(record.answer) ||
+    text(record.content) ||
+    text(record.text);
   if (!answer) {
     throw new Error("Structured answer is missing answer.");
   }
@@ -251,9 +279,30 @@ export function parseStructuredReadingAnalysis(
   };
 }
 
+export function fallbackStructuredReadingAnalysis(
+  rawText: string,
+  reason = "The model returned readable text instead of the requested structured JSON.",
+): RawReadingAnalysis {
+  const cleaned = rawText
+    .trim()
+    .replace(/^\`\`\`(?:json|text)?\s*/i, "")
+    .replace(/\s*\`\`\`$/, "")
+    .trim();
+
+  return {
+    kind: "raw",
+    text: cleaned || "The model returned an empty response.",
+    note: reason,
+  };
+}
+
 export function formatStructuredReadingAnalysis(
   analysis: StructuredReadingAnalysis,
 ): string {
+  if (analysis.kind === "raw") {
+    return analysis.text;
+  }
+
   if (analysis.kind === "explanation") {
     const lines = [
       "Meaning in context: " + analysis.meaningInContext,
