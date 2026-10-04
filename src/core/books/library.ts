@@ -214,6 +214,92 @@ export async function relinkLibraryBook(
   return rows[0];
 }
 
+export async function restoreMissingLibraryBookToManagedStorage(
+  bookId: string,
+  sourcePath: string,
+): Promise<LibraryBook> {
+  if (!isTauri()) {
+    throw new Error("Restoring books requires the desktop application.");
+  }
+
+  const db = await initializeDatabase();
+  if (!db) {
+    throw new Error("Database is unavailable.");
+  }
+
+  const rows = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
+    [bookId],
+  );
+  const book = rows[0];
+
+  if (!book) {
+    throw new Error("The library book no longer exists.");
+  }
+
+  const fileHash = await computeBookFileHash(sourcePath);
+  if (!fileHash) {
+    throw new Error("Unable to identify the replacement book file.");
+  }
+
+  if (book.file_hash && book.file_hash !== fileHash) {
+    throw new Error(
+      "The acquired file does not match the missing library book.",
+    );
+  }
+
+  const managed = await copyBookToManagedLibrary(sourcePath);
+
+  const conflict = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.file_path = $1 AND b.id <> $2 LIMIT 1",
+    [managed.path, bookId],
+  );
+
+  if (conflict[0]) {
+    throw new Error(
+      "The managed replacement is already linked to another library entry.",
+    );
+  }
+
+  const previousManagedPath =
+    book.managed_copy === 1 ? book.file_path : null;
+
+  await db.execute(
+    "UPDATE books SET file_path = $2, file_hash = $3, format = $4, " +
+      "managed_copy = 1, last_opened_at = $5 WHERE id = $1",
+    [
+      bookId,
+      managed.path,
+      managed.fileHash,
+      getBookExtension(managed.path) || book.format,
+      new Date().toISOString(),
+    ],
+  );
+
+  if (
+    previousManagedPath &&
+    previousManagedPath !== managed.path
+  ) {
+    await deleteManagedBookCopy(previousManagedPath).catch((error) => {
+      console.warn(
+        "Book was restored, but the old missing managed path could not be cleaned",
+        error,
+      );
+    });
+  }
+
+  const updated = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
+    [bookId],
+  );
+
+  if (!updated[0]) {
+    throw new Error("Restored book could not be reloaded.");
+  }
+
+  return updated[0];
+}
+
 export async function copyLibraryBookToManagedStorage(
   bookId: string,
 ): Promise<LibraryBook> {
