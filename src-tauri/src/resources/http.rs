@@ -425,6 +425,66 @@ async fn transfer_dir(app: &AppHandle, job_id: &str) -> Result<PathBuf, String> 
     Ok(dir)
 }
 
+async fn finalize_downloaded_part(
+    dir: &Path,
+    part_path: &Path,
+    name: &str,
+) -> Result<(PathBuf, String, String), String> {
+    let validation_path = part_path.to_path_buf();
+    let detected_format = match tauri::async_runtime::spawn_blocking(move || {
+        validate_downloaded_book(&validation_path)
+    })
+    .await
+    {
+        Ok(Ok(format)) => format,
+        Ok(Err(error)) => {
+            let _ = fs::remove_dir_all(dir).await;
+            return Err(error);
+        }
+        Err(error) => {
+            let _ = fs::remove_dir_all(dir).await;
+            return Err(format!(
+                "Unable to validate downloaded file: {error}"
+            ));
+        }
+    };
+
+    let current_extension = Path::new(name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase());
+
+    let final_name =
+        if current_extension.as_deref() == Some(detected_format.as_str()) {
+            name.to_string()
+        } else {
+            let stem = Path::new(name)
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .filter(|value| !value.is_empty())
+                .unwrap_or("download");
+            format!("{}.{}", sanitize_file_name(stem), detected_format)
+        };
+
+    let final_path = dir.join(&final_name);
+
+    if final_path.exists() {
+        fs::remove_file(&final_path)
+            .await
+            .map_err(|error| {
+                format!("Unable to replace previous transfer result: {error}")
+            })?;
+    }
+
+    fs::rename(part_path, &final_path)
+        .await
+        .map_err(|error| {
+            format!("Unable to finalize transfer file: {error}")
+        })?;
+
+    Ok((final_path, final_name, detected_format))
+}
+
 async fn run_http_download(
     app: AppHandle,
     manager: HttpTransferManager,
@@ -466,7 +526,7 @@ async fn run_http_download(
     };
 
     let part_path = dir.join(format!("{name}.part"));
-    let existing = fs::metadata(&part_path)
+    let mut existing = fs::metadata(&part_path)
         .await
         .map(|metadata| metadata.len())
         .unwrap_or(0);
@@ -476,12 +536,49 @@ async fn run_http_download(
     }
 
     if let Some(total) = probe.content_length {
+        if existing > total {
+            fs::remove_file(&part_path)
+                .await
+                .map_err(|error| {
+                    format!(
+                        "Unable to reset an oversized partial transfer: {error}"
+                    )
+                })?;
+            existing = 0;
+        }
+
         let remaining = total.saturating_sub(existing);
         let available = fs2::available_space(&dir)
             .map_err(|error| format!("Unable to check free disk space: {error}"))?;
 
         if available < remaining.saturating_add(16 * 1024 * 1024) {
             return Err("Not enough free disk space for this transfer.".to_string());
+        }
+
+        if existing > 0 && existing == total {
+            let mut event =
+                transfer_event(&job_id, "running", Some(total), existing);
+            event.file_name = Some(name.clone());
+            event.content_type = probe.content_type.clone();
+            event.final_url = Some(probe.final_url.clone());
+            emit_event(&app, event);
+
+            let (final_path, final_name, detected_format) =
+                finalize_downloaded_part(&dir, &part_path, &name).await?;
+
+            let mut event =
+                transfer_event(&job_id, "downloaded", Some(total), total);
+            event.progress = 1.0;
+            event.temp_path =
+                Some(final_path.to_string_lossy().to_string());
+            event.file_name = Some(final_name);
+            event.content_type = probe.content_type;
+            event.final_url = Some(probe.final_url);
+            event.detected_format = Some(detected_format);
+            emit_event(&app, event);
+
+            manager.remove(&job_id).await;
+            return Ok(());
         }
     }
 
@@ -602,52 +699,8 @@ async fn run_http_download(
         .map_err(|error| format!("Unable to finish transfer file: {error}"))?;
     drop(file);
 
-    let validation_path = part_path.clone();
-    let detected_format = match tauri::async_runtime::spawn_blocking(move || {
-        validate_downloaded_book(&validation_path)
-    })
-    .await
-    {
-        Ok(Ok(format)) => format,
-        Ok(Err(error)) => {
-            let _ = fs::remove_dir_all(&dir).await;
-            return Err(error);
-        }
-        Err(error) => {
-            let _ = fs::remove_dir_all(&dir).await;
-            return Err(format!(
-                "Unable to validate downloaded file: {error}"
-            ));
-        }
-    };
-
-    let current_extension = Path::new(&name)
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_ascii_lowercase());
-
-    let final_name = if current_extension.as_deref() == Some(detected_format.as_str()) {
-        name.clone()
-    } else {
-        let stem = Path::new(&name)
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .filter(|value| !value.is_empty())
-            .unwrap_or("download");
-        format!("{}.{}", sanitize_file_name(stem), detected_format)
-    };
-
-    let final_path = dir.join(&final_name);
-
-    if final_path.exists() {
-        fs::remove_file(&final_path)
-            .await
-            .map_err(|error| format!("Unable to replace previous transfer result: {error}"))?;
-    }
-
-    fs::rename(&part_path, &final_path)
-        .await
-        .map_err(|error| format!("Unable to finalize transfer file: {error}"))?;
+    let (final_path, final_name, detected_format) =
+        finalize_downloaded_part(&dir, &part_path, &name).await?;
 
     let mut event = transfer_event(&job_id, "downloaded", total, completed);
     event.progress = 1.0;
