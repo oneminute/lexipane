@@ -31,6 +31,7 @@ through `app_meta` and provider configuration tables.
 
 Examples:
 
+- Ollama server URL
 - selected Ollama model
 - reading level
 - ebook font scale/theme/flow

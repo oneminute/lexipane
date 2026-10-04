@@ -6,17 +6,41 @@ export const DEFAULT_OLLAMA_BASE_URL =
   APP_DEFAULTS.ai.ollama.baseUrl;
 
 const OLLAMA_MODEL_KEY = "ai.ollama.model";
+const OLLAMA_BASE_URL_KEY = "ai.ollama.base-url";
 
 export interface OllamaConfig {
   baseUrl: string;
   model: string | null;
 }
 
+export function normalizeOllamaBaseUrl(value: string | null | undefined): string {
+  const trimmed = value?.trim().replace(/\/+$/, "") ?? "";
+
+  if (!trimmed) return DEFAULT_OLLAMA_BASE_URL;
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return "http://" + trimmed;
+  }
+
+  return trimmed;
+}
+
 export async function loadOllamaConfig(): Promise<OllamaConfig> {
+  const [storedBaseUrl, model] = await Promise.all([
+    getAppMeta(OLLAMA_BASE_URL_KEY),
+    getAppMeta(OLLAMA_MODEL_KEY),
+  ]);
+
   return {
-    baseUrl: DEFAULT_OLLAMA_BASE_URL,
-    model: await getAppMeta(OLLAMA_MODEL_KEY),
+    baseUrl: normalizeOllamaBaseUrl(storedBaseUrl),
+    model,
   };
+}
+
+export async function saveOllamaBaseUrl(baseUrl: string): Promise<string> {
+  const normalized = normalizeOllamaBaseUrl(baseUrl);
+  await setAppMeta(OLLAMA_BASE_URL_KEY, normalized);
+  return normalized;
 }
 
 export async function saveOllamaModel(model: string): Promise<void> {
