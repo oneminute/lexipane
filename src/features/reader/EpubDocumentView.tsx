@@ -54,6 +54,11 @@ export interface SentenceNavigationRequest {
   direction: -1 | 1;
 }
 
+export interface EpubProgressNavigationRequest {
+  token: number;
+  progress: number;
+}
+
 interface Props {
   path: string;
   fontScale?: number;
@@ -64,6 +69,7 @@ interface Props {
   annotations?: EpubTextAnnotation[];
   autoTerms?: DifficultTerm[];
   sentenceNavigation?: SentenceNavigationRequest | null;
+  progressNavigation?: EpubProgressNavigationRequest | null;
   onMetadataReady?: (metadata: EpubMetadataSummary) => void;
   onOutlineReady?: (outline: EpubOutlineEntry[]) => void;
   onCoverReady?: (coverDataUrl: string) => void;
@@ -431,6 +437,7 @@ export function EpubDocumentView({
   annotations = [],
   autoTerms = [],
   sentenceNavigation = null,
+  progressNavigation = null,
   onMetadataReady,
   onOutlineReady,
   onCoverReady,
@@ -454,6 +461,7 @@ export function EpubDocumentView({
   );
   const wordSelectionTimerRef = useRef<number | null>(null);
   const handledSentenceNavigationRef = useRef(0);
+  const handledProgressNavigationRef = useRef(0);
   const pendingSentenceDirectionRef = useRef<-1 | 1 | null>(null);
   const activeSentenceRef = useRef<{
     contents: Contents;
@@ -912,6 +920,42 @@ export function EpubDocumentView({
         console.warn("Unable to move to adjacent EPUB section", error);
       });
   }, [finishPendingSentenceNavigation, sentenceNavigation]);
+
+  useEffect(() => {
+    if (
+      !progressNavigation ||
+      progressNavigation.token === handledProgressNavigationRef.current
+    ) {
+      return;
+    }
+
+    const book = bookRef.current;
+    const rendition = renditionRef.current;
+    if (!book || !rendition) return;
+
+    handledProgressNavigationRef.current = progressNavigation.token;
+
+    const clamped = Math.max(
+      0,
+      Math.min(1, progressNavigation.progress),
+    );
+
+    void (async () => {
+      try {
+        if (book.locations.length() === 0) {
+          await book.locations.generate(1600);
+        }
+
+        const cfi = book.locations.cfiFromPercentage(clamped);
+        if (cfi) {
+          activeSentenceRef.current = null;
+          await rendition.display(cfi);
+        }
+      } catch (error) {
+        console.warn("Unable to scrub EPUB progress", error);
+      }
+    })();
+  }, [progressNavigation]);
 
   useEffect(() => {
     renditionRef.current?.themes.fontSize(fontScale + "%");
