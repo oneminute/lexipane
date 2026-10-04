@@ -420,6 +420,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
         resourceQuery,
         catalogs,
         cloudAccounts,
+        ed2kEngines,
       );
       setResourceSearchResults(response.results);
       setResourceSearchErrors(response.errors);
@@ -495,6 +496,38 @@ export function ResourceHubView({ onOpenBook }: Props) {
         );
       } finally {
         setCloudBusy(false);
+      }
+      return;
+    }
+
+    if (result.ed2k) {
+      const engine = ed2kEngines.find(
+        (item) => item.id === result.ed2k?.accountId,
+      );
+      if (!engine) {
+        setMessage("The aMule ED2K engine is no longer configured.");
+        return;
+      }
+
+      setEd2kBusy(true);
+      setMessage("");
+
+      try {
+        await startEd2kSearchResultAcquisition(
+          engine,
+          result.ed2k.query,
+          result.ed2k.result,
+        );
+        setTab("downloads");
+        await refreshResourceCore();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to acquire the ED2K result.",
+        );
+      } finally {
+        setEd2kBusy(false);
       }
     }
   }
