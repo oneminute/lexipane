@@ -15,6 +15,7 @@ export interface OpdsEntry {
   coverUrl?: string;
   links: OpdsLink[];
   acquisitions: OpdsLink[];
+  navigation: OpdsLink[];
 }
 
 export interface OpdsFeed {
@@ -53,6 +54,21 @@ function supportedAcquisition(link: OpdsLink): boolean {
   return (
     link.rel.includes(ACQUISITION_REL) ||
     Boolean(link.type && BOOK_MEDIA_TYPES.has(link.type.toLowerCase()))
+  );
+}
+
+function supportedNavigation(link: OpdsLink): boolean {
+  if (supportedAcquisition(link)) return false;
+
+  const type = link.type?.toLowerCase() ?? "";
+  const rel = link.rel.toLowerCase();
+
+  return (
+    type.includes("application/atom+xml") ||
+    type.includes("application/opds+json") ||
+    rel.includes("subsection") ||
+    rel.includes("collection") ||
+    rel.split(/\s+/).includes("navigation")
   );
 }
 
@@ -139,6 +155,7 @@ function parseAtomFeed(
       coverUrl: cover?.href,
       links: entryLinks,
       acquisitions: entryLinks.filter(supportedAcquisition),
+      navigation: entryLinks.filter(supportedNavigation),
     };
   });
 
@@ -250,6 +267,7 @@ function parseOpds2Feed(
       coverUrl: images[0]?.href,
       links: [...entryLinks, ...images],
       acquisitions: entryLinks.filter(supportedAcquisition),
+      navigation: entryLinks.filter(supportedNavigation),
     }];
   });
 
