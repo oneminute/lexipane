@@ -12,7 +12,7 @@ describe("AI execution policy", () => {
       retryDelayMs: -1,
     });
 
-    expect(policy.timeoutMs).toBe(60000);
+    expect(policy.timeoutMs).toBe(120000);
     expect(policy.retries).toBe(1);
     expect(policy.retryDelayMs).toBe(700);
   });
