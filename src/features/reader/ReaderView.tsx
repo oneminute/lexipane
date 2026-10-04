@@ -1458,6 +1458,12 @@ export function ReaderView({
   function applyReaderSelection(
     nextSelection: ActiveReaderSelection,
   ) {
+    if (nextSelection.kind !== "sentence") {
+      sentenceAiRequestTokenRef.current += 1;
+      setSentenceVersions([]);
+      setSentenceVersionIndex(-1);
+    }
+
     setSelection(nextSelection);
     setAiResult(null);
     setAiError(null);
@@ -1963,6 +1969,10 @@ export function ReaderView({
   ) {
     const targetSelection = overrideSelection ?? selection;
     if (!targetSelection || aiBusy) return;
+
+    sentenceAiRequestTokenRef.current += 1;
+    setSentenceVersions([]);
+    setSentenceVersionIndex(-1);
 
     const title =
       mode === "grammar"
@@ -3291,8 +3301,11 @@ export function ReaderView({
                   <button
                     disabled={aiBusy}
                     onClick={() => {
+                      sentenceAiRequestTokenRef.current += 1;
                       setSelection(null);
                       setActiveSentence(null);
+                      setSentenceVersions([]);
+                      setSentenceVersionIndex(-1);
                       setAiResult(null);
                       setAiRequestDebug(null);
                       setAiError(null);
