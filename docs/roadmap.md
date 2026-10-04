@@ -200,7 +200,7 @@ Next:
 
 ## Phase 8 — Resource Acquisition Platform / Resource Hub
 
-Status: **ready to begin — RESOURCE-001 selected**
+Status: **RESOURCE-001 complete — RESOURCE-002 ready**
 
 Purpose:
 
@@ -213,8 +213,8 @@ Purpose:
 
 Milestones:
 
-- **RESOURCE-001 — Resource Core:** shared domain model, provider capabilities, resolver/classification, SQLite persistence, Resources UI shell, Rust/Tauri resource boundary.
-- **RESOURCE-002 — HTTP + OPDS:** first complete discovery/download/ingestion vertical slice.
+- **RESOURCE-001 — Resource Core:** **complete** — shared domain model, provider capabilities, resolver/classification, SQLite persistence, Resources UI shell, Rust/Tauri resource boundary.
+- **RESOURCE-002 — HTTP + OPDS:** **ready** — first complete discovery/download/ingestion vertical slice.
 - **RESOURCE-003 — Cloud accounts:** Google Drive, Dropbox, OneDrive/SharePoint.
 - **RESOURCE-004 — Download Manager hardening:** persistent queue, pause/resume/cancel, restart recovery, disk/temp lifecycle.
 - **RESOURCE-005 — BitTorrent:** magnet/torrent metadata, file selection, native transfer engine, explicit P2P settings.
