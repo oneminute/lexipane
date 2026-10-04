@@ -44,10 +44,28 @@ export interface AnswerAnalysis {
   evidence: string[];
 }
 
+export interface RegionAnalysis {
+  kind: "region";
+  contentType:
+    | "text"
+    | "chart"
+    | "diagram"
+    | "formula"
+    | "table"
+    | "illustration"
+    | "mixed"
+    | "unknown";
+  summary: string;
+  extractedText: string;
+  keyPoints: string[];
+  visualDetails: string[];
+}
+
 export type StructuredReadingAnalysis =
   | ExplanationAnalysis
   | GrammarAnalysis
-  | AnswerAnalysis;
+  | AnswerAnalysis
+  | RegionAnalysis;
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -321,6 +339,77 @@ export function formatStructuredReadingAnalysis(
       : []),
     ...(analysis.evidence.length > 0
       ? ["", "Evidence:", ...analysis.evidence.map((item) => "- " + item)]
+      : []),
+  ].join("\n");
+}
+
+
+export function regionOutputInstruction(): string {
+  return [
+    "Return ONLY valid JSON. Do not wrap it in Markdown.",
+    "Use this exact object shape:",
+    '{"kind":"region","contentType":"text|chart|diagram|formula|table|illustration|mixed|unknown","summary":"用中文解释这个区域最重要的内容","extractedText":"如果有清晰文字则尽量准确转写，否则为空字符串","keyPoints":["读者应理解的关键点"],"visualDetails":["与理解有关的图表/公式/布局细节"]}',
+    "Do not invent text that is not visible. Keep extractedText empty when the image is not readable enough.",
+  ].join(" ");
+}
+
+export function parseStructuredRegionAnalysis(
+  rawText: string,
+): RegionAnalysis {
+  const parsed = extractJsonObject(rawText);
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("AI returned a non-object structured region response.");
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const summary = text(record.summary);
+  if (!summary) {
+    throw new Error("Structured region analysis is missing summary.");
+  }
+
+  const allowedTypes = new Set([
+    "text",
+    "chart",
+    "diagram",
+    "formula",
+    "table",
+    "illustration",
+    "mixed",
+    "unknown",
+  ]);
+  const rawType = text(record.contentType);
+  const contentType = allowedTypes.has(rawType)
+    ? (rawType as RegionAnalysis["contentType"])
+    : "unknown";
+
+  return {
+    kind: "region",
+    contentType,
+    summary,
+    extractedText: text(record.extractedText),
+    keyPoints: stringArray(record.keyPoints),
+    visualDetails: stringArray(record.visualDetails),
+  };
+}
+
+export function formatStructuredRegionAnalysis(
+  analysis: RegionAnalysis,
+): string {
+  return [
+    "Type: " + analysis.contentType,
+    "Summary: " + analysis.summary,
+    ...(analysis.extractedText
+      ? ["", "Extracted text:", analysis.extractedText]
+      : []),
+    ...(analysis.keyPoints.length > 0
+      ? ["", "Key points:", ...analysis.keyPoints.map((item) => "- " + item)]
+      : []),
+    ...(analysis.visualDetails.length > 0
+      ? [
+          "",
+          "Visual details:",
+          ...analysis.visualDetails.map((item) => "- " + item),
+        ]
       : []),
   ].join("\n");
 }

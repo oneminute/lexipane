@@ -1,8 +1,8 @@
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const schemaStatements = [
   "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS books (id TEXT PRIMARY KEY, file_path TEXT NOT NULL UNIQUE, file_hash TEXT, format TEXT NOT NULL, title TEXT, author TEXT, cover_path TEXT, favorite INTEGER NOT NULL DEFAULT 0, reading_status TEXT NOT NULL DEFAULT 'reading', privacy_mode TEXT, added_at TEXT NOT NULL, last_opened_at TEXT)",
+  "CREATE TABLE IF NOT EXISTS books (id TEXT PRIMARY KEY, file_path TEXT NOT NULL UNIQUE, file_hash TEXT, format TEXT NOT NULL, title TEXT, author TEXT, cover_path TEXT, favorite INTEGER NOT NULL DEFAULT 0, reading_status TEXT NOT NULL DEFAULT 'reading', privacy_mode TEXT, provider_policy_json TEXT, added_at TEXT NOT NULL, last_opened_at TEXT)",
   "CREATE TABLE IF NOT EXISTS reading_positions (book_id TEXT PRIMARY KEY, locator_json TEXT NOT NULL, progress REAL, updated_at TEXT NOT NULL, FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE)",
   "CREATE TABLE IF NOT EXISTS annotations (id TEXT PRIMARY KEY, book_id TEXT NOT NULL, source TEXT NOT NULL, type TEXT NOT NULL, anchor_json TEXT NOT NULL, selected_text TEXT, status TEXT NOT NULL DEFAULT 'active', color TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE)",
   "CREATE INDEX IF NOT EXISTS idx_annotations_book ON annotations(book_id)",
@@ -39,6 +39,12 @@ export const schemaMigrations: SchemaMigration[] = [
     version: 5,
     statements: [
       "ALTER TABLE books ADD COLUMN privacy_mode TEXT",
+    ],
+  },
+  {
+    version: 6,
+    statements: [
+      "ALTER TABLE books ADD COLUMN provider_policy_json TEXT",
     ],
   },
 ];

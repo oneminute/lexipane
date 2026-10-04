@@ -145,7 +145,20 @@ export class AnthropicProvider implements AIProvider {
         streaming: true,
         contextWindow: model.max_input_tokens ?? undefined,
       },
+      capabilitySource: "provider",
     }));
+  }
+
+  async getModelCapabilities(
+    model: string,
+  ): Promise<ModelInfo["capabilities"]> {
+    const models = await this.listModels();
+    const found = models.find((item) => item.id === model);
+
+    return found?.capabilities ?? {
+      text: true,
+      streaming: true,
+    };
   }
 
   private requestBody(

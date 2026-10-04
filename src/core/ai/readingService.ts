@@ -3,6 +3,7 @@ import {
   getCachedAiValue,
   putCachedAiValue,
 } from "./cache";
+import { runWithAiExecutionPolicy } from "./executionPolicy";
 import {
   formatStructuredReadingAnalysis,
   parseStructuredReadingAnalysis,
@@ -106,7 +107,7 @@ function prepareReadingRequest(
     page: selection.page ?? null,
     question: question?.trim() ?? "",
     mode,
-    promptVersion: 5,
+    promptVersion: 6,
   };
 
   const userContent = [
@@ -153,7 +154,11 @@ async function persistReadingResult(
   analysis: StructuredReadingAnalysis,
   usage: AIUsage | undefined,
   latencyMs: number,
-  providerConfigId?: string,
+  providerConfigId: string | undefined,
+  pricing: {
+    inputCostPerMillion?: number;
+    outputCostPerMillion?: number;
+  } | undefined,
 ) {
   await Promise.all([
     recordAiUsage(
@@ -162,6 +167,7 @@ async function persistReadingResult(
       usage,
       latencyMs,
       providerConfigId,
+      pricing,
     ),
     putCachedAiValue(
       cacheKey,
@@ -216,35 +222,49 @@ async function executeReadingRequest(
       };
     }
 
-    const request: TextGenerationRequest = {
-      model: runtime.model,
-      temperature: 0.15,
-      messages: prepared.messages,
-    };
-
     attemptedSources.push(runtime.label);
 
     try {
       const started = Date.now();
-      let rawText = "";
-      let model = runtime.model;
-      let usage: AIUsage | undefined;
 
-      if (stream && runtime.provider.streamText) {
-        for await (const event of runtime.provider.streamText(request)) {
-          if (event.model) model = event.model;
-          if (event.usage) usage = event.usage;
-          if (event.delta) rawText += event.delta;
-        }
-      } else {
-        const response = await runtime.provider.generateText(request);
-        rawText = response.text;
-        model = response.model || runtime.model;
-        usage = response.usage;
-      }
+      const generated = await runWithAiExecutionPolicy(
+        prepared.taskType,
+        async (signal) => {
+          const request: TextGenerationRequest = {
+            model: runtime.model,
+            temperature: 0.15,
+            messages: prepared.messages,
+            signal,
+          };
 
-      const analysis = parseStructuredReadingAnalysis(rawText, mode);
-      const text = formatStructuredReadingAnalysis(analysis);
+          let rawText = "";
+          let model = runtime.model;
+          let usage: AIUsage | undefined;
+
+          if (stream && runtime.provider.streamText) {
+            for await (const event of runtime.provider.streamText(request)) {
+              if (event.model) model = event.model;
+              if (event.usage) usage = event.usage;
+              if (event.delta) rawText += event.delta;
+            }
+          } else {
+            const response = await runtime.provider.generateText(request);
+            rawText = response.text;
+            model = response.model || runtime.model;
+            usage = response.usage;
+          }
+
+          const analysis = parseStructuredReadingAnalysis(rawText, mode);
+
+          return {
+            analysis,
+            text: formatStructuredReadingAnalysis(analysis),
+            model,
+            usage,
+          };
+        },
+      );
+
       const latencyMs = Date.now() - started;
 
       await persistReadingResult(
@@ -252,19 +272,20 @@ async function executeReadingRequest(
         cacheKey,
         runtime.cacheModelKey,
         runtime.model,
-        text,
-        analysis,
-        usage,
+        generated.text,
+        generated.analysis,
+        generated.usage,
         latencyMs,
         runtime.providerConfigId,
+        runtime.pricing,
       );
 
-      onStream?.(text, text);
+      onStream?.(generated.text, generated.text);
 
       return {
-        text,
-        analysis,
-        model,
+        text: generated.text,
+        analysis: generated.analysis,
+        model: generated.model,
         cached: false,
         source: runtime.label,
         fallbackUsed: index > 0,

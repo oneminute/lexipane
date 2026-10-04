@@ -24,6 +24,7 @@ interface OllamaTagsResponse {
 
 interface OllamaShowResponse {
   capabilities?: string[];
+  model_info?: Record<string, unknown>;
 }
 
 interface OllamaChatResponse {
@@ -92,10 +93,11 @@ export class OllamaProvider implements AIProvider {
         text: true,
         streaming: true,
       },
+      capabilitySource: "inferred",
     }));
   }
 
-  async getCapabilities(model: string): Promise<string[]> {
+  private async showModel(model: string): Promise<OllamaShowResponse> {
     const response = await appFetch(this.baseUrl + "/api/show", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -109,8 +111,34 @@ export class OllamaProvider implements AIProvider {
       );
     }
 
-    const payload = (await response.json()) as OllamaShowResponse;
-    return payload.capabilities ?? [];
+    return (await response.json()) as OllamaShowResponse;
+  }
+
+  async getCapabilities(model: string): Promise<string[]> {
+    return (await this.showModel(model)).capabilities ?? [];
+  }
+
+  async getModelCapabilities(
+    model: string,
+  ): Promise<ModelInfo["capabilities"]> {
+    const payload = await this.showModel(model);
+    const capabilities = payload.capabilities ?? [];
+
+    const contextWindow = Object.entries(payload.model_info ?? {})
+      .find(([key, value]) =>
+        key.toLocaleLowerCase().includes("context_length") &&
+        typeof value === "number"
+      )?.[1];
+
+    return {
+      text: capabilities.length === 0 || capabilities.includes("completion"),
+      vision: capabilities.includes("vision") || undefined,
+      tools: capabilities.includes("tools") || undefined,
+      structuredOutput: capabilities.includes("completion") || undefined,
+      streaming: true,
+      contextWindow:
+        typeof contextWindow === "number" ? contextWindow : undefined,
+    };
   }
 
   async generateVision(

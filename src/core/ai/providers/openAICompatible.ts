@@ -1,4 +1,5 @@
 import { appFetch } from "../../http/appFetch";
+import { inferCompatibleModelCapabilities } from "../modelCapabilities";
 import type { AIProvider } from "../provider";
 import type {
   ConnectionResult,
@@ -114,11 +115,15 @@ export class OpenAICompatibleProvider implements AIProvider {
       name: model.id,
       providerId: this.descriptor.id,
       local: this.descriptor.region === "local",
-      capabilities: {
-        text: true,
-        streaming: true,
-      },
+      capabilities: inferCompatibleModelCapabilities(model.id),
+      capabilitySource: "inferred",
     }));
+  }
+
+  async getModelCapabilities(
+    model: string,
+  ): Promise<ModelInfo["capabilities"]> {
+    return inferCompatibleModelCapabilities(model);
   }
 
   async generateText(

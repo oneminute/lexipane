@@ -3,6 +3,7 @@ import {
   getCachedAiValue,
   putCachedAiValue,
 } from "./cache";
+import { runWithAiExecutionPolicy } from "./executionPolicy";
 import { resolveTextTaskRuntimes } from "./runtimeRouter";
 import { extractJsonObject } from "./structured";
 import { recordAiUsage } from "./usage";
@@ -179,50 +180,63 @@ export async function detectDifficultTerms(
 
     try {
       const started = Date.now();
-      const response = await runtime.provider.generateText({
-        model: runtime.model,
-        temperature: 0.1,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are LexiPane's reading-difficulty detector. Be selective and context-aware. Return JSON only.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      });
-      const latencyMs = Date.now() - started;
+      const generated = await runWithAiExecutionPolicy(
+        "difficulty",
+        async (signal) => {
+          const response = await runtime.provider.generateText({
+            model: runtime.model,
+            temperature: 0.1,
+            signal,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are LexiPane's reading-difficulty detector. Be selective and context-aware. Return JSON only.",
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+          });
 
-      const parsed = extractJsonObject(response.text);
-      const items = parseDifficultyPayload(
-        parsed,
-        normalizedPage,
-      ).filter(
-        (item) => !suppressed.has(normalizeTerm(item.text)),
+          const parsed = extractJsonObject(response.text);
+          const items = parseDifficultyPayload(
+            parsed,
+            normalizedPage,
+          ).filter(
+            (item) => !suppressed.has(normalizeTerm(item.text)),
+          );
+
+          return {
+            items,
+            model: response.model || runtime.model,
+            usage: response.usage,
+          };
+        },
       );
+      const latencyMs = Date.now() - started;
 
       await Promise.all([
         recordAiUsage(
           runtime.model,
           "difficulty",
-          response.usage,
+          generated.usage,
           latencyMs,
           runtime.providerConfigId,
+          runtime.pricing,
         ),
         putCachedAiValue(
           cacheKey,
           "difficulty",
           runtime.cacheModelKey,
-          { items },
+          { items: generated.items },
         ),
       ]);
 
       return {
-        items,
-        model: response.model || runtime.model,
+        items: generated.items,
+        model: generated.model,
         cached: false,
         source: runtime.label,
         fallbackUsed: index > 0,

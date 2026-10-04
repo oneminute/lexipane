@@ -10,7 +10,11 @@ import { providerCatalog } from "./registry";
 import { AnthropicProvider } from "./providers/anthropic";
 import { GeminiProvider } from "./providers/gemini";
 import { OpenAICompatibleProvider } from "./providers/openAICompatible";
-import type { ConnectionResult, ModelInfo } from "./types";
+import type {
+  ConnectionResult,
+  ModelCapabilities,
+  ModelInfo,
+} from "./types";
 
 interface ProviderConfigRow {
   id: string;
@@ -25,6 +29,8 @@ interface ProviderConfigRow {
 
 export interface ProviderConfigSettings {
   model?: string;
+  inputCostPerMillion?: number;
+  outputCostPerMillion?: number;
 }
 
 export interface ProviderConfig {
@@ -45,6 +51,8 @@ export interface SaveProviderConfigInput {
   displayName: string;
   baseUrl: string;
   model?: string;
+  inputCostPerMillion?: number;
+  outputCostPerMillion?: number;
   enabled?: boolean;
   apiKey?: string;
 }
@@ -151,8 +159,18 @@ export async function saveProviderConfig(
 
   const id = input.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
+  const inputCost = Number(input.inputCostPerMillion);
+  const outputCost = Number(input.outputCostPerMillion);
   const settings: ProviderConfigSettings = {
     model: input.model?.trim() || undefined,
+    inputCostPerMillion:
+      Number.isFinite(inputCost) && inputCost >= 0
+        ? inputCost
+        : undefined,
+    outputCostPerMillion:
+      Number.isFinite(outputCost) && outputCost >= 0
+        ? outputCost
+        : undefined,
   };
 
   await db.execute(
@@ -273,5 +291,51 @@ export async function createProviderRuntimeById(id: string) {
   return {
     config,
     provider: await createRuntime(config),
+  };
+}
+
+
+export async function probeProviderConfigModel(
+  id: string,
+  model?: string,
+): Promise<{
+  model: string;
+  capabilities: ModelCapabilities;
+  source: "provider" | "probe" | "inferred";
+}> {
+  const config = await getProviderConfig(id);
+  if (!config) {
+    throw new Error("Provider configuration was not found.");
+  }
+
+  const runtime = await createRuntime(config);
+  const modelId = model?.trim() || config.settings.model;
+  if (!modelId) {
+    throw new Error("Choose a model before probing capabilities.");
+  }
+
+  if (runtime.getModelCapabilities) {
+    return {
+      model: modelId,
+      capabilities: await runtime.getModelCapabilities(modelId),
+      source:
+        runtime.descriptor.adapter === "openai-compatible"
+          ? "inferred"
+          : "provider",
+    };
+  }
+
+  const models = await runtime.listModels();
+  const discovered = models.find((item) => item.id === modelId);
+  if (!discovered) {
+    throw new Error(
+      'Model "' + modelId + '" was not returned by this provider.',
+    );
+  }
+
+  return {
+    model: modelId,
+    capabilities: discovered.capabilities,
+    source: discovered.capabilitySource ?? "provider",
   };
 }

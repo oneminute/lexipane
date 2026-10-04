@@ -4,11 +4,19 @@ import {
   putCachedAiValue,
   stableHash,
 } from "./cache";
+import { runWithAiExecutionPolicy } from "./executionPolicy";
+import {
+  formatStructuredRegionAnalysis,
+  parseStructuredRegionAnalysis,
+  regionOutputInstruction,
+  type RegionAnalysis,
+} from "./readingStructured";
 import { resolveTextTaskRuntimes } from "./runtimeRouter";
 import { recordAiUsage } from "./usage";
 
 export interface RegionAnalysisResult {
   text: string;
+  analysis: RegionAnalysis;
   model: string;
   cached: boolean;
   source?: string;
@@ -36,7 +44,7 @@ export async function analyzeRegionImage(
     imageHash: stableHash(imageDataUrl),
     pageContext: trimmedContext,
     question: question?.trim() ?? "",
-    promptVersion: 3,
+    promptVersion: 4,
   };
 
   const prompt = [
@@ -46,6 +54,7 @@ export async function analyzeRegionImage(
     "If it contains text, explain the text in context.",
     "If it contains a chart, diagram, formula, table, or illustration, explain what the reader needs to understand.",
     "Do not invent details that are not visible.",
+    regionOutputInstruction(),
     question?.trim()
       ? "Reader question: " + question.trim()
       : "",
@@ -62,8 +71,23 @@ export async function analyzeRegionImage(
     const runtime = runtimes[index];
 
     if (!runtime.provider.generateVision) {
-      errors.push(runtime.label + " — no vision capability");
+      errors.push(runtime.label + " — no vision implementation");
       continue;
+    }
+
+    if (runtime.provider.getModelCapabilities) {
+      try {
+        const capabilities =
+          await runtime.provider.getModelCapabilities(runtime.model);
+
+        if (capabilities.vision === false) {
+          errors.push(runtime.label + " — model is not vision-capable");
+          continue;
+        }
+      } catch {
+        // Capability probing is advisory. The actual vision request remains
+        // the final authority when a provider cannot expose metadata.
+      }
     }
 
     const cacheKey = createAiCacheKey(
@@ -71,11 +95,15 @@ export async function analyzeRegionImage(
       runtime.cacheModelKey,
       cacheInput,
     );
-    const cached = await getCachedAiValue<{ text: string }>(cacheKey);
+    const cached = await getCachedAiValue<{
+      text: string;
+      analysis: RegionAnalysis;
+    }>(cacheKey);
 
-    if (cached?.text) {
+    if (cached?.text && cached.analysis) {
       return {
         text: cached.text,
+        analysis: cached.analysis,
         model: runtime.model,
         cached: true,
         source: runtime.label,
@@ -85,37 +113,54 @@ export async function analyzeRegionImage(
 
     try {
       const started = Date.now();
-      const response = await runtime.provider.generateVision({
-        model: runtime.model,
-        prompt,
-        imageDataUrl,
-      });
-      const latencyMs = Date.now() - started;
-      const text = response.text.trim();
 
-      if (!text) {
-        throw new Error("Vision model returned an empty response.");
-      }
+      const generated = await runWithAiExecutionPolicy(
+        "region",
+        async (signal) => {
+          const response = await runtime.provider.generateVision!({
+            model: runtime.model,
+            prompt,
+            imageDataUrl,
+            signal,
+          });
+
+          const analysis = parseStructuredRegionAnalysis(response.text);
+
+          return {
+            analysis,
+            text: formatStructuredRegionAnalysis(analysis),
+            model: response.model || runtime.model,
+            usage: response.usage,
+          };
+        },
+      );
+
+      const latencyMs = Date.now() - started;
 
       await Promise.all([
         recordAiUsage(
           runtime.model,
           "region",
-          response.usage,
+          generated.usage,
           latencyMs,
           runtime.providerConfigId,
+          runtime.pricing,
         ),
         putCachedAiValue(
           cacheKey,
           "region",
           runtime.cacheModelKey,
-          { text },
+          {
+            text: generated.text,
+            analysis: generated.analysis,
+          },
         ),
       ]);
 
       return {
-        text,
-        model: response.model || runtime.model,
+        text: generated.text,
+        analysis: generated.analysis,
+        model: generated.model,
         cached: false,
         source: runtime.label,
         fallbackUsed: index > 0,

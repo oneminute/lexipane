@@ -1135,6 +1135,9 @@ export function ReaderView({
         title: "Region / image analysis",
         text: result.text,
         model: result.model,
+        analysis: result.analysis,
+        source: result.source,
+        fallbackUsed: result.fallbackUsed,
       });
     } catch (error) {
       setAiResult(null);

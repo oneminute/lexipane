@@ -13,6 +13,7 @@ export interface AIProvider {
 
   testConnection(): Promise<ConnectionResult>;
   listModels(): Promise<ModelInfo[]>;
+  getModelCapabilities?(model: string): Promise<ModelInfo["capabilities"]>;
   generateText(request: TextGenerationRequest): Promise<TextGenerationResponse>;
   streamText?(request: TextGenerationRequest): AsyncIterable<TextStreamEvent>;
   generateVision?(

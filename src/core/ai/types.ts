@@ -36,6 +36,7 @@ export interface ModelInfo {
   providerId: string;
   local: boolean;
   capabilities: ModelCapabilities;
+  capabilitySource?: "provider" | "probe" | "inferred";
 }
 
 export type AIMessageRole = "system" | "user" | "assistant";

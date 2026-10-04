@@ -107,6 +107,44 @@ export function StructuredAnalysisView({ analysis }: Props) {
     );
   }
 
+  if (analysis.kind === "region") {
+    return (
+      <div className="structured-analysis">
+        <section className="structured-primary">
+          <span>Region analysis · {analysis.contentType}</span>
+          <strong>{analysis.summary}</strong>
+          {analysis.extractedText && (
+            <p className="structured-extracted-text">
+              {analysis.extractedText}
+            </p>
+          )}
+        </section>
+
+        {analysis.keyPoints.length > 0 && (
+          <section>
+            <span className="structured-label">Key points</span>
+            <ul>
+              {analysis.keyPoints.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {analysis.visualDetails.length > 0 && (
+          <section>
+            <span className="structured-label">Visual details</span>
+            <ul>
+              {analysis.visualDetails.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="structured-analysis">
       <section className="structured-primary">

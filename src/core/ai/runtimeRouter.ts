@@ -4,6 +4,7 @@ import {
   listProviderConfigs,
 } from "./providerConfigs";
 import {
+  choosePreferredOllamaModel,
   loadOllamaConfig,
   saveOllamaModel,
 } from "./ollamaConfig";
@@ -17,16 +18,23 @@ import {
   type ReadingTaskType,
   type TaskRouteTarget,
 } from "./taskRouting";
-import { choosePreferredOllamaModel } from "./ollamaConfig";
-import { loadBookPrivacyMode } from "../books/bookPrivacy";
+import {
+  loadBookPrivacyMode,
+  loadBookProviderPolicy,
+  type BookProviderPolicy,
+} from "../books/bookPrivacy";
+import type { AiPricing } from "./usage";
 
 export interface ResolvedTextRuntime {
   provider: AIProvider;
   model: string;
   cacheModelKey: string;
   local: boolean;
+  providerKey: string;
+  providerId: string;
   providerConfigId?: string;
   label: string;
+  pricing?: AiPricing;
 }
 
 function runtimeKey(runtime: ResolvedTextRuntime): string {
@@ -42,6 +50,14 @@ async function effectivePrivacyMode(
   }
 
   return loadAiPrivacyMode();
+}
+
+async function effectiveProviderPolicy(
+  bookPath?: string | null,
+): Promise<BookProviderPolicy> {
+  return bookPath
+    ? loadBookProviderPolicy(bookPath)
+    : { mode: "all", providerKeys: [] };
 }
 
 async function localRuntime(
@@ -77,7 +93,13 @@ async function localRuntime(
     model,
     cacheModelKey: "ollama:" + model,
     local: true,
+    providerKey: "ollama",
+    providerId: "ollama",
     label: "Ollama · " + model,
+    pricing: {
+      inputCostPerMillion: 0,
+      outputCostPerMillion: 0,
+    },
   };
 }
 
@@ -105,8 +127,14 @@ async function providerRuntime(
     cacheModelKey:
       "provider:" + config.id + ":" + model,
     local: provider.descriptor.region === "local",
+    providerKey: "config:" + config.id,
+    providerId: config.providerId,
     providerConfigId: config.id,
     label: config.displayName + " · " + model,
+    pricing: {
+      inputCostPerMillion: config.settings.inputCostPerMillion,
+      outputCostPerMillion: config.settings.outputCostPerMillion,
+    },
   };
 }
 
@@ -134,8 +162,7 @@ async function configuredCloudRuntimes(): Promise<ResolvedTextRuntime[]> {
       );
       if (!runtime.local) runtimes.push(runtime);
     } catch {
-      // Invalid/removed provider configurations should not prevent
-      // another configured fallback from being considered.
+      // One stale provider must not block the remaining fallback chain.
     }
   }
 
@@ -149,6 +176,16 @@ function acceptsPrivacy(
   if (mode === "local-only") return runtime.local;
   if (mode === "cloud-only") return !runtime.local;
   return true;
+}
+
+function acceptsProviderPolicy(
+  runtime: ResolvedTextRuntime,
+  policy: BookProviderPolicy,
+): boolean {
+  if (policy.mode === "all") return true;
+
+  const matched = policy.providerKeys.includes(runtime.providerKey);
+  return policy.mode === "allow" ? matched : !matched;
 }
 
 function dedupeRuntimes(
@@ -171,8 +208,9 @@ export async function resolveTextTaskRuntimes(
   task: ReadingTaskType,
   bookPath?: string | null,
 ): Promise<ResolvedTextRuntime[]> {
-  const [privacyMode, plan] = await Promise.all([
+  const [privacyMode, providerPolicy, plan] = await Promise.all([
     effectivePrivacyMode(bookPath),
+    effectiveProviderPolicy(bookPath),
     loadTaskRoutePlan(task),
   ]);
 
@@ -186,12 +224,14 @@ export async function resolveTextTaskRuntimes(
   for (const target of orderedTargets) {
     try {
       const runtime = await runtimeFromTarget(task, target);
-      if (acceptsPrivacy(runtime, privacyMode)) {
+      if (
+        acceptsPrivacy(runtime, privacyMode) &&
+        acceptsProviderPolicy(runtime, providerPolicy)
+      ) {
         routed.push(runtime);
       }
     } catch {
-      // Resolution failures are intentionally skipped so the next configured
-      // fallback can still run.
+      // Resolution failures are skipped so another fallback can still run.
     }
   }
 
@@ -199,7 +239,7 @@ export async function resolveTextTaskRuntimes(
     try {
       routed.push(await localRuntime(task));
     } catch {
-      // Preserve any explicitly configured local fallback that resolved.
+      // Keep any explicit local fallback that already resolved.
     }
   } else if (privacyMode === "cloud-only") {
     routed.push(...(await configuredCloudRuntimes()));
@@ -207,24 +247,31 @@ export async function resolveTextTaskRuntimes(
     try {
       routed.push(await localRuntime(task));
     } catch {
-      // Cloud fallback may still be available.
+      // Configured cloud routes may still work.
     }
     routed.push(...(await configuredCloudRuntimes()));
   } else if (routed.length === 0) {
-    // Prefer-local does not silently upload book content. If no explicit
-    // cloud route exists, its implicit default remains local.
+    // Prefer-local never silently uploads a book just because Ollama failed.
     try {
       routed.push(await localRuntime(task));
     } catch {
-      // Error below contains the privacy context.
+      // Error below explains the final routing state.
     }
   }
 
-  const result = dedupeRuntimes(routed).filter((runtime) =>
-    acceptsPrivacy(runtime, privacyMode),
+  const result = dedupeRuntimes(routed).filter(
+    (runtime) =>
+      acceptsPrivacy(runtime, privacyMode) &&
+      acceptsProviderPolicy(runtime, providerPolicy),
   );
 
   if (result.length === 0) {
+    if (providerPolicy.mode !== "all") {
+      throw new Error(
+        "This book's provider allow/deny policy leaves no usable AI route.",
+      );
+    }
+
     throw new Error(
       privacyMode === "local-only"
         ? "This book is Local Only, but no usable local AI route is available."

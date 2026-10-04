@@ -138,7 +138,25 @@ export class GeminiProvider implements AIProvider {
           streaming: true,
           contextWindow: model.inputTokenLimit,
         },
+        capabilitySource: "provider",
       }));
+  }
+
+  async getModelCapabilities(
+    model: string,
+  ): Promise<ModelInfo["capabilities"]> {
+    const models = await this.listModels();
+    const normalized = normalizeModelPath(model);
+    const found = models.find(
+      (item) => normalizeModelPath(item.id) === normalized,
+    );
+
+    return found?.capabilities ?? {
+      text: true,
+      vision: true,
+      structuredOutput: true,
+      streaming: true,
+    };
   }
 
   private requestBody(request: TextGenerationRequest) {
