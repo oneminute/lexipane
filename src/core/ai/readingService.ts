@@ -5,6 +5,7 @@ import {
 } from "./cache";
 import { runWithAiExecutionPolicy } from "./executionPolicy";
 import {
+  fallbackStructuredReadingAnalysis,
   formatStructuredReadingAnalysis,
   parseStructuredReadingAnalysis,
   structuredOutputInstruction,
@@ -110,7 +111,7 @@ function prepareReadingRequest(
     page: selection.page ?? null,
     question: question?.trim() ?? "",
     mode,
-    promptVersion: 7,
+    promptVersion: 8,
   };
 
   const userContent = [
@@ -236,6 +237,7 @@ async function executeReadingRequest(
           const request: TextGenerationRequest = {
             model: runtime.model,
             temperature: 0.15,
+            responseFormat: "json",
             messages: prepared.messages,
             signal,
           };
@@ -257,7 +259,16 @@ async function executeReadingRequest(
             usage = response.usage;
           }
 
-          const analysis = parseStructuredReadingAnalysis(rawText, mode);
+          let analysis: StructuredReadingAnalysis;
+
+          try {
+            analysis = parseStructuredReadingAnalysis(rawText, mode);
+          } catch (parseError) {
+            analysis = fallbackStructuredReadingAnalysis(
+              rawText,
+              "Structured parsing failed: " + errorMessage(parseError),
+            );
+          }
 
           return {
             analysis,
