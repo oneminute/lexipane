@@ -89,9 +89,20 @@ export function StructuredAnalysisView({ analysis }: Props) {
           </section>
         )}
 
+        {analysis.features.length > 0 && (
+          <section>
+            <span className="structured-label">Sentence features</span>
+            <ul>
+              {analysis.features.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {analysis.difficultExpressions.length > 0 && (
           <section>
-            <span className="structured-label">Difficult expressions</span>
+            <span className="structured-label">Words & expressions in context</span>
             <div className="structured-item-list">
               {analysis.difficultExpressions.map((item, index) => (
                 <article key={item.text + ":" + index}>
