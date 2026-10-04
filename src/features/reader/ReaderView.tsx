@@ -2081,6 +2081,195 @@ export function ReaderView({
     }
   }
 
+  function currentReaderTarget(): ReaderNavigationTarget | null {
+    if (isPdf && currentPage >= 1) {
+      return {
+        kind: "pdf-page",
+        page: currentPage,
+      };
+    }
+
+    if (isEpub && epubCurrentCfi) {
+      return {
+        kind: "epub-cfi",
+        cfi: epubCurrentCfi,
+      };
+    }
+
+    if (isKindle && kindleCurrentChapterId) {
+      return {
+        kind: "kindle-chapter",
+        chapterId: kindleCurrentChapterId,
+      };
+    }
+
+    return null;
+  }
+
+  function bookmarkLabel(
+    target: ReaderNavigationTarget,
+    progress: number,
+  ): string {
+    if (target.kind === "pdf-page") {
+      return "Page " + target.page;
+    }
+
+    return Math.round(progress * 100) + "%";
+  }
+
+  function navigateToTarget(target: ReaderNavigationTarget) {
+    if (target.kind === "pdf-page") {
+      setCurrentPage(target.page);
+      setInitialPage(target.page);
+      jumpToPage(target.page);
+      return;
+    }
+
+    if (target.kind === "epub-cfi") {
+      setEpubNavigationTarget(target.cfi);
+      return;
+    }
+
+    setKindleNavigationChapterId(target.chapterId);
+  }
+
+  async function addCurrentBookmark() {
+    if (!bookPath || bookmarkStatus === "saving") return;
+
+    const target = currentReaderTarget();
+    if (!target) return;
+
+    setBookmarkStatus("saving");
+
+    try {
+      const created = await createReaderBookmark(
+        bookPath,
+        target,
+        readerProgress,
+        bookmarkLabel(target, readerProgress),
+      );
+
+      if (created) {
+        setBookmarks((items) =>
+          [...items, created].sort((a, b) => {
+            const progressA = a.progress ?? 2;
+            const progressB = b.progress ?? 2;
+            return progressA - progressB;
+          }),
+        );
+        setBookmarkStatus("saved");
+        window.setTimeout(() => setBookmarkStatus("idle"), 1200);
+      } else {
+        setBookmarkStatus("idle");
+      }
+    } catch (error) {
+      console.error("Unable to create bookmark", error);
+      setBookmarkStatus("idle");
+    }
+  }
+
+  async function removeBookmark(id: string) {
+    try {
+      await removeReaderBookmark(id);
+      setBookmarks((items) =>
+        items.filter((bookmark) => bookmark.id !== id),
+      );
+    } catch (error) {
+      console.error("Unable to remove bookmark", error);
+    }
+  }
+
+  function openBookmark(bookmark: ReaderBookmark) {
+    peekOriginRef.current = null;
+    setPeekOrigin(null);
+    setProgressDraft(null);
+    navigateToTarget(bookmark.target);
+    setBookmarksOpen(false);
+  }
+
+  function beginProgressScrub() {
+    if (peekOriginRef.current) return;
+
+    const target = currentReaderTarget();
+    if (!target) return;
+
+    peekOriginRef.current = target;
+    setPeekOrigin(target);
+  }
+
+  function commitProgressScrub() {
+    if (progressDraft === null) return;
+
+    const progress = Math.max(0, Math.min(1, progressDraft));
+    setProgressDraft(null);
+
+    if (isPdf) {
+      if (pageCount < 1) return;
+
+      const page =
+        pageCount <= 1
+          ? 1
+          : Math.round(progress * (pageCount - 1)) + 1;
+
+      setCurrentPage(page);
+      jumpToPage(page);
+      return;
+    }
+
+    progressNavigationTokenRef.current += 1;
+    setProgressNavigation({
+      token: progressNavigationTokenRef.current,
+      progress,
+    });
+  }
+
+  function returnToReadingPosition() {
+    const target = peekOriginRef.current;
+    if (!target) return;
+
+    peekOriginRef.current = null;
+    setPeekOrigin(null);
+    setProgressDraft(null);
+    navigateToTarget(target);
+  }
+
+  async function continueFromPeekPosition() {
+    if (!bookPath || !peekOriginRef.current) return;
+
+    peekOriginRef.current = null;
+    setPeekOrigin(null);
+
+    try {
+      if (isPdf && pageCount > 0) {
+        await savePdfReadingPosition(
+          bookPath,
+          currentPage,
+          pageCount,
+        );
+        return;
+      }
+
+      if (isEpub && epubCurrentCfi) {
+        await saveEpubReadingPosition(
+          bookPath,
+          epubCurrentCfi,
+          epubProgress,
+        );
+        return;
+      }
+
+      if (isKindle && kindleCurrentChapterId) {
+        await saveKindleReadingPosition(
+          bookPath,
+          kindleCurrentChapterId,
+          kindleProgress,
+        );
+      }
+    } catch (error) {
+      console.error("Unable to commit peek reading position", error);
+    }
+  }
+
   const handleReaderImageOpen = useCallback(
     (image: ReaderImagePreview) => {
       setImagePreview(image);
