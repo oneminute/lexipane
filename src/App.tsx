@@ -12,6 +12,7 @@ import { LibraryView } from "./features/library/LibraryView";
 import { NotebookView } from "./features/notebook/NotebookView";
 import { ReaderErrorBoundary } from "./features/reader/ReaderErrorBoundary";
 import { ReaderView } from "./features/reader/ReaderView";
+import { ResourceHubView } from "./features/resources/ResourceHubView";
 import { AiSettingsView } from "./features/settings/AiSettingsView";
 
 export default function App() {
@@ -119,6 +120,7 @@ export default function App() {
         {view === "notebook" && (
           <NotebookView onOpenBook={openBookPath} />
         )}
+        {view === "resources" && <ResourceHubView />}
         {view === "ai" && <AiSettingsView />}
       </main>
     </div>
