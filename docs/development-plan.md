@@ -71,9 +71,9 @@ Last updated: **2026-10-04**
 
 **Resource Acquisition Platform / Resource Hub**
 
-Status: **READY**
+Status: **IN_PROGRESS**
 
-**RESOURCE-001 — Resource Core** is complete. The next selected milestone is **RESOURCE-002 — HTTP + OPDS vertical slice**. No cloud/P2P provider implementation has started.
+**RESOURCE-002 — HTTP + OPDS vertical slice** has started. This pass is implementing the first live HTTP/HTTPS acquisition path, persistent transfer execution state, OPDS discovery/parsing, and verified Library ingestion while keeping cloud/P2P providers out of scope.
 
 ## Most recently completed product work
 
@@ -102,9 +102,9 @@ Delivered:
 
 **RESOURCE-002 — HTTP + OPDS vertical slice**
 
-Status: **READY**
+Status: **IN_PROGRESS**
 
-Intended next implementation scope:
+Current implementation scope:
 
 - implement the first live native HTTP/HTTPS transfer path behind the Resource Core transfer contracts;
 - add HTTP metadata probing, redirects, content length/type handling, cancellation, retry, and resumable range behavior where supported;
@@ -122,7 +122,15 @@ Primary risks / dependencies to address before implementation:
 - ingestion must reuse existing Library identity/managed-storage code rather than create a second library path;
 - provider/network errors need durable transfer-job diagnostics suitable for later Download Manager hardening.
 
-RESOURCE-002 must begin with a development-plan status change to `IN_PROGRESS` before any implementation commit.
+Execution notes for this pass:
+
+- native HTTP work may add Rust HTTP client dependencies and Tauri events;
+- live HTTP must remain limited to http/https URLs and must reject embedded credentials;
+- completed downloads must remain in isolated temp storage until ingestion validates a Reader-supported file type;
+- OPDS browse/search is discovery only and must normalize acquisition links into Resource Core records before transfer;
+- cancellation/retry/resume support should be implemented in the common transfer path rather than only in the UI.
+
+Cloud OAuth, BitTorrent, and ED2K remain explicitly out of scope.
 ---
 
 # Product direction
@@ -734,7 +742,7 @@ Acceptance criteria:
 
 ## RESOURCE-002 — HTTP + OPDS vertical slice
 
-Status: **READY**
+Status: **IN_PROGRESS**
 
 Goal: prove discovery → preview → download → ingestion → Library with comparatively simple protocols.
 
