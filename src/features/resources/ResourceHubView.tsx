@@ -1053,6 +1053,167 @@ export function ResourceHubView({ onOpenBook }: Props) {
     }
   }
 
+  function activeEd2kEngine(): Ed2kEngineAccount | null {
+    return (
+      ed2kEngines.find(
+        (engine) => engine.id === activeEd2kEngineId,
+      ) ?? null
+    );
+  }
+
+  async function connectEd2k() {
+    if (!ed2kIncomingDir.trim()) return;
+
+    const port = Number(ed2kPort);
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+      setMessage("aMule EC port must be between 1 and 65535.");
+      return;
+    }
+
+    setEd2kBusy(true);
+    setMessage("");
+
+    try {
+      const engine = await connectEd2kEngine({
+        executable: ed2kExecutable || undefined,
+        host: ed2kHost || "127.0.0.1",
+        port,
+        password: ed2kPassword || undefined,
+        incomingDir: ed2kIncomingDir,
+      });
+
+      setEd2kPassword("");
+      setActiveEd2kEngineId(engine.id);
+      await refreshResourceCore();
+      setMessage("aMule ED2K engine connected.");
+      setTab("browse");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to connect to aMule.",
+      );
+    } finally {
+      setEd2kBusy(false);
+    }
+  }
+
+  async function disconnectEd2k(engine: Ed2kEngineAccount) {
+    setEd2kBusy(true);
+    setMessage("");
+
+    try {
+      await disconnectEd2kEngine(engine);
+      if (activeEd2kEngineId === engine.id) {
+        setActiveEd2kEngineId(null);
+        setEd2kResults([]);
+      }
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to remove the aMule connection.",
+      );
+    } finally {
+      setEd2kBusy(false);
+    }
+  }
+
+  async function runEd2kSearch() {
+    const engine = activeEd2kEngine();
+    if (!engine || !ed2kQuery.trim()) return;
+
+    setEd2kBusy(true);
+    setMessage("");
+
+    try {
+      const response = await searchEd2kEngine(
+        engine,
+        ed2kQuery,
+        ed2kSearchType,
+      );
+      setEd2kResults(response.results);
+      setMessage(
+        response.results.length +
+          " ED2K search result" +
+          (response.results.length === 1 ? "" : "s") +
+          " returned.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "ED2K search failed.",
+      );
+    } finally {
+      setEd2kBusy(false);
+    }
+  }
+
+  async function acquireCurrentEd2kLink() {
+    const engine = activeEd2kEngine();
+    if (
+      !engine ||
+      !classification ||
+      classification.kind !== "ed2k"
+    ) {
+      return;
+    }
+
+    setEd2kBusy(true);
+    setMessage("");
+
+    try {
+      await startEd2kLinkAcquisition(
+        engine,
+        classification.normalizedInput,
+      );
+      setMessage(
+        "ED2K link added to aMule. LexiPane will import the completed book from the configured Incoming directory.",
+      );
+      setTab("downloads");
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to add the ED2K link.",
+      );
+    } finally {
+      setEd2kBusy(false);
+    }
+  }
+
+  async function acquireEd2kResult(result: Ed2kSearchResult) {
+    const engine = activeEd2kEngine();
+    if (!engine) return;
+
+    setEd2kBusy(true);
+    setMessage("");
+
+    try {
+      await startEd2kSearchResultAcquisition(
+        engine,
+        ed2kQuery,
+        result,
+      );
+      setMessage(
+        "ED2K search result queued in aMule. LexiPane will import it after completion.",
+      );
+      setTab("downloads");
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to download the ED2K result.",
+      );
+    } finally {
+      setEd2kBusy(false);
+    }
+  }
+
   async function handleTransferAction(
     job: TransferJob,
     action: "pause" | "resume" | "cancel" | "discard",
@@ -1065,12 +1226,15 @@ export function ResourceHubView({ onOpenBook }: Props) {
         job.providerId === "google-drive" ||
         job.providerId === "dropbox" ||
         job.providerId === "onedrive";
+      const ed2k = job.providerId === "ed2k";
 
       if (action === "pause") {
         if (torrent) {
           await pauseTorrentDownload(job.id);
         } else if (cloud) {
           await pauseCloudDownload(job.id);
+        } else if (ed2k) {
+          await pauseEd2kTransfer(job);
         } else {
           await pauseHttpDownload(job.id);
         }
@@ -1079,6 +1243,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
           await cancelTorrentDownload(job.id);
         } else if (cloud) {
           await cancelCloudDownload(job.id);
+        } else if (ed2k) {
+          await cancelEd2kTransfer(job);
         } else {
           await cancelHttpDownload(job.id);
         }
@@ -1087,6 +1253,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
           await discardTorrentTransfer(job);
         } else if (cloud) {
           await discardCloudTransfer(job);
+        } else if (ed2k) {
+          await cancelEd2kTransfer(job);
         } else {
           await discardHttpTransfer(job);
         }
@@ -1095,6 +1263,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
         await resumeTorrentTransfer(job);
       } else if (cloud) {
         await resumeCloudTransfer(job);
+      } else if (ed2k) {
+        await resumeEd2kTransfer(job);
       } else {
         await resumeHttpTransfer(job);
       }
