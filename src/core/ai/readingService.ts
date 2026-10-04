@@ -29,6 +29,15 @@ export interface ReadingSelection {
   bookPath?: string | null;
 }
 
+export interface ReadingRequestDebug {
+  taskType: ReadingTaskType;
+  mode: ReadingAnalysisMode;
+  responseFormat: "json";
+  temperature: number;
+  thinking: boolean;
+  messages: AIMessage[];
+}
+
 export interface ReadingAnalysisResult {
   text: string;
   analysis: StructuredReadingAnalysis;
@@ -37,6 +46,8 @@ export interface ReadingAnalysisResult {
   source?: string;
   fallbackUsed?: boolean;
   attemptedSources?: string[];
+  requestDebug: ReadingRequestDebug;
+  rawResponse?: string;
 }
 
 export type ReadingStreamCallback = (
@@ -96,6 +107,7 @@ interface PreparedReadingRequest {
     promptVersion: number;
   };
   messages: AIMessage[];
+  debug: ReadingRequestDebug;
 }
 
 function prepareReadingRequest(
@@ -111,7 +123,7 @@ function prepareReadingRequest(
     page: selection.page ?? null,
     question: question?.trim() ?? "",
     mode,
-    promptVersion: 8,
+    promptVersion: 9,
   };
 
   const userContent = [
@@ -142,11 +154,31 @@ function prepareReadingRequest(
     },
   ];
 
+  const debug: ReadingRequestDebug = {
+    taskType,
+    mode,
+    responseFormat: "json",
+    temperature: 0.15,
+    // Structured reading output should be direct. Reasoning-only output from
+    // thinking models can otherwise leave message.content empty in Ollama.
+    thinking: false,
+    messages,
+  };
+
   return {
     taskType,
     input,
     messages,
+    debug,
   };
+}
+
+export function buildReadingRequestDebug(
+  selection: ReadingSelection,
+  mode: ReadingAnalysisMode,
+  question?: string,
+): ReadingRequestDebug {
+  return prepareReadingRequest(selection, mode, question).debug;
 }
 
 async function persistReadingResult(
@@ -223,6 +255,7 @@ async function executeReadingRequest(
         source: runtime.label,
         fallbackUsed: index > 0,
         attemptedSources,
+        requestDebug: prepared.debug,
       };
     }
 
@@ -231,13 +264,24 @@ async function executeReadingRequest(
     try {
       const started = Date.now();
 
+      console.info("[LexiPane AI request]", {
+        taskType: prepared.taskType,
+        source: runtime.label,
+        model: runtime.model,
+        responseFormat: prepared.debug.responseFormat,
+        temperature: prepared.debug.temperature,
+        thinking: prepared.debug.thinking,
+        messages: prepared.debug.messages,
+      });
+
       const generated = await runWithAiExecutionPolicy(
         prepared.taskType,
         async (signal) => {
           const request: TextGenerationRequest = {
             model: runtime.model,
-            temperature: 0.15,
-            responseFormat: "json",
+            temperature: prepared.debug.temperature,
+            responseFormat: prepared.debug.responseFormat,
+            thinking: prepared.debug.thinking,
             messages: prepared.messages,
             signal,
           };
@@ -259,6 +303,22 @@ async function executeReadingRequest(
             usage = response.usage;
           }
 
+          console.info("[LexiPane AI response]", {
+            taskType: prepared.taskType,
+            source: runtime.label,
+            model,
+            rawText,
+            usage,
+          });
+
+          if (!rawText.trim()) {
+            throw new Error(
+              "Model returned an empty content response. " +
+                "For Ollama thinking models, LexiPane now sends think=false " +
+                "for structured reading requests.",
+            );
+          }
+
           let analysis: StructuredReadingAnalysis;
 
           try {
@@ -275,6 +335,7 @@ async function executeReadingRequest(
             text: formatStructuredReadingAnalysis(analysis),
             model,
             usage,
+            rawResponse: rawText,
           };
         },
       );
@@ -304,6 +365,8 @@ async function executeReadingRequest(
         source: runtime.label,
         fallbackUsed: index > 0,
         attemptedSources,
+        requestDebug: prepared.debug,
+        rawResponse: generated.rawResponse,
       };
     } catch (error) {
       attemptedSources[attemptedSources.length - 1] =
