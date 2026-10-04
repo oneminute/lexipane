@@ -252,7 +252,15 @@ function syncUserHighlights(
 
   for (const cfi of renderedCfis) {
     if (!activeCfis.has(cfi)) {
+      try {
+        try {
       rendition.annotations.remove(cfi, "highlight");
+    } catch (error) {
+      console.warn("Unable to remove EPUB auto highlight", cfi, error);
+    }
+      } catch (error) {
+        console.warn("Unable to remove stale EPUB highlight", cfi, error);
+      }
       renderedCfis.delete(cfi);
     }
   }
@@ -262,18 +270,26 @@ function syncUserHighlights(
       continue;
     }
 
-    rendition.annotations.highlight(
-      annotation.anchor.cfi,
-      { id: annotation.id },
-      undefined,
-      "lexipane-epub-highlight",
-      {
-        fill: "#8bb9f2",
-        "fill-opacity": "0.32",
-        "mix-blend-mode": "multiply",
-      },
-    );
-    renderedCfis.add(annotation.anchor.cfi);
+    try {
+      rendition.annotations.highlight(
+        annotation.anchor.cfi,
+        { id: annotation.id },
+        undefined,
+        "lexipane-epub-highlight",
+        {
+          fill: "#8bb9f2",
+          "fill-opacity": "0.32",
+          "mix-blend-mode": "multiply",
+        },
+      );
+      renderedCfis.add(annotation.anchor.cfi);
+    } catch (error) {
+      console.warn(
+        "Skipping an EPUB highlight with an invalid CFI",
+        annotation.anchor.cfi,
+        error,
+      );
+    }
   }
 }
 
@@ -499,9 +515,23 @@ export function EpubDocumentView({
         },
       );
 
-      await rendition.display(
-        lastCfiRef.current || initialCfi || undefined,
-      );
+      const requestedCfi =
+        lastCfiRef.current || initialCfi || null;
+
+      try {
+        await rendition.display(requestedCfi || undefined);
+      } catch (displayError) {
+        if (!requestedCfi) throw displayError;
+
+        console.warn(
+          "Saved EPUB CFI could not be restored; opening at the book start.",
+          requestedCfi,
+          displayError,
+        );
+        lastCfiRef.current = null;
+        await rendition.display();
+      }
+
       if (cancelled) return;
 
       syncUserHighlights(
@@ -572,7 +602,16 @@ export function EpubDocumentView({
 
   useEffect(() => {
     if (!navigationTarget || !renditionRef.current) return;
-    void renditionRef.current.display(navigationTarget);
+
+    void renditionRef.current
+      .display(navigationTarget)
+      .catch((error) => {
+        console.warn(
+          "Unable to navigate to EPUB CFI",
+          navigationTarget,
+          error,
+        );
+      });
   }, [navigationTarget]);
 
   useEffect(() => {

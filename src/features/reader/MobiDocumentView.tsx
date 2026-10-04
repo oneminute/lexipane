@@ -64,6 +64,7 @@ interface Props {
   autoTerms?: DifficultTerm[];
   onMetadataReady?: (metadata: KindleMetadataSummary) => void;
   onOutlineReady?: (outline: KindleOutlineEntry[]) => void;
+  onCoverReady?: (coverDataUrl: string) => void;
   onRelocated?: (
     chapterId: string,
     progress: number | null,
@@ -77,6 +78,28 @@ interface Props {
 
 function normalizeText(value: string | null | undefined): string {
   return (value ?? "").replace(/[\s\u00a0]+/g, " ").trim();
+}
+
+async function imageUrlToDataUrl(url: string): Promise<string | null> {
+  if (!url) return null;
+  if (url.startsWith("data:image/")) return url;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+
+    const blob = await response.blob();
+
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve(null);
+      reader.onload = () =>
+        resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
 }
 
 async function openParser(
@@ -316,6 +339,7 @@ export function MobiDocumentView({
   autoTerms = [],
   onMetadataReady,
   onOutlineReady,
+  onCoverReady,
   onRelocated,
   onContextReady,
   onSelection,
@@ -368,6 +392,14 @@ export function MobiDocumentView({
           null,
       });
 
+      const coverUrl = activeParser.getCoverImage();
+      if (coverUrl) {
+        const coverDataUrl = await imageUrlToDataUrl(coverUrl);
+        if (!cancelled && coverDataUrl) {
+          onCoverReady?.(coverDataUrl);
+        }
+      }
+
       const nextSpine = activeParser.getSpine() as KindleSpineEntry[];
       setSpine(nextSpine);
       onOutlineReady?.(
@@ -408,6 +440,7 @@ export function MobiDocumentView({
     };
   }, [
     initialChapterId,
+    onCoverReady,
     onMetadataReady,
     onOutlineReady,
     path,

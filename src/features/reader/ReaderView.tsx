@@ -957,6 +957,16 @@ export function ReaderView({
     [],
   );
 
+  const handleKindleCoverReady = useCallback(
+    (coverDataUrl: string) => {
+      if (!bookPath) return;
+      void updateBookCover(bookPath, coverDataUrl).catch((error) => {
+        console.error("Unable to persist Kindle cover", error);
+      });
+    },
+    [bookPath],
+  );
+
   const handleKindleMetadataReady = useCallback(
     (metadata: KindleMetadataSummary) => {
       setKindleMetadata(metadata);
@@ -2214,6 +2224,7 @@ export function ReaderView({
                 autoTerms={kindleAutoTerms}
                 onMetadataReady={handleKindleMetadataReady}
                 onOutlineReady={handleKindleOutlineReady}
+                onCoverReady={handleKindleCoverReady}
                 onRelocated={handleKindleRelocated}
                 onContextReady={handleKindleContextReady}
                 onSelection={handleKindleSelection}

@@ -157,7 +157,12 @@ Implemented:
 
 Next:
 
-- stronger CFI recovery tests across malformed EPUBs
+- saved-CFI fallback to book start when a persisted location is invalid
+- malformed saved-highlight CFI isolation so one bad anchor does not break the reader
+
+Next:
+
+- broader malformed-EPUB / CFI regression fixtures
 - footnote / popup handling
 - image zoom and richer internal-resource handling
 
@@ -178,12 +183,12 @@ Implemented:
 - internal-link navigation
 - shared persisted font-size controls
 - Light / Sepia / Dark reading themes
+- cover extraction into the bookshelf
 
 Next:
 
 - wider KF8/AZW3 compatibility testing
 - better resource handling for unusual books
-- cover extraction
 
 ## Phase 6 — Mobile
 

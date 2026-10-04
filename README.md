@@ -21,8 +21,8 @@ The current desktop build now includes PDF, EPUB, and Kindle-family reading flow
 - selectable PDF text layer
 - reading-position persistence and restore
 - persistent user highlights
-- EPUB.js reading with CFI position/highlights, persisted font controls, Light/Sepia/Dark themes, scrolled/paginated modes, cover extraction, AI assistance, and Notebook anchors
-- MOBI/AZW/AZW3 reading with local chapter/internal-link navigation, shared reading themes/font controls, highlights, AI assistance, and Notebook anchors
+- EPUB.js reading with CFI position/highlights, invalid-CFI recovery, persisted font controls, Light/Sepia/Dark themes, scrolled/paginated modes, cover extraction, AI assistance, and Notebook anchors
+- MOBI/AZW/AZW3 reading with local chapter/internal-link navigation, shared reading themes/font controls, cover extraction, highlights, AI assistance, and Notebook anchors
 - versioned PDF text anchors containing page, exact quote, quote context, and normalized highlight rectangles
 - local Ollama model discovery
 - automatic difficult-word and phrase detection with A2/B1/B2/C1 reader levels
