@@ -1,17 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  cancelHttpDownload,
+  pauseHttpDownload,
+  prepareHttpAcquisition,
+  resumeHttpTransfer,
+  startHttpAcquisition,
+  startPreparedHttpAcquisition,
+  type HttpAcquisitionPreparation,
+} from "../../core/resources/acquisition";
 import { getResourceNativeCapabilities } from "../../core/resources/native";
+import {
+  fetchOpdsCatalog,
+  searchOpdsCatalog,
+  type OpdsEntry,
+  type OpdsFeed,
+  type OpdsLink,
+} from "../../core/resources/opds";
 import {
   createDraftTransferJob,
   listPersistedResourceProviders,
+  listResourceCatalogs,
   listResourceItems,
   listTransferJobs,
+  removeResourceCatalog,
+  saveResourceCatalog,
   syncBuiltinResourceProviders,
   type PersistedResourceProvider,
+  type ResourceCatalog,
 } from "../../core/resources/persistence";
 import {
   listResourceProviders,
 } from "../../core/resources/registry";
 import { classifyResourceInput } from "../../core/resources/resolver";
+import {
+  RESOURCE_TRANSFER_UPDATED_EVENT,
+} from "../../core/resources/runtime";
 import type {
   ResourceInputClassification,
   ResourceItem,
@@ -22,6 +45,10 @@ import type {
 } from "../../core/resources/types";
 
 type ResourceHubTab = "search" | "browse" | "downloads" | "accounts";
+
+interface Props {
+  onOpenBook: (path: string) => void | Promise<void>;
+}
 
 interface ProviderView {
   id: string;
@@ -130,7 +157,34 @@ function transferLabel(job: TransferJob): string {
     : job.transportType;
 }
 
-export function ResourceHubView() {
+function formatBytes(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return "Unknown";
+
+  const units = ["B", "KB", "MB", "GB"];
+  let size = Math.max(0, value);
+  let index = 0;
+
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+
+  return (
+    size.toLocaleString(undefined, {
+      maximumFractionDigits: index === 0 ? 0 : 1,
+    }) +
+    " " +
+    units[index]
+  );
+}
+
+function opdsLinkLabel(link: OpdsLink): string {
+  if (link.type === "application/epub+zip") return "Get EPUB";
+  if (link.type === "application/pdf") return "Get PDF";
+  return link.title || "Get book";
+}
+
+export function ResourceHubView({ onOpenBook }: Props) {
   const [tab, setTab] = useState<ResourceHubTab>("search");
   const [input, setInput] = useState("");
   const [classification, setClassification] =
@@ -139,11 +193,23 @@ export function ResourceHubView() {
     useState<ProviderView[]>(fallbackProviderViews);
   const [transfers, setTransfers] = useState<TransferJob[]>([]);
   const [resources, setResources] = useState<ResourceItem[]>([]);
+  const [catalogs, setCatalogs] = useState<ResourceCatalog[]>([]);
   const [nativeCapabilities, setNativeCapabilities] =
     useState<ResourceNativeCapabilities | null>(null);
+  const [httpPreparation, setHttpPreparation] =
+    useState<HttpAcquisitionPreparation | null>(null);
+  const [networkBusy, setNetworkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [savingDraft, setSavingDraft] = useState(false);
+
+  const [catalogName, setCatalogName] = useState("");
+  const [catalogUrl, setCatalogUrl] = useState("");
+  const [activeCatalog, setActiveCatalog] =
+    useState<ResourceCatalog | null>(null);
+  const [opdsFeed, setOpdsFeed] = useState<OpdsFeed | null>(null);
+  const [opdsQuery, setOpdsQuery] = useState("");
+  const [opdsBusy, setOpdsBusy] = useState(false);
 
   const liveTransportCount = useMemo(() => {
     if (!nativeCapabilities) return 0;
@@ -152,12 +218,13 @@ export function ResourceHubView() {
   }, [nativeCapabilities]);
 
   async function refreshResourceCore() {
-    const [native, persistedProviders, jobs, items] =
+    const [native, persistedProviders, jobs, items, savedCatalogs] =
       await Promise.all([
         getResourceNativeCapabilities(),
         listPersistedResourceProviders(),
         listTransferJobs(),
         listResourceItems(),
+        listResourceCatalogs(),
       ]);
 
     setNativeCapabilities(native);
@@ -168,6 +235,7 @@ export function ResourceHubView() {
     );
     setTransfers(jobs);
     setResources(items);
+    setCatalogs(savedCatalogs);
   }
 
   useEffect(() => {
@@ -180,12 +248,12 @@ export function ResourceHubView() {
         if (cancelled) return;
         await refreshResourceCore();
       } catch (error) {
-        console.error("Unable to initialize Resource Core", error);
+        console.error("Unable to initialize Resource Hub", error);
         if (!cancelled) {
           setMessage(
             error instanceof Error
               ? error.message
-              : "Unable to initialize Resource Core.",
+              : "Unable to initialize Resource Hub.",
           );
         }
       } finally {
@@ -198,14 +266,86 @@ export function ResourceHubView() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleTransferUpdate = () => {
+      void refreshResourceCore().catch((error) => {
+        console.error("Unable to refresh Resource Hub transfers", error);
+      });
+    };
+
+    globalThis.addEventListener(
+      RESOURCE_TRANSFER_UPDATED_EVENT,
+      handleTransferUpdate,
+    );
+
+    return () => {
+      globalThis.removeEventListener(
+        RESOURCE_TRANSFER_UPDATED_EVENT,
+        handleTransferUpdate,
+      );
+    };
+  }, []);
+
   function inspectInput() {
     const next = classifyResourceInput(input);
     setClassification(next);
+    setHttpPreparation(null);
     setMessage(
-      next.startsNetworkActivity
-        ? ""
-        : "Classification only — no network request was sent.",
+      "Classification only — no network request was sent.",
     );
+  }
+
+  async function probeCurrentHttp() {
+    if (!classification || classification.kind !== "http") return;
+
+    setNetworkBusy(true);
+    setMessage("");
+
+    try {
+      const preparation = await prepareHttpAcquisition(
+        classification.normalizedInput,
+      );
+      setHttpPreparation(preparation);
+      setMessage(
+        "HTTP metadata loaded. No file has been downloaded yet.",
+      );
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to probe the HTTP resource.",
+      );
+    } finally {
+      setNetworkBusy(false);
+    }
+  }
+
+  async function downloadPreparedHttp() {
+    if (!httpPreparation) return;
+
+    setNetworkBusy(true);
+    setMessage("");
+
+    try {
+      await startPreparedHttpAcquisition(
+        httpPreparation,
+        classification?.normalizedInput,
+      );
+      setMessage(
+        "HTTP download started. It will continue if you leave Resources.",
+      );
+      setTab("downloads");
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to start the HTTP download.",
+      );
+    } finally {
+      setNetworkBusy(false);
+    }
   }
 
   async function saveDraft() {
@@ -253,6 +393,160 @@ export function ResourceHubView() {
     }
   }
 
+  async function saveAndOpenCatalog(
+    name: string,
+    url: string,
+  ) {
+    setOpdsBusy(true);
+    setMessage("");
+
+    try {
+      const feed = await fetchOpdsCatalog(url);
+      const catalog = await saveResourceCatalog(
+        name.trim() || feed.title,
+        feed.url,
+        {
+          feedTitle: feed.title,
+          searchUrl: feed.searchUrl,
+        },
+      );
+
+      if (!catalog) {
+        throw new Error(
+          "OPDS catalogs can be saved in the desktop application.",
+        );
+      }
+
+      setActiveCatalog(catalog);
+      setOpdsFeed(feed);
+      setCatalogName("");
+      setCatalogUrl("");
+      await refreshResourceCore();
+      setTab("browse");
+      setMessage(
+        "OPDS catalog loaded. Browsing does not start a download.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load the OPDS catalog.",
+      );
+    } finally {
+      setOpdsBusy(false);
+    }
+  }
+
+  async function openCatalog(catalog: ResourceCatalog) {
+    setOpdsBusy(true);
+    setMessage("");
+
+    try {
+      const feed = await fetchOpdsCatalog(catalog.url);
+      setActiveCatalog(catalog);
+      setOpdsFeed(feed);
+      setOpdsQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to open the OPDS catalog.",
+      );
+    } finally {
+      setOpdsBusy(false);
+    }
+  }
+
+  async function searchCatalog() {
+    if (!activeCatalog || !opdsQuery.trim()) return;
+
+    setOpdsBusy(true);
+    setMessage("");
+
+    try {
+      const feed = await searchOpdsCatalog(
+        activeCatalog.url,
+        opdsQuery,
+      );
+      setOpdsFeed(feed);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to search the OPDS catalog.",
+      );
+    } finally {
+      setOpdsBusy(false);
+    }
+  }
+
+  async function acquireOpdsEntry(
+    entry: OpdsEntry,
+    link: OpdsLink,
+  ) {
+    setNetworkBusy(true);
+    setMessage("");
+
+    try {
+      await startHttpAcquisition(link.href, {
+        title: entry.title,
+        authors: entry.authors,
+        opdsCatalogUrl: activeCatalog?.url ?? opdsFeed?.url,
+        opdsEntryId: entry.id,
+        acquisitionType: link.type,
+      });
+      setMessage(
+        "Download started from the OPDS acquisition link.",
+      );
+      setTab("downloads");
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to acquire the OPDS resource.",
+      );
+    } finally {
+      setNetworkBusy(false);
+    }
+  }
+
+  async function removeCatalog(catalog: ResourceCatalog) {
+    await removeResourceCatalog(catalog.id);
+    if (activeCatalog?.id === catalog.id) {
+      setActiveCatalog(null);
+      setOpdsFeed(null);
+      setOpdsQuery("");
+    }
+    await refreshResourceCore();
+  }
+
+  async function handleTransferAction(
+    job: TransferJob,
+    action: "pause" | "resume" | "cancel",
+  ) {
+    setMessage("");
+
+    try {
+      if (action === "pause") {
+        await pauseHttpDownload(job.id);
+      } else if (action === "cancel") {
+        await cancelHttpDownload(job.id);
+      } else {
+        await resumeHttpTransfer(job);
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to update the transfer.",
+      );
+    }
+  }
+
+  const canProbeHttp = classification?.kind === "http";
+  const canBrowseOpds = classification?.kind === "opds";
+
   return (
     <div className="page resource-hub-page">
       <header className="page-header resource-hub-header">
@@ -260,8 +554,8 @@ export function ResourceHubView() {
           <span className="eyebrow">Resource acquisition platform</span>
           <h1>Find it. Inspect it. Bring it into your library.</h1>
           <p>
-            Resource Core normalizes cloud, catalog, web, and P2P inputs
-            before any provider is allowed to perform network activity.
+            HTTP acquisition is now live. OPDS discovery uses the same
+            persistent transfer and verified Library-ingestion pipeline.
           </p>
         </div>
 
@@ -269,12 +563,10 @@ export function ResourceHubView() {
           <span className="resource-status-dot" />
           <div>
             <strong>
-              {loading ? "Starting Resource Core…" : "Resource Core ready"}
+              {loading ? "Starting Resource Hub…" : "Resource Hub ready"}
             </strong>
             <small>
-              {liveTransportCount === 0
-                ? "RESOURCE-001 · live transfers disabled"
-                : liveTransportCount + " live transport(s)"}
+              RESOURCE-002 · {liveTransportCount} live transport(s)
             </small>
           </div>
         </div>
@@ -304,8 +596,8 @@ export function ResourceHubView() {
             <span className="eyebrow">Universal resource input</span>
             <h2>Paste a resource address</h2>
             <p>
-              URL, magnet, ED2K link, cloud share link, OPDS catalog,
-              WebDAV/S3/SFTP address, or torrent metadata path.
+              Inspect remains local-only. A separate action is required before
+              LexiPane probes a web resource or opens an OPDS catalog.
             </p>
 
             <div className="resource-input-row">
@@ -315,6 +607,7 @@ export function ResourceHubView() {
                 onChange={(event) => {
                   setInput(event.target.value);
                   setClassification(null);
+                  setHttpPreparation(null);
                   setMessage("");
                 }}
                 onKeyDown={(event) => {
@@ -350,7 +643,7 @@ export function ResourceHubView() {
                     <dd>{classification.confidence}</dd>
                   </div>
                   <div>
-                    <dt>Network</dt>
+                    <dt>Inspect network</dt>
                     <dd>Not started</dd>
                   </div>
                 </dl>
@@ -358,6 +651,33 @@ export function ResourceHubView() {
                 <code>{classification.normalizedInput || "—"}</code>
 
                 <div className="resource-classification-actions">
+                  {canProbeHttp && (
+                    <button
+                      type="button"
+                      className="primary-button compact"
+                      disabled={networkBusy}
+                      onClick={() => void probeCurrentHttp()}
+                    >
+                      {networkBusy ? "Probing…" : "Probe metadata"}
+                    </button>
+                  )}
+
+                  {canBrowseOpds && (
+                    <button
+                      type="button"
+                      className="primary-button compact"
+                      disabled={opdsBusy}
+                      onClick={() =>
+                        void saveAndOpenCatalog(
+                          "",
+                          classification.normalizedInput,
+                        )
+                      }
+                    >
+                      {opdsBusy ? "Opening…" : "Browse catalog"}
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     className="ghost-button"
@@ -370,17 +690,60 @@ export function ResourceHubView() {
                   >
                     {savingDraft ? "Saving…" : "Save as draft"}
                   </button>
-                  <small>
-                    Draft jobs are inert. A future milestone will resolve and
-                    transfer them.
-                  </small>
                 </div>
+
+                {httpPreparation && (
+                  <div className="resource-http-preview">
+                    <div>
+                      <span className="eyebrow">HTTP metadata</span>
+                      <strong>
+                        {httpPreparation.probe.fileName ??
+                          httpPreparation.bundle.item.title}
+                      </strong>
+                      <small>{httpPreparation.probe.finalUrl}</small>
+                    </div>
+
+                    <dl>
+                      <div>
+                        <dt>Type</dt>
+                        <dd>
+                          {httpPreparation.probe.contentType ?? "Unknown"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Size</dt>
+                        <dd>
+                          {formatBytes(
+                            httpPreparation.probe.contentLength,
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Resume</dt>
+                        <dd>
+                          {httpPreparation.probe.acceptRanges
+                            ? "Byte ranges"
+                            : "Server dependent"}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={networkBusy}
+                      onClick={() => void downloadPreparedHttp()}
+                    >
+                      Download and add to Library
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </section>
 
           <aside className="resource-summary-card">
-            <span className="eyebrow">Core inventory</span>
+            <span className="eyebrow">Resource inventory</span>
             <div className="resource-stat-grid">
               <div>
                 <strong>{providers.length}</strong>
@@ -395,17 +758,16 @@ export function ResourceHubView() {
                 <span>transfer jobs</span>
               </div>
               <div>
-                <strong>{liveTransportCount}</strong>
-                <span>live transports</span>
+                <strong>{catalogs.length}</strong>
+                <span>OPDS catalogs</span>
               </div>
             </div>
 
             <div className="resource-safety-note">
-              <strong>RESOURCE-001 boundary</strong>
+              <strong>RESOURCE-002 boundary</strong>
               <p>
-                Classification, persistence, and provider capability
-                discovery are enabled. HTTP, cloud, BitTorrent, and ED2K
-                transfer engines remain disabled.
+                HTTP/HTTPS is live for validated PDF/EPUB acquisition. Cloud
+                OAuth, BitTorrent, and ED2K networking remain disabled.
               </p>
             </div>
           </aside>
@@ -413,45 +775,202 @@ export function ResourceHubView() {
       )}
 
       {tab === "browse" && (
-        <section className="resource-section">
-          <header>
-            <div>
-              <span className="eyebrow">Provider registry</span>
-              <h2>Available contracts</h2>
-            </div>
-            <small>
-              Contracts describe future abilities; they do not imply a live
-              connection.
-            </small>
-          </header>
+        <div className="resource-browse-stack">
+          <section className="resource-section">
+            <header>
+              <div>
+                <span className="eyebrow">OPDS catalogs</span>
+                <h2>Browse open or authorized book catalogs</h2>
+              </div>
+              <small>
+                Catalog discovery is separate from acquisition. A book is only
+                downloaded after you choose an acquisition link.
+              </small>
+            </header>
 
-          <div className="resource-provider-grid">
-            {providers.map((provider) => (
-              <article className="resource-provider-card" key={provider.id}>
-                <div className="resource-provider-heading">
-                  <div>
-                    <span>{provider.kind}</span>
-                    <h3>{provider.name}</h3>
+            <div className="opds-add-row">
+              <input
+                value={catalogName}
+                placeholder="Catalog name (optional)"
+                onChange={(event) => setCatalogName(event.target.value)}
+              />
+              <input
+                value={catalogUrl}
+                placeholder="https://example.org/opds"
+                onChange={(event) => setCatalogUrl(event.target.value)}
+              />
+              <button
+                className="primary-button compact"
+                type="button"
+                disabled={opdsBusy || !catalogUrl.trim()}
+                onClick={() =>
+                  void saveAndOpenCatalog(catalogName, catalogUrl)
+                }
+              >
+                {opdsBusy ? "Loading…" : "Add & open"}
+              </button>
+            </div>
+
+            {catalogs.length > 0 && (
+              <div className="opds-catalog-list">
+                {catalogs.map((catalog) => (
+                  <div
+                    key={catalog.id}
+                    className={
+                      activeCatalog?.id === catalog.id ? "active" : ""
+                    }
+                  >
+                    <button
+                      type="button"
+                      onClick={() => void openCatalog(catalog)}
+                    >
+                      <strong>{catalog.name}</strong>
+                      <small>{catalog.url}</small>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={"Remove " + catalog.name}
+                      onClick={() => void removeCatalog(catalog)}
+                    >
+                      ×
+                    </button>
                   </div>
-                  <em className={provider.live ? "live" : ""}>
-                    {provider.live ? "Live" : "Contract only"}
-                  </em>
+                ))}
+              </div>
+            )}
+
+            {activeCatalog && (
+              <div className="opds-search-row">
+                <input
+                  value={opdsQuery}
+                  placeholder={"Search " + activeCatalog.name}
+                  onChange={(event) => setOpdsQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      void searchCatalog();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={opdsBusy || !opdsQuery.trim()}
+                  onClick={() => void searchCatalog()}
+                >
+                  Search
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={opdsBusy}
+                  onClick={() => void openCatalog(activeCatalog)}
+                >
+                  Root
+                </button>
+              </div>
+            )}
+
+            {opdsFeed && (
+              <div className="opds-feed">
+                <div className="opds-feed-heading">
+                  <div>
+                    <span className="eyebrow">Current feed</span>
+                    <h3>{opdsFeed.title}</h3>
+                  </div>
+                  <small>
+                    {opdsFeed.entries.length} item
+                    {opdsFeed.entries.length === 1 ? "" : "s"}
+                  </small>
                 </div>
 
-                <div className="resource-capabilities">
-                  {capabilityLabels(provider.capabilities).map((label) => (
-                    <span key={label}>{label}</span>
+                <div className="opds-entry-grid">
+                  {opdsFeed.entries.map((entry) => (
+                    <article key={entry.id} className="opds-entry-card">
+                      {entry.coverUrl ? (
+                        <img
+                          src={entry.coverUrl}
+                          alt=""
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="opds-cover-placeholder">Book</div>
+                      )}
+
+                      <div>
+                        <h4>{entry.title}</h4>
+                        {entry.authors.length > 0 && (
+                          <small>{entry.authors.join(", ")}</small>
+                        )}
+                        {entry.summary && <p>{entry.summary}</p>}
+
+                        {entry.acquisitions.length > 0 ? (
+                          <div className="opds-acquisition-actions">
+                            {entry.acquisitions.map((link) => (
+                              <button
+                                key={link.href + link.rel}
+                                type="button"
+                                className="ghost-button"
+                                disabled={networkBusy}
+                                onClick={() =>
+                                  void acquireOpdsEntry(entry, link)
+                                }
+                              >
+                                {opdsLinkLabel(link)}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <small>No direct PDF/EPUB acquisition link.</small>
+                        )}
+                      </div>
+                    </article>
                   ))}
                 </div>
+              </div>
+            )}
+          </section>
 
-                <small>
-                  {provider.enabled ? "Enabled contract" : "Disabled"}
-                  {provider.builtin ? " · Built in" : " · Custom"}
-                </small>
-              </article>
-            ))}
-          </div>
-        </section>
+          <section className="resource-section">
+            <header>
+              <div>
+                <span className="eyebrow">Provider registry</span>
+                <h2>Available contracts</h2>
+              </div>
+              <small>
+                Live means an implementation exists. Cloud and P2P providers
+                remain contract-only.
+              </small>
+            </header>
+
+            <div className="resource-provider-grid">
+              {providers.map((provider) => (
+                <article className="resource-provider-card" key={provider.id}>
+                  <div className="resource-provider-heading">
+                    <div>
+                      <span>{provider.kind}</span>
+                      <h3>{provider.name}</h3>
+                    </div>
+                    <em className={provider.live ? "live" : ""}>
+                      {provider.live ? "Live" : "Contract only"}
+                    </em>
+                  </div>
+
+                  <div className="resource-capabilities">
+                    {capabilityLabels(provider.capabilities).map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
+                  </div>
+
+                  <small>
+                    {provider.enabled ? "Enabled contract" : "Disabled"}
+                    {provider.builtin ? " · Built in" : " · Custom"}
+                  </small>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
       )}
 
       {tab === "downloads" && (
@@ -462,8 +981,8 @@ export function ResourceHubView() {
               <h2>Downloads</h2>
             </div>
             <small>
-              RESOURCE-001 only stores inert job state. No transfer engine is
-              active yet.
+              HTTP jobs run in the native layer and remain active when you
+              navigate elsewhere in LexiPane.
             </small>
           </header>
 
@@ -471,22 +990,105 @@ export function ResourceHubView() {
             <div className="resource-empty">
               <strong>No transfer jobs yet.</strong>
               <p>
-                Inspect a supported resource input and save it as a draft to
-                verify the persistent job model.
+                Probe a direct HTTP resource or choose a PDF/EPUB acquisition
+                from an OPDS catalog.
               </p>
             </div>
           ) : (
             <div className="resource-transfer-list">
               {transfers.map((job) => (
-                <article key={job.id}>
-                  <div>
+                <article key={job.id} className={"state-" + job.state}>
+                  <div className="resource-transfer-main">
                     <span className="resource-kind-badge">{job.state}</span>
                     <strong>{transferLabel(job)}</strong>
                     <small>
                       {job.providerId} · {job.transportType}
                     </small>
+
+                    <div className="resource-transfer-progress">
+                      <span
+                        style={{
+                          width:
+                            Math.round(
+                              Math.max(0, Math.min(1, job.progress)) *
+                                100,
+                            ) + "%",
+                        }}
+                      />
+                    </div>
+
+                    <small>
+                      {formatBytes(job.bytesCompleted)}
+                      {job.bytesTotal
+                        ? " / " + formatBytes(job.bytesTotal)
+                        : ""}
+                      {job.downloadRate
+                        ? " · " +
+                          formatBytes(job.downloadRate) +
+                          "/s"
+                        : ""}
+                    </small>
+
+                    {job.error && (
+                      <small className="resource-transfer-error">
+                        {job.error}
+                      </small>
+                    )}
                   </div>
-                  <span>{Math.round(job.progress * 100)}%</span>
+
+                  <div className="resource-transfer-actions">
+                    <strong>{Math.round(job.progress * 100)}%</strong>
+
+                    {job.state === "running" && job.providerId === "http" && (
+                      <>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={() =>
+                            void handleTransferAction(job, "pause")
+                          }
+                        >
+                          Pause
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={() =>
+                            void handleTransferAction(job, "cancel")
+                          }
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    )}
+
+                    {(job.state === "paused" ||
+                      job.state === "failed") &&
+                      job.providerId === "http" && (
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={() =>
+                            void handleTransferAction(job, "resume")
+                          }
+                        >
+                          {job.state === "failed" ? "Retry" : "Resume"}
+                        </button>
+                      )}
+
+                    {job.state === "completed" &&
+                      job.destinationPath && (
+                        <button
+                          type="button"
+                          className="primary-button compact"
+                          onClick={() =>
+                            void onOpenBook(job.destinationPath!)
+                          }
+                        >
+                          Open
+                        </button>
+                      )}
+                  </div>
                 </article>
               ))}
             </div>
@@ -504,7 +1106,7 @@ export function ResourceHubView() {
           </header>
 
           <div className="resource-empty">
-            <strong>Account contracts are reserved, but OAuth is not active.</strong>
+            <strong>Cloud OAuth remains intentionally disabled.</strong>
             <p>
               Google Drive, Dropbox, and OneDrive account connection begins in
               RESOURCE-003. Tokens will use native secure credential storage,
