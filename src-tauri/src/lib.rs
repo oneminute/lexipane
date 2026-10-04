@@ -1,6 +1,7 @@
 mod library_files;
 mod note_assets;
 mod ocr;
+mod resources;
 mod secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -22,6 +23,7 @@ pub fn run() {
             note_assets::cleanup_note_assets,
             ocr::local_ocr_status,
             ocr::ocr_image,
+            resources::resource_runtime_capabilities,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_has,
