@@ -119,8 +119,7 @@ Implemented:
 
 Next:
 
-- PDF export
-- batch/tag-filtered export
+- batch/tag-filtered Markdown export
 - dedicated OCR fallback when no suitable vision model exists
 - image/region attachments stored as durable Notebook assets instead of transient captures
 
