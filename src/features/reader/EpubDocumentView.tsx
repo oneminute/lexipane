@@ -462,6 +462,7 @@ export function EpubDocumentView({
     new WeakSet(),
   );
   const wordSelectionTimerRef = useRef<number | null>(null);
+  const suppressSelectedUntilRef = useRef(0);
   const handledSentenceNavigationRef = useRef(0);
   const handledProgressNavigationRef = useRef(0);
   const pendingSentenceDirectionRef = useRef<-1 | 1 | null>(null);
@@ -527,6 +528,8 @@ export function EpubDocumentView({
 
       event.preventDefault();
 
+      suppressSelectedUntilRef.current = Date.now() + 700;
+
       const sentence = selectDomSentenceAtPoint(
         document,
         event.clientX,
@@ -576,6 +579,8 @@ export function EpubDocumentView({
 
       const sentenceIndex =
         direction > 0 ? 0 : sentenceCount - 1;
+      suppressSelectedUntilRef.current = Date.now() + 700;
+
       const sentence = selectDomSentenceByIndex(
         contents.document,
         sentenceIndex,
@@ -753,6 +758,10 @@ export function EpubDocumentView({
       rendition.on(
         "selected",
         (cfi: string, contents: Contents) => {
+          if (Date.now() < suppressSelectedUntilRef.current) {
+            return;
+          }
+
           const text = normalizeText(
             contents.window.getSelection()?.toString(),
           );
@@ -892,6 +901,8 @@ export function EpubDocumentView({
     const nextIndex = active.index + sentenceNavigation.direction;
 
     if (nextIndex >= 0 && nextIndex < active.count) {
+      suppressSelectedUntilRef.current = Date.now() + 700;
+
       const sentence = selectDomSentenceByIndex(
         active.contents.document,
         nextIndex,
