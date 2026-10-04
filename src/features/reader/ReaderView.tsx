@@ -2422,6 +2422,23 @@ export function ReaderView({
           )}
           {bookPath && (
             <>
+              <button
+                className="ghost-button"
+                disabled={!positionLoaded || bookmarkStatus === "saving"}
+                onClick={() => void addCurrentBookmark()}
+              >
+                {bookmarkStatus === "saving"
+                  ? "Saving bookmark…"
+                  : bookmarkStatus === "saved"
+                    ? "Bookmarked"
+                    : "＋ Bookmark"}
+              </button>
+              <button
+                className={bookmarksOpen ? "ghost-button active" : "ghost-button"}
+                onClick={() => setBookmarksOpen((value) => !value)}
+              >
+                Bookmarks{bookmarks.length ? " (" + bookmarks.length + ")" : ""}
+              </button>
               <label
                 className="book-privacy-control"
                 title="Override the global AI privacy policy for this book"
@@ -2541,6 +2558,62 @@ export function ReaderView({
             </aside>
           )}
 
+          {bookmarksOpen && (
+            <aside className="bookmark-panel">
+              <header>
+                <div>
+                  <span className="eyebrow">Bookmarks</span>
+                  <strong>
+                    {bookmarks.length
+                      ? bookmarks.length + " saved place" +
+                        (bookmarks.length === 1 ? "" : "s")
+                      : "No bookmarks yet"}
+                  </strong>
+                </div>
+                <button onClick={() => setBookmarksOpen(false)}>×</button>
+              </header>
+
+              {bookmarks.length > 0 ? (
+                <div className="bookmark-list">
+                  {bookmarks.map((bookmark) => (
+                    <div className="bookmark-item" key={bookmark.id}>
+                      <button
+                        className="bookmark-jump"
+                        onClick={() => openBookmark(bookmark)}
+                      >
+                        <strong>
+                          {bookmark.label ||
+                            (bookmark.progress !== null
+                              ? Math.round(bookmark.progress * 100) + "%"
+                              : "Saved place")}
+                        </strong>
+                        <small>
+                          {bookmark.target.kind === "pdf-page"
+                            ? "Page " + bookmark.target.page
+                            : bookmark.progress !== null
+                              ? Math.round(bookmark.progress * 100) + "% through book"
+                              : "Saved reading location"}
+                        </small>
+                      </button>
+                      <button
+                        className="bookmark-remove"
+                        aria-label="Remove bookmark"
+                        title="Remove bookmark"
+                        onClick={() => void removeBookmark(bookmark.id)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">
+                  Use + Bookmark to save the current reading position.
+                </p>
+              )}
+            </aside>
+          )}
+
           <div
             className={regionMode ? "document-stage region-mode" : "document-stage"}
             onMouseDown={handleDocumentMouseDown}
@@ -2618,6 +2691,7 @@ export function ReaderView({
                 navigationTarget={epubNavigationTarget}
                 annotations={epubAnnotations}
                 sentenceNavigation={sentenceNavigation}
+                progressNavigation={progressNavigation}
                 onMetadataReady={handleEpubMetadataReady}
                 onOutlineReady={handleEpubOutlineReady}
                 onCoverReady={handleEpubCoverReady}
@@ -2638,6 +2712,7 @@ export function ReaderView({
                 navigationChapterId={kindleNavigationChapterId}
                 annotations={kindleAnnotations}
                 sentenceNavigation={sentenceNavigation}
+                progressNavigation={progressNavigation}
                 onMetadataReady={handleKindleMetadataReady}
                 onOutlineReady={handleKindleOutlineReady}
                 onCoverReady={handleKindleCoverReady}
@@ -2669,7 +2744,56 @@ export function ReaderView({
             )}
           </div>
 
+          {peekOrigin && (
+            <div className="reader-peek-banner">
+              <div>
+                <strong>Temporary browse position</strong>
+                <span>
+                  Your saved reading position is protected while you look around.
+                </span>
+              </div>
+              <div>
+                <button
+                  className="ghost-button"
+                  onClick={returnToReadingPosition}
+                >
+                  ↩ Return to reading position
+                </button>
+                <button
+                  className="primary-button compact"
+                  onClick={() => void continueFromPeekPosition()}
+                >
+                  Continue from here
+                </button>
+              </div>
+            </div>
+          )}
+
           <footer className="reader-statusbar">
+            {(isPdf || isEpub || isKindle) && positionLoaded && (
+              <div className="reader-progress-scrubber">
+                <span className="reader-progress-label">
+                  {Math.round(displayedProgress * 100)}%
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1000}
+                  step={1}
+                  value={Math.round(displayedProgress * 1000)}
+                  aria-label="Reading progress"
+                  onPointerDown={beginProgressScrub}
+                  onChange={(event) => {
+                    beginProgressScrub();
+                    setProgressDraft(
+                      Number(event.target.value) / 1000,
+                    );
+                  }}
+                  onPointerUp={commitProgressScrub}
+                  onKeyUp={commitProgressScrub}
+                />
+              </div>
+            )}
             <span>
               {isEpub
                 ? epubProgress !== null
