@@ -21,6 +21,7 @@ import { normalizeTerm } from "../../core/reading/knownTerms";
 import type { EbookTheme } from "../../core/reading/ebookPreferences";
 import type { ReaderImagePreview } from "./readerImage";
 import {
+  getDomSentenceCount,
   selectDomSentenceAtPoint,
   selectDomSentenceByIndex,
 } from "./sentenceNavigation";
@@ -374,6 +375,7 @@ export function MobiDocumentView({
   const autoTermsRef = useRef(autoTerms);
   const wordSelectionTimerRef = useRef<number | null>(null);
   const handledSentenceNavigationRef = useRef(0);
+  const pendingSentenceDirectionRef = useRef<-1 | 1 | null>(null);
   const activeSentenceRef = useRef<{
     document: Document;
     index: number;
@@ -545,6 +547,39 @@ export function MobiDocumentView({
     );
     if (context) {
       onContextReady?.(chapterId, context);
+    }
+
+    const pendingSentenceDirection =
+      pendingSentenceDirectionRef.current;
+    if (pendingSentenceDirection !== null) {
+      pendingSentenceDirectionRef.current = null;
+
+      const sentenceCount = getDomSentenceCount(document);
+      const sentenceIndex =
+        pendingSentenceDirection > 0
+          ? 0
+          : Math.max(0, sentenceCount - 1);
+      const sentence = selectDomSentenceByIndex(
+        document,
+        sentenceIndex,
+      );
+
+      if (sentence) {
+        activeSentenceRef.current = {
+          document,
+          index: sentence.index,
+          count: sentence.count,
+          chapterId,
+        };
+
+        onSentenceSelectionRef.current?.({
+          text: sentence.text,
+          context: sentence.context,
+          chapterId,
+          sentenceIndex: sentence.index,
+          sentenceCount: sentence.count,
+        });
+      }
     }
 
     const pendingSelector = pendingSelectorRef.current;
@@ -754,29 +789,44 @@ export function MobiDocumentView({
     if (!active || active.chapterId !== chapterId) return;
 
     const nextIndex = active.index + sentenceNavigation.direction;
-    if (nextIndex < 0 || nextIndex >= active.count) return;
 
-    const sentence = selectDomSentenceByIndex(
-      active.document,
-      nextIndex,
+    if (nextIndex >= 0 && nextIndex < active.count) {
+      const sentence = selectDomSentenceByIndex(
+        active.document,
+        nextIndex,
+      );
+      if (!sentence) return;
+
+      activeSentenceRef.current = {
+        document: active.document,
+        index: sentence.index,
+        count: sentence.count,
+        chapterId,
+      };
+
+      onSentenceSelectionRef.current?.({
+        text: sentence.text,
+        context: sentence.context,
+        chapterId,
+        sentenceIndex: sentence.index,
+        sentenceCount: sentence.count,
+      });
+      return;
+    }
+
+    const currentIndex = spine.findIndex(
+      (item) => item.id === chapterId,
     );
-    if (!sentence) return;
+    const adjacent =
+      spine[currentIndex + sentenceNavigation.direction];
 
-    activeSentenceRef.current = {
-      document: active.document,
-      index: sentence.index,
-      count: sentence.count,
-      chapterId,
-    };
+    if (!adjacent) return;
 
-    onSentenceSelectionRef.current?.({
-      text: sentence.text,
-      context: sentence.context,
-      chapterId,
-      sentenceIndex: sentence.index,
-      sentenceCount: sentence.count,
-    });
-  }, [chapterId, sentenceNavigation]);
+    pendingSentenceDirectionRef.current =
+      sentenceNavigation.direction;
+    activeSentenceRef.current = null;
+    setChapterId(adjacent.id);
+  }, [chapterId, sentenceNavigation, spine]);
 
   if (error) {
     return (
