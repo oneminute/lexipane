@@ -25,9 +25,10 @@ These values are fallbacks. A saved user preference takes precedence when a
 corresponding runtime setting exists.
 
 For local development, the source-controlled Ollama default is
-`http://127.0.0.1:12000`. LexiPane also probes Ollama's standard
-`http://127.0.0.1:11434` endpoint when the preferred endpoint is unavailable,
-then stores the working endpoint in `app_meta`.
+`http://127.0.0.1:12000`. This is the preferred endpoint. LexiPane may probe
+Ollama's standard `http://127.0.0.1:11434` endpoint when the preferred endpoint
+is unavailable, but fallback discovery never overwrites the preferred endpoint.
+Only the Server value chosen by the user is persisted as the preferred URL.
 
 ## Runtime user settings
 
