@@ -758,4 +758,33 @@ mod tests {
             "bad_.._book__name.epub"
         );
     }
+
+    #[test]
+    fn validates_pdf_content_by_signature() {
+        let path = std::env::temp_dir().join(format!(
+            "lexipane-http-test-{}.pdf",
+            std::process::id()
+        ));
+
+        std::fs::write(&path, b"%PDF-1.7\n1 0 obj\n")
+            .expect("write temporary PDF");
+        assert_eq!(
+            validate_downloaded_book(&path).expect("valid PDF"),
+            "pdf"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn rejects_unknown_downloaded_content() {
+        let path = std::env::temp_dir().join(format!(
+            "lexipane-http-test-{}.bin",
+            std::process::id()
+        ));
+
+        std::fs::write(&path, b"<html>not a book</html>")
+            .expect("write temporary file");
+        assert!(validate_downloaded_book(&path).is_err());
+        let _ = std::fs::remove_file(path);
+    }
 }
