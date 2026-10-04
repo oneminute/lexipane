@@ -2623,6 +2623,54 @@ export function ReaderView({
             </aside>
           )}
 
+          {selection?.kind === "sentence" && (
+            <div
+              className="sentence-nav-floating"
+              role="group"
+              aria-label="Sentence navigation"
+            >
+              <button
+                type="button"
+                disabled={
+                  aiBusy ||
+                  selection.sentenceIndex === undefined ||
+                  (isPdf &&
+                    selection.sentenceIndex <= 0 &&
+                    selection.page <= 1)
+                }
+                onClick={() => navigateSentence(-1)}
+              >
+                ← Previous sentence
+              </button>
+              <span>
+                <strong>Current sentence</strong>
+                <small>
+                  {selection.sentenceIndex !== undefined &&
+                  selection.sentenceCount
+                    ? selection.sentenceIndex + 1 +
+                      " / " +
+                      selection.sentenceCount
+                    : "Selected"}
+                </small>
+              </span>
+              <button
+                type="button"
+                disabled={
+                  aiBusy ||
+                  selection.sentenceIndex === undefined ||
+                  selection.sentenceCount === undefined ||
+                  (isPdf &&
+                    selection.sentenceIndex >=
+                      selection.sentenceCount - 1 &&
+                    selection.page >= pageCount)
+                }
+                onClick={() => navigateSentence(1)}
+              >
+                Next sentence →
+              </button>
+            </div>
+          )}
+
           <div
             className={regionMode ? "document-stage region-mode" : "document-stage"}
             onMouseDown={handleDocumentMouseDown}
@@ -2933,47 +2981,6 @@ export function ReaderView({
                   {selection.page && <small>Page {selection.page}</small>}
                 </div>
                 <blockquote>{selection.text}</blockquote>
-
-                {selection.kind === "sentence" && (
-                  <div className="sentence-navigation">
-                    <button
-                      type="button"
-                      disabled={
-                        aiBusy ||
-                        selection.sentenceIndex === undefined ||
-                        (isPdf &&
-                          selection.sentenceIndex <= 0 &&
-                          selection.page <= 1)
-                      }
-                      onClick={() => navigateSentence(-1)}
-                    >
-                      ← Previous sentence
-                    </button>
-                    <span>
-                      {selection.sentenceIndex !== undefined &&
-                      selection.sentenceCount
-                        ? selection.sentenceIndex + 1 +
-                          " / " +
-                          selection.sentenceCount
-                        : "Sentence"}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={
-                        aiBusy ||
-                        selection.sentenceIndex === undefined ||
-                        selection.sentenceCount === undefined ||
-                        (isPdf &&
-                          selection.sentenceIndex >=
-                            selection.sentenceCount - 1 &&
-                          selection.page >= pageCount)
-                      }
-                      onClick={() => navigateSentence(1)}
-                    >
-                      Next sentence →
-                    </button>
-                  </div>
-                )}
 
                 <div className="assist-actions">
                   {selection.kind !== "sentence" && (
