@@ -1282,6 +1282,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const canPreviewTorrent =
     classification?.kind === "magnet" ||
     classification?.kind === "torrent";
+  const canAcquireEd2k = classification?.kind === "ed2k";
 
   return (
     <div className="page resource-hub-page">
@@ -1534,6 +1535,21 @@ export function ResourceHubView({ onOpenBook }: Props) {
                     </button>
                   )}
 
+                  {canAcquireEd2k && (
+                    <button
+                      type="button"
+                      className="primary-button compact"
+                      disabled={
+                        ed2kBusy ||
+                        ed2kEngines.length === 0 ||
+                        !ed2kLinkMetadata?.bookCandidate
+                      }
+                      onClick={() => void acquireCurrentEd2kLink()}
+                    >
+                      {ed2kBusy ? "Adding…" : "Add ED2K book"}
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     className="ghost-button"
@@ -1659,6 +1675,48 @@ export function ResourceHubView({ onOpenBook }: Props) {
                     </button>
                   </div>
                 )}
+
+                {canAcquireEd2k && ed2kLinkMetadata && (
+                  <div className="resource-http-preview">
+                    <div>
+                      <span className="eyebrow">ED2K file link</span>
+                      <strong>{ed2kLinkMetadata.name}</strong>
+                      <small>{ed2kLinkMetadata.hash}</small>
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>Size</dt>
+                        <dd>{formatBytes(ed2kLinkMetadata.size)}</dd>
+                      </div>
+                      <div>
+                        <dt>Format</dt>
+                        <dd>
+                          {ed2kLinkMetadata.bookCandidate
+                            ? "Reader-compatible"
+                            : "Unsupported"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Engine</dt>
+                        <dd>
+                          {activeEd2kEngine()?.displayName ??
+                            (ed2kEngines.length
+                              ? "Configured"
+                              : "Not configured")}
+                        </dd>
+                      </div>
+                    </dl>
+                    {ed2kEngines.length === 0 && (
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => setTab("accounts")}
+                      >
+                        Configure aMule
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </section>
@@ -1698,6 +1756,139 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
       {tab === "browse" && (
         <div className="resource-browse-stack">
+          <section className="resource-section">
+            <header>
+              <div>
+                <span className="eyebrow">ED2K / Kad</span>
+                <h2>Search through aMule</h2>
+              </div>
+              <small>
+                LexiPane controls your configured aMule/aMuled instance through
+                amulecmd and imports completed PDF/EPUB files from its Incoming
+                directory.
+              </small>
+            </header>
+
+            {ed2kEngines.length === 0 ? (
+              <div className="resource-empty">
+                <strong>aMule sidecar is not configured.</strong>
+                <p>
+                  Configure amulecmd, External Connections, and the Incoming
+                  directory from Accounts.
+                </p>
+                <button
+                  type="button"
+                  className="primary-button compact"
+                  onClick={() => setTab("accounts")}
+                >
+                  Configure ED2K
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="cloud-account-switcher">
+                  {ed2kEngines.map((engine) => (
+                    <button
+                      key={engine.id}
+                      type="button"
+                      className={
+                        activeEd2kEngineId === engine.id
+                          ? "selected"
+                          : ""
+                      }
+                      onClick={() =>
+                        setActiveEd2kEngineId(engine.id)
+                      }
+                    >
+                      <strong>
+                        {engine.displayName || "aMule ED2K"}
+                      </strong>
+                      <small>
+                        {String(engine.metadata.host ?? "127.0.0.1")}:
+                        {String(engine.metadata.port ?? 4712)}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="ed2k-search-row">
+                  <select
+                    value={ed2kSearchType}
+                    disabled={ed2kBusy}
+                    onChange={(event) =>
+                      setEd2kSearchType(
+                        event.target.value as
+                          | "global"
+                          | "kad"
+                          | "local",
+                      )
+                    }
+                  >
+                    <option value="global">Global</option>
+                    <option value="kad">Kad</option>
+                    <option value="local">Local</option>
+                  </select>
+                  <input
+                    value={ed2kQuery}
+                    placeholder="Search the ED2K network…"
+                    onChange={(event) =>
+                      setEd2kQuery(event.target.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        void runEd2kSearch();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="primary-button compact"
+                    disabled={ed2kBusy || !ed2kQuery.trim()}
+                    onClick={() => void runEd2kSearch()}
+                  >
+                    {ed2kBusy ? "Searching…" : "Search"}
+                  </button>
+                </div>
+
+                {ed2kResults.length > 0 && (
+                  <div className="ed2k-results">
+                    {ed2kResults.map((result) => (
+                      <article key={result.index + ":" + result.name}>
+                        <div>
+                          <span className="resource-kind-badge">
+                            #{result.index}
+                          </span>
+                          <strong>{result.name}</strong>
+                          <small>
+                            {formatBytes(result.size)}
+                            {result.sources !== undefined
+                              ? " · " + result.sources + " source(s)"
+                              : ""}
+                          </small>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="primary-button compact"
+                          disabled={
+                            ed2kBusy || !result.bookCandidate
+                          }
+                          onClick={() =>
+                            void acquireEd2kResult(result)
+                          }
+                        >
+                          {result.bookCandidate
+                            ? "Download"
+                            : "Not a book"}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
           <section className="resource-section">
             <header>
               <div>
@@ -2150,7 +2341,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         job.providerId === "bittorrent" ||
                         job.providerId === "google-drive" ||
                         job.providerId === "dropbox" ||
-                        job.providerId === "onedrive") && (
+                        job.providerId === "onedrive" ||
+                        job.providerId === "ed2k") && (
                       <>
                         <button
                           type="button"
@@ -2179,7 +2371,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         job.providerId === "bittorrent" ||
                         job.providerId === "google-drive" ||
                         job.providerId === "dropbox" ||
-                        job.providerId === "onedrive") && (
+                        job.providerId === "onedrive" ||
+                        job.providerId === "ed2k") && (
                         <>
                           <button
                             type="button"
@@ -2227,14 +2420,118 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <header>
             <div>
               <span className="eyebrow">Secure provider accounts</span>
-              <h2>Cloud accounts</h2>
+              <h2>Resource accounts & engines</h2>
             </div>
             <small>
-              Paste an OAuth access token for the provider. LexiPane verifies
-              it before saving it to the operating system secure credential
-              store; SQLite stores only account metadata.
+              Connect cloud accounts or an aMule ED2K sidecar. Passwords and
+              access tokens are stored in the operating system secure
+              credential store; SQLite stores only account metadata.
             </small>
           </header>
+
+          <div className="ed2k-account-card">
+            <div>
+              <span className="eyebrow">aMule / aMuled sidecar</span>
+              <strong>ED2K engine</strong>
+              <small>
+                Enable External Connections in aMule. Incoming directory is
+                required so LexiPane can detect completed books.
+              </small>
+            </div>
+
+            <input
+              value={ed2kExecutable}
+              disabled={ed2kBusy}
+              placeholder="amulecmd executable (blank = PATH)"
+              onChange={(event) =>
+                setEd2kExecutable(event.target.value)
+              }
+            />
+            <input
+              value={ed2kHost}
+              disabled={ed2kBusy}
+              placeholder="Host"
+              onChange={(event) =>
+                setEd2kHost(event.target.value)
+              }
+            />
+            <input
+              value={ed2kPort}
+              disabled={ed2kBusy}
+              inputMode="numeric"
+              placeholder="4712"
+              onChange={(event) =>
+                setEd2kPort(event.target.value)
+              }
+            />
+            <input
+              value={ed2kPassword}
+              disabled={ed2kBusy}
+              type="password"
+              autoComplete="off"
+              placeholder="External Connections password"
+              onChange={(event) =>
+                setEd2kPassword(event.target.value)
+              }
+            />
+            <input
+              value={ed2kIncomingDir}
+              disabled={ed2kBusy}
+              placeholder="aMule Incoming directory"
+              onChange={(event) =>
+                setEd2kIncomingDir(event.target.value)
+              }
+            />
+            <button
+              type="button"
+              className="primary-button"
+              disabled={ed2kBusy || !ed2kIncomingDir.trim()}
+              onClick={() => void connectEd2k()}
+            >
+              {ed2kBusy ? "Testing…" : "Connect aMule"}
+            </button>
+          </div>
+
+          {ed2kEngines.length > 0 && (
+            <div className="cloud-account-list">
+              {ed2kEngines.map((engine) => (
+                <article key={engine.id}>
+                  <div>
+                    <span className="resource-kind-badge">ED2K</span>
+                    <strong>
+                      {engine.displayName || "aMule ED2K"}
+                    </strong>
+                    <small>
+                      {String(engine.metadata.host ?? "127.0.0.1")}:
+                      {String(engine.metadata.port ?? 4712)}
+                      {" · "}
+                      {String(engine.metadata.incomingDir ?? "")}
+                    </small>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => {
+                        setActiveEd2kEngineId(engine.id);
+                        setTab("browse");
+                      }}
+                    >
+                      Search
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={ed2kBusy}
+                      onClick={() => void disconnectEd2k(engine)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
 
           <div className="cloud-connect-card">
             <select
