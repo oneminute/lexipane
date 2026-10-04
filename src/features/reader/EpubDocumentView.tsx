@@ -22,6 +22,7 @@ import type {
 import type { ReaderImagePreview } from "./readerImage";
 import {
   clearDomSentenceHighlight,
+  findDomSentenceByText,
   getDomSentenceCount,
   selectDomSentenceAtPoint,
   selectDomSentenceByIndex,
@@ -61,6 +62,12 @@ export interface EpubProgressNavigationRequest {
   progress: number;
 }
 
+export interface EpubActiveSentence {
+  cfi: string;
+  text: string;
+  sentenceIndex: number;
+}
+
 interface Props {
   path: string;
   fontScale?: number;
@@ -70,6 +77,7 @@ interface Props {
   navigationTarget?: string | null;
   annotations?: EpubTextAnnotation[];
   autoTerms?: DifficultTerm[];
+  activeSentence?: EpubActiveSentence | null;
   sentenceNavigation?: SentenceNavigationRequest | null;
   progressNavigation?: EpubProgressNavigationRequest | null;
   onMetadataReady?: (metadata: EpubMetadataSummary) => void;
@@ -438,6 +446,7 @@ export function EpubDocumentView({
   navigationTarget,
   annotations = [],
   autoTerms = [],
+  activeSentence = null,
   sentenceNavigation = null,
   progressNavigation = null,
   onMetadataReady,
@@ -458,6 +467,9 @@ export function EpubDocumentView({
   const lastPathRef = useRef<string | null>(null);
   const renderedAutoCfisRef = useRef<Map<string, string>>(new Map());
   const autoTermsRef = useRef<DifficultTerm[]>(autoTerms);
+  const activeSentenceStateRef = useRef<EpubActiveSentence | null>(
+    activeSentence,
+  );
   const wiredInteractionDocumentsRef = useRef<WeakSet<Document>>(
     new WeakSet(),
   );
@@ -478,6 +490,51 @@ export function EpubDocumentView({
 
   onWordSelectionRef.current = onWordSelection;
   onSentenceSelectionRef.current = onSentenceSelection;
+  activeSentenceStateRef.current = activeSentence;
+
+  const restoreActiveSentenceHighlight = useCallback(
+    (rendition: Rendition) => {
+      const desired = activeSentenceStateRef.current;
+      const contentsList = renderedContents(rendition);
+
+      for (const contents of contentsList) {
+        clearDomSentenceHighlight(contents.document);
+      }
+
+      if (!desired) {
+        activeSentenceRef.current = null;
+        return;
+      }
+
+      for (const contents of contentsList) {
+        let sentence = selectDomSentenceByIndex(
+          contents.document,
+          desired.sentenceIndex,
+        );
+
+        if (
+          !sentence ||
+          normalizeText(sentence.text) !== normalizeText(desired.text)
+        ) {
+          sentence = findDomSentenceByText(
+            contents.document,
+            desired.text,
+          );
+        }
+
+        if (!sentence) continue;
+
+        setDomSentenceHighlight(contents.document, sentence.range);
+        activeSentenceRef.current = {
+          contents,
+          index: sentence.index,
+          count: sentence.count,
+        };
+        return;
+      }
+    },
+    [],
+  );
 
   const wireReadingInteractions = useCallback((contents: Contents) => {
     const document = contents.document;
@@ -509,7 +566,6 @@ export function EpubDocumentView({
           contents.document.body?.textContent,
         ).slice(0, 9000);
 
-        activeSentenceRef.current = null;
         onWordSelectionRef.current?.({
           text,
           context,
@@ -739,6 +795,7 @@ export function EpubDocumentView({
               wireReadingInteractions(contents);
             }
             finishPendingSentenceNavigation(rendition);
+            restoreActiveSentenceHighlight(rendition);
           }, 0);
         },
       );
@@ -751,6 +808,7 @@ export function EpubDocumentView({
               wireReadingInteractions(contents);
             }
             finishPendingSentenceNavigation(rendition);
+            restoreActiveSentenceHighlight(rendition);
           }
         }, 0);
       });
@@ -812,6 +870,7 @@ export function EpubDocumentView({
       for (const contents of renderedContents(rendition)) {
         wireReadingInteractions(contents);
       }
+      restoreActiveSentenceHighlight(rendition);
 
       const context = currentContext(rendition);
       const location = rendition.location?.start?.cfi;
@@ -858,6 +917,7 @@ export function EpubDocumentView({
     path,
     wireReadingInteractions,
     finishPendingSentenceNavigation,
+    restoreActiveSentenceHighlight,
   ]);
 
   useEffect(() => {
@@ -994,6 +1054,27 @@ export function EpubDocumentView({
       }
     })();
   }, [progressNavigation]);
+
+  useEffect(() => {
+    const rendition = renditionRef.current;
+    if (!rendition) return;
+
+    restoreActiveSentenceHighlight(rendition);
+  }, [activeSentence, restoreActiveSentenceHighlight]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      window.requestAnimationFrame(() => {
+        const rendition = renditionRef.current;
+        if (rendition) {
+          restoreActiveSentenceHighlight(rendition);
+        }
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [restoreActiveSentenceHighlight]);
 
   useEffect(() => {
     renditionRef.current?.themes.fontSize(fontScale + "%");
