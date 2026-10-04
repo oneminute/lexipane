@@ -70,6 +70,11 @@ interface SentenceNavigationRequest {
   direction: -1 | 1;
 }
 
+export interface KindleProgressNavigationRequest {
+  token: number;
+  progress: number;
+}
+
 interface Props {
   path: string;
   fontScale?: number;
@@ -79,6 +84,7 @@ interface Props {
   annotations?: KindleTextAnnotation[];
   autoTerms?: DifficultTerm[];
   sentenceNavigation?: SentenceNavigationRequest | null;
+  progressNavigation?: KindleProgressNavigationRequest | null;
   onMetadataReady?: (metadata: KindleMetadataSummary) => void;
   onOutlineReady?: (outline: KindleOutlineEntry[]) => void;
   onCoverReady?: (coverDataUrl: string) => void;
@@ -358,6 +364,7 @@ export function MobiDocumentView({
   annotations = [],
   autoTerms = [],
   sentenceNavigation = null,
+  progressNavigation = null,
   onMetadataReady,
   onOutlineReady,
   onCoverReady,
@@ -375,6 +382,7 @@ export function MobiDocumentView({
   const autoTermsRef = useRef(autoTerms);
   const wordSelectionTimerRef = useRef<number | null>(null);
   const handledSentenceNavigationRef = useRef(0);
+  const handledProgressNavigationRef = useRef(0);
   const pendingSentenceDirectionRef = useRef<-1 | 1 | null>(null);
   const activeSentenceRef = useRef<{
     document: Document;
@@ -774,6 +782,33 @@ export function MobiDocumentView({
     () => spine.findIndex((item) => item.id === chapterId),
     [chapterId, spine],
   );
+
+  useEffect(() => {
+    if (
+      !progressNavigation ||
+      progressNavigation.token === handledProgressNavigationRef.current ||
+      spine.length === 0
+    ) {
+      return;
+    }
+
+    handledProgressNavigationRef.current = progressNavigation.token;
+
+    const clamped = Math.max(
+      0,
+      Math.min(1, progressNavigation.progress),
+    );
+    const index =
+      spine.length <= 1
+        ? 0
+        : Math.round(clamped * (spine.length - 1));
+    const target = spine[index];
+
+    if (target && target.id !== chapterId) {
+      activeSentenceRef.current = null;
+      setChapterId(target.id);
+    }
+  }, [chapterId, progressNavigation, spine]);
 
   useEffect(() => {
     if (
