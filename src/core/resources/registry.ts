@@ -21,7 +21,7 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     kind: "catalog",
     description: "Book catalogs, metadata, covers, and acquisition links.",
     builtin: true,
-    live: false,
+    live: true,
     capabilities: {
       search: true,
       browse: true,
