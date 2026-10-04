@@ -63,6 +63,17 @@ interface ResourceFileRow {
   created_at: string;
 }
 
+interface ResourceCatalogRow {
+  id: string;
+  provider_id: string;
+  name: string;
+  url: string;
+  enabled: number;
+  metadata_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface TransferJobRow {
   id: string;
   resource_item_id: string | null;
@@ -95,6 +106,17 @@ export interface PersistedResourceProvider {
   live: boolean;
   capabilities: ResourceProviderCapabilities;
   config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResourceCatalog {
+  id: string;
+  providerId: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -178,6 +200,19 @@ function fileFromRow(row: ResourceFileRow): ResourceFile {
     identifiers: parseJson(row.identifiers_json, {}),
     metadata: parseJson(row.metadata_json, {}),
     createdAt: row.created_at,
+  };
+}
+
+function catalogFromRow(row: ResourceCatalogRow): ResourceCatalog {
+  return {
+    id: row.id,
+    providerId: row.provider_id,
+    name: row.name,
+    url: row.url,
+    enabled: row.enabled !== 0,
+    metadata: parseJson(row.metadata_json, {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -399,6 +434,119 @@ export async function getResourceBundle(
   };
 }
 
+export async function listResourceCatalogs(): Promise<
+  ResourceCatalog[]
+> {
+  if (!isTauri()) return [];
+
+  const db = await initializeDatabase();
+  if (!db) return [];
+
+  const rows = await db.select<ResourceCatalogRow[]>(
+    "SELECT * FROM resource_catalogs WHERE enabled = 1 ORDER BY name ASC",
+  );
+
+  return rows.map(catalogFromRow);
+}
+
+export async function saveResourceCatalog(
+  name: string,
+  url: string,
+  metadata: Record<string, unknown> = {},
+): Promise<ResourceCatalog | null> {
+  if (!isTauri()) return null;
+
+  const db = await initializeDatabase();
+  if (!db) return null;
+
+  const normalizedName = name.trim() || "OPDS catalog";
+  const normalizedUrl = url.trim();
+  if (!normalizedUrl) {
+    throw new Error("Catalog URL is required.");
+  }
+
+  const existing = await db.select<ResourceCatalogRow[]>(
+    "SELECT * FROM resource_catalogs WHERE url = $1 LIMIT 1",
+    [normalizedUrl],
+  );
+  const now = new Date().toISOString();
+
+  if (existing[0]) {
+    await db.execute(
+      "UPDATE resource_catalogs SET name = $2, enabled = 1, metadata_json = $3, updated_at = $4 WHERE id = $1",
+      [
+        existing[0].id,
+        normalizedName,
+        JSON.stringify(metadata),
+        now,
+      ],
+    );
+
+    return {
+      ...catalogFromRow(existing[0]),
+      name: normalizedName,
+      enabled: true,
+      metadata,
+      updatedAt: now,
+    };
+  }
+
+  const id = createResourceRecordId("catalog");
+
+  await db.execute(
+    "INSERT INTO resource_catalogs " +
+      "(id, provider_id, name, url, enabled, metadata_json, created_at, updated_at) " +
+      "VALUES ($1, 'opds', $2, $3, 1, $4, $5, $5)",
+    [id, normalizedName, normalizedUrl, JSON.stringify(metadata), now],
+  );
+
+  return {
+    id,
+    providerId: "opds",
+    name: normalizedName,
+    url: normalizedUrl,
+    enabled: true,
+    metadata,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export async function removeResourceCatalog(
+  catalogId: string,
+): Promise<void> {
+  if (!isTauri()) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  await db.execute(
+    "DELETE FROM resource_catalogs WHERE id = $1",
+    [catalogId],
+  );
+}
+
+export async function findResourceBundleBySource(
+  providerId: string,
+  sourceKey: string,
+): Promise<ResourceBundle | null> {
+  if (!isTauri()) return null;
+
+  const db = await initializeDatabase();
+  if (!db) return null;
+
+  const rows = await db.select<Array<{ resource_item_id: string }>>(
+    "SELECT resource_item_id FROM resource_sources " +
+      "WHERE provider_id = $1 AND source_key = $2 LIMIT 1",
+    [providerId, sourceKey],
+  );
+
+  const resourceItemId = rows[0]?.resource_item_id;
+  return resourceItemId
+    ? getResourceBundle(resourceItemId)
+    : null;
+}
+
 export interface CreateTransferJobInput {
   providerId: string;
   transportType: string;
@@ -532,7 +680,9 @@ export async function updateTransferJob(
       nextResume,
       now,
       update.startedAt === undefined
-        ? current.started_at
+        ? update.state === "running" && !current.started_at
+          ? now
+          : current.started_at
         : update.startedAt,
       update.completedAt === undefined
         ? current.completed_at
