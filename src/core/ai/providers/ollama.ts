@@ -1,3 +1,4 @@
+import { APP_DEFAULTS } from "../../../config/appDefaults";
 import { appFetch } from "../../http/appFetch";
 import type { AIProvider } from "../provider";
 import type {
@@ -27,6 +28,8 @@ interface OllamaShowResponse {
   model_info?: Record<string, unknown>;
 }
 
+const DEFAULT_OLLAMA_BASE_URL = APP_DEFAULTS.ai.ollama.baseUrl;
+
 interface OllamaChatResponse {
   model: string;
   done?: boolean;
@@ -47,12 +50,12 @@ export class OllamaProvider implements AIProvider {
     adapter: "ollama",
     status: "core",
     description: "Local models through the Ollama HTTP API.",
-    defaultBaseUrl: "http://127.0.0.1:11434",
+    defaultBaseUrl: DEFAULT_OLLAMA_BASE_URL,
   };
 
   private readonly baseUrl: string;
 
-  constructor(baseUrl = "http://127.0.0.1:11434") {
+  constructor(baseUrl = DEFAULT_OLLAMA_BASE_URL) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
