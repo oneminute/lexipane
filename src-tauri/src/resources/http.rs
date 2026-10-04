@@ -403,7 +403,7 @@ fn transfer_event(
     }
 }
 
-fn validate_downloaded_book(path: &Path) -> Result<String, String> {
+pub(crate) fn validate_downloaded_book(path: &Path) -> Result<String, String> {
     let mut file = StdFile::open(path)
         .map_err(|error| format!("Unable to open downloaded file for validation: {error}"))?;
     let mut prefix = [0_u8; 8];
