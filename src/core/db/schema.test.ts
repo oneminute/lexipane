@@ -18,8 +18,8 @@ const RESOURCE_TABLES = [
 ];
 
 describe("Resource Core schema", () => {
-  it("bumps the schema to version 11", () => {
-    expect(SCHEMA_VERSION).toBe(11);
+  it("bumps the schema to version 12", () => {
+    expect(SCHEMA_VERSION).toBe(12);
   });
 
   it("creates every Resource Core table for fresh databases", () => {
@@ -56,6 +56,17 @@ describe("Resource Core schema", () => {
       catalogMigration?.statements.some((statement) =>
         statement.includes(
           "CREATE TABLE IF NOT EXISTS resource_catalogs",
+        ),
+      ),
+    ).toBe(true);
+
+    const sentenceMigration = schemaMigrations.find(
+      (item) => item.version === 12,
+    );
+    expect(
+      sentenceMigration?.statements.some((statement) =>
+        statement.includes(
+          "CREATE TABLE IF NOT EXISTS sentence_ai_versions",
         ),
       ),
     ).toBe(true);
