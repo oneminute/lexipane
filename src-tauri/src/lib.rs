@@ -8,6 +8,7 @@ mod secrets;
 pub fn run() {
     tauri::Builder::default()
         .manage(resources::http::HttpTransferManager::default())
+        .manage(resources::torrent::TorrentManager::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
@@ -31,6 +32,11 @@ pub fn run() {
             resources::http::resource_http_pause,
             resources::http::resource_http_cancel,
             resources::http::resource_http_cleanup_temp,
+            resources::torrent::resource_torrent_preview,
+            resources::torrent::resource_torrent_start_download,
+            resources::torrent::resource_torrent_pause,
+            resources::torrent::resource_torrent_cancel,
+            resources::torrent::resource_torrent_cleanup,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_has,
