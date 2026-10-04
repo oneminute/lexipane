@@ -71,9 +71,9 @@ Last updated: **2026-10-04**
 
 **Resource Acquisition Platform / Resource Hub**
 
-Status: **READY**
+Status: **IN_PROGRESS**
 
-No Resource Hub production code has been started yet. The next selected implementation milestone is **RESOURCE-001 — Resource Core**.
+**RESOURCE-001 — Resource Core** has started. This development pass is establishing the shared domain/persistence/UI/native contracts before any live network provider implementation.
 
 ## Most recently completed product work
 
@@ -99,9 +99,9 @@ Reader interaction hardening is live on `main`, including:
 
 **RESOURCE-001 — Resource Core**
 
-Status: **READY**
+Status: **IN_PROGRESS**
 
-Intended first implementation scope:
+Current implementation scope:
 
 - establish provider/resource/transfer domain types;
 - add versioned SQLite persistence for resource providers, items, sources, files, and transfer jobs;
@@ -109,6 +109,13 @@ Intended first implementation scope:
 - implement resource URI/link classification without performing network transfers yet;
 - define Rust/Tauri boundary contracts for future transfer engines;
 - add tests for resource identity, URI classification, and schema migration.
+
+Current risks / dependencies:
+
+- SQLite migration must remain compatible with existing user databases.
+- Native/Tauri contracts must not start network activity in RESOURCE-001.
+- Resource identifiers and source provenance must remain provider-neutral so later cloud/P2P providers do not force schema rewrites.
+- The Resource Hub shell must fit the existing desktop layout without destabilizing Reader keep-alive behavior.
 
 Do **not** begin BitTorrent, ED2K, Google Drive, Dropbox, or OneDrive protocol implementation before RESOURCE-001 establishes these shared contracts.
 
@@ -694,7 +701,7 @@ Planned native event categories:
 
 ## RESOURCE-001 — Resource Core
 
-Status: **READY**
+Status: **IN_PROGRESS**
 
 Goal: establish shared contracts before implementing any provider protocol.
 
