@@ -10,6 +10,7 @@ import { modelCapabilityLabels } from "../../core/ai/modelCapabilities";
 import { testTextModel } from "../../core/ai/modelHealth";
 import {
   choosePreferredOllamaModel,
+  getOllamaBaseUrlCandidates,
   loadOllamaConfig,
   saveOllamaBaseUrl,
   saveOllamaModel,
@@ -165,6 +166,75 @@ const privacyModes: Array<{
   { id: "cloud-only", label: "Cloud only" },
 ];
 
+type OllamaProbeResult =
+  | {
+      ok: true;
+      baseUrl: string;
+      provider: OllamaProvider;
+    }
+  | {
+      ok: false;
+      message: string;
+    };
+
+async function probeOllama(
+  preferredBaseUrl: string,
+): Promise<OllamaProbeResult> {
+  const failures: string[] = [];
+
+  for (const baseUrl of getOllamaBaseUrlCandidates(preferredBaseUrl)) {
+    const provider = new OllamaProvider(baseUrl);
+    const connection = await provider.testConnection();
+
+    if (connection.ok) {
+      return {
+        ok: true,
+        baseUrl,
+        provider,
+      };
+    }
+
+    failures.push(baseUrl + " — " + connection.message);
+  }
+
+  return {
+    ok: false,
+    message:
+      "Unable to connect to Ollama. Tried " +
+      failures.join(" | "),
+  };
+}
+
+function describeUnknownError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const message = record.message ?? record.error ?? record.details;
+
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== "{}") {
+        return serialized;
+      }
+    } catch {
+      // Use the fallback below.
+    }
+  }
+
+  return "Unknown error.";
+}
+
 export function AiSettingsView() {
   const [ollamaStatus, setOllamaStatus] =
     useState<OllamaStatus>("checking");
@@ -257,23 +327,22 @@ export function AiSettingsView() {
 
     try {
       const config = await loadOllamaConfig();
-      const baseUrl = serverUrl.trim()
-        ? await saveOllamaBaseUrl(serverUrl)
-        : config.baseUrl;
-      setServerUrl(baseUrl);
+      const requestedBaseUrl = serverUrl.trim() || config.baseUrl;
+      const probe = await probeOllama(requestedBaseUrl);
 
-      const provider = new OllamaProvider(baseUrl);
-      const connection = await provider.testConnection();
-
-      if (!connection.ok) {
+      if (!probe.ok) {
         setModels([]);
         setSelectedModel("");
         setOllamaStatus("offline");
-        setOllamaMessage(connection.message);
+        setServerUrl(requestedBaseUrl);
+        setOllamaMessage(probe.message);
         return;
       }
 
-      const discovered = await provider.listModels();
+      await saveOllamaBaseUrl(probe.baseUrl);
+      setServerUrl(probe.baseUrl);
+
+      const discovered = await probe.provider.listModels();
       const preferred = choosePreferredOllamaModel(
         discovered,
         config.model,
@@ -286,7 +355,7 @@ export function AiSettingsView() {
       if (preferred) {
         try {
           const capabilities =
-            await provider.getModelCapabilities(preferred);
+            await probe.provider.getModelCapabilities(preferred);
           setOllamaCapabilityLabels(
             modelCapabilityLabels(capabilities),
           );
@@ -303,19 +372,22 @@ export function AiSettingsView() {
 
       setOllamaMessage(
         discovered.length > 0
-          ? "Connected · " +
+          ? "Connected at " +
+              probe.baseUrl +
+              " · " +
               discovered.length +
               " local model(s) discovered"
-          : "Connected, but no local models are installed.",
+          : "Connected at " +
+              probe.baseUrl +
+              ", but no local models are installed.",
       );
     } catch (error) {
       setModels([]);
       setSelectedModel("");
       setOllamaStatus("offline");
       setOllamaMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to connect to Ollama.",
+        "Unable to connect to Ollama: " +
+          describeUnknownError(error),
       );
     } finally {
       setRefreshing(false);
@@ -356,58 +428,64 @@ export function AiSettingsView() {
 
     try {
       const config = await loadOllamaConfig();
-      const baseUrl = serverUrl.trim()
-        ? await saveOllamaBaseUrl(serverUrl)
-        : config.baseUrl;
-      setServerUrl(baseUrl);
+      const requestedBaseUrl = serverUrl.trim() || config.baseUrl;
+      const probe = await probeOllama(requestedBaseUrl);
 
-      const provider = new OllamaProvider(baseUrl);
-      const connection = await provider.testConnection();
-
-      if (!connection.ok) {
+      if (!probe.ok) {
         setModels([]);
         setSelectedModel("");
         setOllamaStatus("offline");
-        setOllamaMessage(connection.message);
+        setServerUrl(requestedBaseUrl);
+        setOllamaMessage(probe.message);
+        setLlmTestStatus("failure");
+        setLlmTestMessage(probe.message);
+        return;
+      }
+
+      await saveOllamaBaseUrl(probe.baseUrl);
+      setServerUrl(probe.baseUrl);
+      setOllamaStatus("connected");
+
+      const discovered = await probe.provider.listModels();
+      setModels(discovered);
+
+      const selectedStillExists =
+        selectedModel &&
+        discovered.some((model) => model.id === selectedModel);
+      const model = selectedStillExists
+        ? selectedModel
+        : choosePreferredOllamaModel(discovered, config.model);
+
+      setSelectedModel(model ?? "");
+
+      if (!model) {
+        setOllamaMessage(
+          "Connected at " +
+            probe.baseUrl +
+            ", but no local models are installed.",
+        );
         setLlmTestStatus("failure");
         setLlmTestMessage(
-          "Ollama connection failed at " +
-            baseUrl +
-            ". " +
-            connection.message,
+          "Ollama is reachable at " +
+            probe.baseUrl +
+            ", but it reported no installed models.",
         );
         return;
       }
 
-      setOllamaStatus("connected");
-
-      let model: string | null = selectedModel || null;
-
-      if (!model) {
-        const discovered = await provider.listModels();
-        setModels(discovered);
-        model = choosePreferredOllamaModel(discovered, config.model);
-        setSelectedModel(model ?? "");
-
-        if (!model) {
-          setOllamaMessage("Connected, but no local models are installed.");
-          setLlmTestStatus("failure");
-          setLlmTestMessage(
-            "Ollama is reachable at " +
-              baseUrl +
-              ", but it reported no installed models.",
-          );
-          return;
-        }
-
-        await saveOllamaModel(model);
-      }
-
+      await saveOllamaModel(model);
+      setOllamaMessage(
+        "Connected at " +
+          probe.baseUrl +
+          " · " +
+          discovered.length +
+          " local model(s) discovered",
+      );
       setLlmTestMessage(
         'Sending a real inference request to "' + model + '"…',
       );
 
-      const result = await testTextModel(provider, model);
+      const result = await testTextModel(probe.provider, model);
 
       setLlmTestStatus(result.ok ? "success" : "failure");
       setLlmTestMessage(
@@ -418,9 +496,8 @@ export function AiSettingsView() {
     } catch (error) {
       setLlmTestStatus("failure");
       setLlmTestMessage(
-        error instanceof Error
-          ? "LLM inference failed: " + error.message
-          : "LLM inference failed.",
+        "LLM inference failed: " +
+          describeUnknownError(error),
       );
     }
   }
@@ -588,7 +665,7 @@ export function AiSettingsView() {
             <input
               value={serverUrl}
               disabled={refreshing || llmTestStatus === "testing"}
-              placeholder="http://127.0.0.1:11434"
+              placeholder="http://127.0.0.1:12000"
               onChange={(event) => {
                 setServerUrl(event.target.value);
                 setLlmTestStatus("idle");
@@ -667,11 +744,11 @@ export function AiSettingsView() {
         )}
 
         <small className="ollama-hint">
-          The Server field is saved locally when you refresh or test. Refresh
-          models checks the Ollama service and model list. Test LLM also
-          discovers a model when necessary, then sends a real text-generation
-          request, so a green result confirms that inference is actually
-          working.
+          LexiPane remembers the last working Ollama server. If that endpoint
+          is unavailable, it also checks the configured local development port
+          and Ollama's standard 11434 port. Test LLM then sends a real
+          text-generation request, so a green result confirms that inference is
+          actually working.
         </small>
       </section>
 
