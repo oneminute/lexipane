@@ -210,6 +210,7 @@ export class OllamaProvider implements AIProvider {
         model: request.model,
         messages: request.messages,
         stream: false,
+        format: request.responseFormat === "json" ? "json" : undefined,
         options:
           typeof request.temperature === "number"
             ? { temperature: request.temperature }
@@ -246,6 +247,7 @@ export class OllamaProvider implements AIProvider {
         model: request.model,
         messages: request.messages,
         stream: true,
+        format: request.responseFormat === "json" ? "json" : undefined,
         options:
           typeof request.temperature === "number"
             ? { temperature: request.temperature }
