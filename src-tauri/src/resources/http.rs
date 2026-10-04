@@ -603,11 +603,23 @@ async fn run_http_download(
     drop(file);
 
     let validation_path = part_path.clone();
-    let detected_format = tauri::async_runtime::spawn_blocking(move || {
+    let detected_format = match tauri::async_runtime::spawn_blocking(move || {
         validate_downloaded_book(&validation_path)
     })
     .await
-    .map_err(|error| format!("Unable to validate downloaded file: {error}"))??;
+    {
+        Ok(Ok(format)) => format,
+        Ok(Err(error)) => {
+            let _ = fs::remove_dir_all(&dir).await;
+            return Err(error);
+        }
+        Err(error) => {
+            let _ = fs::remove_dir_all(&dir).await;
+            return Err(format!(
+                "Unable to validate downloaded file: {error}"
+            ));
+        }
+    };
 
     let current_extension = Path::new(&name)
         .extension()
