@@ -55,10 +55,13 @@ function taskInstruction(
 ): string {
   if (mode === "grammar") {
     return [
-      "Analyze the selected English text for a Chinese learner.",
-      "Explain the sentence structure, clauses, grammatical constructions,",
-      "pronoun/reference relationships, and idiomatic expressions that affect",
-      "understanding. Do not spend space on grammar that is obvious or irrelevant.",
+      "Analyze exactly the selected English sentence for a Chinese learner.",
+      "Start from a natural Chinese translation and the sentence's overall meaning.",
+      "Then explain its structure, clauses, grammatical constructions, references,",
+      "notable style or information-structure features, and any words or expressions",
+      "whose meaning is special in this sentence. Explain contextual meaning rather",
+      "than giving a generic dictionary definition. Do not spend space on obvious",
+      "grammar that does not help comprehension.",
     ].join(" ");
   }
 
@@ -107,7 +110,7 @@ function prepareReadingRequest(
     page: selection.page ?? null,
     question: question?.trim() ?? "",
     mode,
-    promptVersion: 6,
+    promptVersion: 7,
   };
 
   const userContent = [
