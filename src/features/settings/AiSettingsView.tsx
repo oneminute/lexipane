@@ -328,19 +328,20 @@ export function AiSettingsView() {
     try {
       const config = await loadOllamaConfig();
       const requestedBaseUrl = serverUrl.trim() || config.baseUrl;
-      const probe = await probeOllama(requestedBaseUrl);
+      const preferredBaseUrl =
+        await saveOllamaBaseUrl(requestedBaseUrl);
+
+      setServerUrl(preferredBaseUrl);
+
+      const probe = await probeOllama(preferredBaseUrl);
 
       if (!probe.ok) {
         setModels([]);
         setSelectedModel("");
         setOllamaStatus("offline");
-        setServerUrl(requestedBaseUrl);
         setOllamaMessage(probe.message);
         return;
       }
-
-      await saveOllamaBaseUrl(probe.baseUrl);
-      setServerUrl(probe.baseUrl);
 
       const discovered = await probe.provider.listModels();
       const preferred = choosePreferredOllamaModel(
@@ -370,15 +371,21 @@ export function AiSettingsView() {
         await saveOllamaModel(preferred);
       }
 
+      const connectionLabel =
+        probe.baseUrl === preferredBaseUrl
+          ? "Connected at " + probe.baseUrl
+          : "Preferred " +
+            preferredBaseUrl +
+            " unavailable · connected via fallback " +
+            probe.baseUrl;
+
       setOllamaMessage(
         discovered.length > 0
-          ? "Connected at " +
-              probe.baseUrl +
+          ? connectionLabel +
               " · " +
               discovered.length +
               " local model(s) discovered"
-          : "Connected at " +
-              probe.baseUrl +
+          : connectionLabel +
               ", but no local models are installed.",
       );
     } catch (error) {
@@ -409,8 +416,14 @@ export function AiSettingsView() {
 
       try {
         const config = await loadOllamaConfig();
-        const provider = new OllamaProvider(config.baseUrl);
-        const capabilities = await provider.getModelCapabilities(model);
+        const probe = await probeOllama(config.baseUrl);
+
+        if (!probe.ok) {
+          throw new Error(probe.message);
+        }
+
+        const capabilities =
+          await probe.provider.getModelCapabilities(model);
         setOllamaCapabilityLabels(
           modelCapabilityLabels(capabilities),
         );
@@ -429,21 +442,23 @@ export function AiSettingsView() {
     try {
       const config = await loadOllamaConfig();
       const requestedBaseUrl = serverUrl.trim() || config.baseUrl;
-      const probe = await probeOllama(requestedBaseUrl);
+      const preferredBaseUrl =
+        await saveOllamaBaseUrl(requestedBaseUrl);
+
+      setServerUrl(preferredBaseUrl);
+
+      const probe = await probeOllama(preferredBaseUrl);
 
       if (!probe.ok) {
         setModels([]);
         setSelectedModel("");
         setOllamaStatus("offline");
-        setServerUrl(requestedBaseUrl);
         setOllamaMessage(probe.message);
         setLlmTestStatus("failure");
         setLlmTestMessage(probe.message);
         return;
       }
 
-      await saveOllamaBaseUrl(probe.baseUrl);
-      setServerUrl(probe.baseUrl);
       setOllamaStatus("connected");
 
       const discovered = await probe.provider.listModels();
@@ -458,10 +473,17 @@ export function AiSettingsView() {
 
       setSelectedModel(model ?? "");
 
+      const connectionLabel =
+        probe.baseUrl === preferredBaseUrl
+          ? "Connected at " + probe.baseUrl
+          : "Preferred " +
+            preferredBaseUrl +
+            " unavailable · connected via fallback " +
+            probe.baseUrl;
+
       if (!model) {
         setOllamaMessage(
-          "Connected at " +
-            probe.baseUrl +
+          connectionLabel +
             ", but no local models are installed.",
         );
         setLlmTestStatus("failure");
@@ -475,8 +497,7 @@ export function AiSettingsView() {
 
       await saveOllamaModel(model);
       setOllamaMessage(
-        "Connected at " +
-          probe.baseUrl +
+        connectionLabel +
           " · " +
           discovered.length +
           " local model(s) discovered",
@@ -744,11 +765,11 @@ export function AiSettingsView() {
         )}
 
         <small className="ollama-hint">
-          LexiPane remembers the last working Ollama server. If that endpoint
-          is unavailable, it also checks the configured local development port
-          and Ollama's standard 11434 port. Test LLM then sends a real
-          text-generation request, so a green result confirms that inference is
-          actually working.
+          Server is the preferred Ollama endpoint and is never overwritten by
+          automatic fallback. If it is unavailable, LexiPane may temporarily
+          use another known local Ollama port and reports that explicitly.
+          Test LLM allows up to two minutes for a cold model load before timing
+          out.
         </small>
       </section>
 
