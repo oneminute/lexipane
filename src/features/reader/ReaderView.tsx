@@ -98,6 +98,7 @@ import {
   type KindleSelection,
 } from "./MobiDocumentView";
 import { PdfDocumentView } from "./PdfDocumentView";
+import { BookProviderPolicyControl } from "./BookProviderPolicyControl";
 import { StructuredAnalysisView } from "./StructuredAnalysisView";
 import { getPdfPageText, locatePdfTextRects } from "./pdfTextDom";
 import {
@@ -1652,6 +1653,16 @@ export function ReaderView({
     }
   }
 
+  function resetAiPolicyState() {
+    setAutoTermsByPage({});
+    setEpubAutoTerms([]);
+    setEpubAnalyzedContextKey("");
+    setKindleAutoTerms([]);
+    setKindleAnalyzedContextKey("");
+    setAiResult(null);
+    setAiError(null);
+  }
+
   async function changeBookPrivacy(value: string) {
     if (!bookPath) return;
 
@@ -1664,13 +1675,7 @@ export function ReaderView({
       await saveBookPrivacyMode(bookPath, mode);
 
       // Re-evaluate automatic assistance under the new privacy policy.
-      setAutoTermsByPage({});
-      setEpubAutoTerms([]);
-      setEpubAnalyzedContextKey("");
-      setKindleAutoTerms([]);
-      setKindleAnalyzedContextKey("");
-      setAiResult(null);
-      setAiError(null);
+      resetAiPolicyState();
     } catch (error) {
       console.error("Unable to save book privacy mode", error);
     }
@@ -1771,24 +1776,30 @@ export function ReaderView({
           </button>
           )}
           {bookPath && (
-            <label
-              className="book-privacy-control"
-              title="Override the global AI privacy policy for this book"
-            >
-              <span>Privacy</span>
-              <select
-                value={bookPrivacyMode ?? "inherit"}
-                onChange={(event) =>
-                  void changeBookPrivacy(event.target.value)
-                }
+            <>
+              <label
+                className="book-privacy-control"
+                title="Override the global AI privacy policy for this book"
               >
-                <option value="inherit">Global</option>
-                <option value="local-only">Local only</option>
-                <option value="prefer-local">Prefer local</option>
-                <option value="automatic">Automatic</option>
-                <option value="cloud-only">Cloud only</option>
-              </select>
-            </label>
+                <span>Privacy</span>
+                <select
+                  value={bookPrivacyMode ?? "inherit"}
+                  onChange={(event) =>
+                    void changeBookPrivacy(event.target.value)
+                  }
+                >
+                  <option value="inherit">Global</option>
+                  <option value="local-only">Local only</option>
+                  <option value="prefer-local">Prefer local</option>
+                  <option value="automatic">Automatic</option>
+                  <option value="cloud-only">Cloud only</option>
+                </select>
+              </label>
+              <BookProviderPolicyControl
+                bookPath={bookPath}
+                onChanged={resetAiPolicyState}
+              />
+            </>
           )}
           <button className="ghost-button">Notes</button>
           <button className="primary-button compact" onClick={onOpenBook}>

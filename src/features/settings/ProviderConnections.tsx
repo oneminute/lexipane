@@ -3,10 +3,14 @@ import {
   deleteProviderConfig,
   listProviderConfigModels,
   listProviderConfigs,
+  probeProviderConfigModel,
   saveProviderConfig,
   testProviderConfig,
   type ProviderConfig,
 } from "../../core/ai/providerConfigs";
+import {
+  modelCapabilityLabels,
+} from "../../core/ai/modelCapabilities";
 import { providerCatalog } from "../../core/ai/registry";
 import type { ModelInfo } from "../../core/ai/types";
 
@@ -24,6 +28,8 @@ interface FormState {
   baseUrl: string;
   model: string;
   apiKey: string;
+  inputCostPerMillion: string;
+  outputCostPerMillion: string;
 }
 
 function initialForm(): FormState {
@@ -37,11 +43,19 @@ function initialForm(): FormState {
     baseUrl: provider?.defaultBaseUrl ?? "",
     model: "",
     apiKey: "",
+    inputCostPerMillion: "",
+    outputCostPerMillion: "",
   };
 }
 
 interface Props {
   onChanged?: () => void | Promise<void>;
+}
+
+interface CapabilityProbeState {
+  model: string;
+  labels: string[];
+  source: string;
 }
 
 export function ProviderConnections({ onChanged }: Props) {
@@ -51,6 +65,8 @@ export function ProviderConnections({ onChanged }: Props) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [capabilities, setCapabilities] =
+    useState<Record<string, CapabilityProbeState>>({});
 
   const selectedDescriptor = useMemo(
     () =>
@@ -58,6 +74,11 @@ export function ProviderConnections({ onChanged }: Props) {
         (provider) => provider.id === form.providerId,
       ),
     [form.providerId],
+  );
+
+  const selectedDiscoveredModel = useMemo(
+    () => models.find((model) => model.id === form.model) ?? null,
+    [form.model, models],
   );
 
   async function refreshConfigs() {
@@ -85,6 +106,8 @@ export function ProviderConnections({ onChanged }: Props) {
       baseUrl: descriptor?.defaultBaseUrl ?? "",
       model: "",
       apiKey: "",
+      inputCostPerMillion: "",
+      outputCostPerMillion: "",
     });
     setModels([]);
     setMessage("");
@@ -98,6 +121,10 @@ export function ProviderConnections({ onChanged }: Props) {
       baseUrl: config.baseUrl,
       model: config.settings.model ?? "",
       apiKey: "",
+      inputCostPerMillion:
+        config.settings.inputCostPerMillion?.toString() ?? "",
+      outputCostPerMillion:
+        config.settings.outputCostPerMillion?.toString() ?? "",
     });
     setModels([]);
     setMessage(
@@ -118,17 +145,18 @@ export function ProviderConnections({ onChanged }: Props) {
         displayName: form.displayName,
         baseUrl: form.baseUrl,
         model: form.model,
+        inputCostPerMillion:
+          form.inputCostPerMillion.trim() === ""
+            ? undefined
+            : Number(form.inputCostPerMillion),
+        outputCostPerMillion:
+          form.outputCostPerMillion.trim() === ""
+            ? undefined
+            : Number(form.outputCostPerMillion),
         apiKey: form.apiKey || undefined,
       });
 
-      setForm({
-        id: saved.id,
-        providerId: saved.providerId,
-        displayName: saved.displayName,
-        baseUrl: saved.baseUrl,
-        model: saved.settings.model ?? "",
-        apiKey: "",
-      });
+      editConfig(saved);
       setMessage(
         saved.hasApiKey
           ? "Saved. API key is in the OS credential store, not SQLite."
@@ -166,7 +194,6 @@ export function ProviderConnections({ onChanged }: Props) {
 
     try {
       const discovered = await listProviderConfigModels(config.id);
-      setModels(discovered);
       editConfig(config);
       setModels(discovered);
       setMessage(
@@ -185,6 +212,38 @@ export function ProviderConnections({ onChanged }: Props) {
     }
   }
 
+  async function probeCapabilities(config: ProviderConfig) {
+    setTestingId(config.id);
+    setMessage("");
+
+    try {
+      const result = await probeProviderConfigModel(config.id);
+      setCapabilities((current) => ({
+        ...current,
+        [config.id]: {
+          model: result.model,
+          labels: modelCapabilityLabels(result.capabilities),
+          source: result.source,
+        },
+      }));
+      setMessage(
+        "Capabilities inspected for " +
+          result.model +
+          " · " +
+          result.source +
+          ".",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to inspect model capabilities.",
+      );
+    } finally {
+      setTestingId(null);
+    }
+  }
+
   async function remove(config: ProviderConfig) {
     if (!window.confirm("Delete " + config.displayName + " configuration?")) {
       return;
@@ -195,10 +254,19 @@ export function ProviderConnections({ onChanged }: Props) {
       setForm(initialForm());
       setModels([]);
     }
+    setCapabilities((current) => {
+      const next = { ...current };
+      delete next[config.id];
+      return next;
+    });
     await refreshConfigs();
     await onChanged?.();
     setMessage("Provider configuration and stored API key were deleted.");
   }
+
+  const selectedLabels = selectedDiscoveredModel
+    ? modelCapabilityLabels(selectedDiscoveredModel.capabilities)
+    : [];
 
   return (
     <section className="provider-connections">
@@ -325,7 +393,49 @@ export function ProviderConnections({ onChanged }: Props) {
                 }
               />
             </label>
+
+            <label>
+              <span>Input $ / 1M tokens</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={form.inputCostPerMillion}
+                placeholder="Optional"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    inputCostPerMillion: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            <label>
+              <span>Output $ / 1M tokens</span>
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={form.outputCostPerMillion}
+                placeholder="Optional"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    outputCostPerMillion: event.target.value,
+                  }))
+                }
+              />
+            </label>
           </div>
+
+          {selectedLabels.length > 0 && (
+            <div className="capability-chips">
+              {selectedLabels.map((label) => (
+                <span key={label}>{label}</span>
+              ))}
+            </div>
+          )}
 
           <div className="provider-editor-actions">
             <button
@@ -336,7 +446,8 @@ export function ProviderConnections({ onChanged }: Props) {
               {busy ? "Saving…" : "Save provider"}
             </button>
             <span>
-              API keys are stored in the operating system credential store.
+              Pricing is optional and is used only for local cost estimates.
+              API keys remain in the OS credential store.
             </span>
           </div>
 
@@ -353,52 +464,95 @@ export function ProviderConnections({ onChanged }: Props) {
               </span>
             </div>
           ) : (
-            configs.map((config) => (
-              <article className="configured-provider-card" key={config.id}>
-                <div>
-                  <span className="provider-logo">
-                    {providerCatalog.find(
-                      (item) => item.id === config.providerId,
-                    )?.shortLabel ?? "AI"}
-                  </span>
+            configs.map((config) => {
+              const probe = capabilities[config.id];
+
+              return (
+                <article className="configured-provider-card" key={config.id}>
                   <div>
-                    <strong>{config.displayName}</strong>
-                    <small>{config.baseUrl}</small>
+                    <span className="provider-logo">
+                      {providerCatalog.find(
+                        (item) => item.id === config.providerId,
+                      )?.shortLabel ?? "AI"}
+                    </span>
+                    <div>
+                      <strong>{config.displayName}</strong>
+                      <small>{config.baseUrl}</small>
+                    </div>
                   </div>
-                </div>
 
-                <div className="configured-provider-meta">
-                  <span className={config.hasApiKey ? "key-badge" : "key-badge missing"}>
-                    {config.hasApiKey ? "Key secured" : "No key"}
-                  </span>
-                  {config.settings.model && (
-                    <code>{config.settings.model}</code>
+                  <div className="configured-provider-meta">
+                    <span
+                      className={
+                        config.hasApiKey
+                          ? "key-badge"
+                          : "key-badge missing"
+                      }
+                    >
+                      {config.hasApiKey ? "Key secured" : "No key"}
+                    </span>
+                    {config.settings.model && (
+                      <code>{config.settings.model}</code>
+                    )}
+                  </div>
+
+                  {(config.settings.inputCostPerMillion !== undefined ||
+                    config.settings.outputCostPerMillion !== undefined) && (
+                    <small className="provider-pricing-summary">
+                      Pricing · input $
+                      {config.settings.inputCostPerMillion ?? "?"}
+                      {" / "}output $
+                      {config.settings.outputCostPerMillion ?? "?"}
+                      {" per 1M"}
+                    </small>
                   )}
-                </div>
 
-                <div className="configured-provider-actions">
-                  <button onClick={() => editConfig(config)}>Edit</button>
-                  <button
-                    disabled={testingId === config.id}
-                    onClick={() => void test(config)}
-                  >
-                    Test
-                  </button>
-                  <button
-                    disabled={testingId === config.id}
-                    onClick={() => void discoverModels(config)}
-                  >
-                    Models
-                  </button>
-                  <button
-                    className="danger"
-                    onClick={() => void remove(config)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))
+                  {probe && (
+                    <div className="capability-probe">
+                      <small>
+                        {probe.model} · {probe.source}
+                      </small>
+                      <div className="capability-chips">
+                        {probe.labels.map((label) => (
+                          <span key={label}>{label}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="configured-provider-actions">
+                    <button onClick={() => editConfig(config)}>Edit</button>
+                    <button
+                      disabled={testingId === config.id}
+                      onClick={() => void test(config)}
+                    >
+                      Test
+                    </button>
+                    <button
+                      disabled={testingId === config.id}
+                      onClick={() => void discoverModels(config)}
+                    >
+                      Models
+                    </button>
+                    <button
+                      disabled={
+                        testingId === config.id ||
+                        !config.settings.model
+                      }
+                      onClick={() => void probeCapabilities(config)}
+                    >
+                      Capabilities
+                    </button>
+                    <button
+                      className="danger"
+                      onClick={() => void remove(config)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              );
+            })
           )}
         </section>
       </div>

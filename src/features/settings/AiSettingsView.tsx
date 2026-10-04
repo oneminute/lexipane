@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { ProviderConnections } from "./ProviderConnections";
 import {
+  defaultAiExecutionPolicy,
+  loadAiExecutionPolicy,
+  saveAiExecutionPolicy,
+  type AiExecutionPolicy,
+} from "../../core/ai/executionPolicy";
+import {
   choosePreferredOllamaModel,
   loadOllamaConfig,
   saveOllamaModel,
@@ -85,7 +91,19 @@ const emptyUsage: AiUsageSummary = {
   outputTokens: 0,
   totalTokens: 0,
   averageLatencyMs: 0,
+  estimatedCost: 0,
+  estimatedCostToday: 0,
+  estimatedCostThisMonth: 0,
+  localRequests: 0,
+  cloudRequests: 0,
 };
+
+const initialExecutionPolicies = Object.fromEntries(
+  taskRoutes.map((task) => [
+    task.id,
+    defaultAiExecutionPolicy(task.id),
+  ]),
+) as Record<ReadingTaskType, AiExecutionPolicy>;
 
 const emptyReadingProfile: ReadingProfileSummary = {
   known: 0,
@@ -160,6 +178,10 @@ export function AiSettingsView() {
   const [privacyMode, setPrivacyMode] =
     useState<AiPrivacyMode>("prefer-local");
   const [usage, setUsage] = useState<AiUsageSummary>(emptyUsage);
+  const [executionPolicies, setExecutionPolicies] =
+    useState<Record<ReadingTaskType, AiExecutionPolicy>>(
+      initialExecutionPolicies,
+    );
   const [readingProfile, setReadingProfile] =
     useState<ReadingProfileSummary>(emptyReadingProfile);
 
@@ -202,6 +224,18 @@ export function AiSettingsView() {
       nextPlans[task.id] = value;
     });
     setRoutePlans(nextPlans);
+
+    const policies = await Promise.all(
+      taskRoutes.map((task) => loadAiExecutionPolicy(task.id)),
+    );
+    setExecutionPolicies(
+      Object.fromEntries(
+        taskRoutes.map((task, index) => [
+          task.id,
+          policies[index],
+        ]),
+      ) as Record<ReadingTaskType, AiExecutionPolicy>,
+    );
   }
 
   async function refreshOllama() {
@@ -322,6 +356,24 @@ export function AiSettingsView() {
     };
     setRoutePlans((plans) => ({ ...plans, [task]: next }));
     await saveTaskRoutePlan(task, next);
+  }
+
+  async function changeExecutionPolicy(
+    task: ReadingTaskType,
+    patch: Partial<AiExecutionPolicy>,
+  ) {
+    const current =
+      executionPolicies[task] ?? defaultAiExecutionPolicy(task);
+    const next: AiExecutionPolicy = {
+      ...current,
+      ...patch,
+    };
+
+    setExecutionPolicies((policies) => ({
+      ...policies,
+      [task]: next,
+    }));
+    await saveAiExecutionPolicy(task, next);
   }
 
   function currentRouteValue(
@@ -515,9 +567,10 @@ export function AiSettingsView() {
           <span className="eyebrow">Task routing</span>
           <h2>Primary route + ordered fallbacks</h2>
           <p>
-            Each task tries its primary model first, then Fallback 1 and
-            Fallback 2. Privacy policy filters out routes that are not allowed
-            for the current book.
+            Each task tries its primary model first, retries transient failures
+            using its execution policy, then moves through Fallback 1 and
+            Fallback 2. Privacy and per-book provider policy filter routes
+            before any content is sent.
           </p>
           <div className="task-route-list">
             {taskRoutes.map((task) => {
@@ -638,6 +691,44 @@ export function AiSettingsView() {
                       </select>
                     </label>
                   </div>
+
+                  <div className="task-execution-policy">
+                    <label>
+                      <span>Timeout</span>
+                      <select
+                        value={executionPolicies[task.id]?.timeoutMs ?? 60000}
+                        onChange={(event) =>
+                          void changeExecutionPolicy(task.id, {
+                            timeoutMs: Number(event.target.value),
+                          })
+                        }
+                      >
+                        <option value={15000}>15s</option>
+                        <option value={30000}>30s</option>
+                        <option value={60000}>60s</option>
+                        <option value={75000}>75s</option>
+                        <option value={90000}>90s</option>
+                        <option value={120000}>120s</option>
+                      </select>
+                    </label>
+
+                    <label>
+                      <span>Retries</span>
+                      <select
+                        value={executionPolicies[task.id]?.retries ?? 0}
+                        onChange={(event) =>
+                          void changeExecutionPolicy(task.id, {
+                            retries: Number(event.target.value),
+                          })
+                        }
+                      >
+                        <option value={0}>0</option>
+                        <option value={1}>1</option>
+                        <option value={2}>2</option>
+                        <option value={3}>3</option>
+                      </select>
+                    </label>
+                  </div>
                 </div>
               );
             })}
@@ -668,11 +759,11 @@ export function AiSettingsView() {
         </section>
 
         <section className="settings-card usage-card">
-          <span className="eyebrow">AI usage</span>
+          <span className="eyebrow">AI usage & estimated cost</span>
           <h2>{usage.requests.toLocaleString()} requests</h2>
           <p>
-            Tokens and latency are tracked locally for both local and configured
-            providers. Provider billing estimates will be added separately.
+            Cost is estimated only when a configured cloud provider has
+            per-million-token pricing. Ollama remains $0 API cost.
           </p>
           <div className="usage-metrics">
             <div>
@@ -686,8 +777,22 @@ export function AiSettingsView() {
               <span>avg latency</span>
             </div>
             <div>
-              <strong>Local</strong>
-              <span>usage log</span>
+              <strong>{"$" + usage.estimatedCost.toFixed(4)}</strong>
+              <span>estimated total</span>
+            </div>
+            <div>
+              <strong>{"$" + usage.estimatedCostToday.toFixed(4)}</strong>
+              <span>today</span>
+            </div>
+            <div>
+              <strong>{"$" + usage.estimatedCostThisMonth.toFixed(4)}</strong>
+              <span>this month</span>
+            </div>
+            <div>
+              <strong>
+                {usage.localRequests} / {usage.cloudRequests}
+              </strong>
+              <span>local / cloud</span>
             </div>
           </div>
         </section>
