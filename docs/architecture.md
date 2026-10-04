@@ -4,13 +4,14 @@
 
 LexiPane is a contextual reading system, not a chat window attached to a document viewer. The source document remains the primary surface; annotations, AI results, Notebook entries, and personal-reading feedback remain tied to stable book locations.
 
-The application separates five concerns:
+The application separates six concerns:
 
 1. **Document Engine** — format-native PDF, EPUB, and Kindle-family readers behind shared reading operations.
 2. **Annotation Engine** — stable format-specific anchors for user and automatic annotations.
 3. **Notebook Engine** — source text, AI analysis, user notes, tags, and navigation targets.
 4. **AI Platform** — provider/model abstraction, routing, privacy, structured output, execution policy, usage, and cost.
 5. **Personal Reading Model** — Known / Difficult / Removed feedback that adapts future assistance.
+6. **Resource Acquisition Platform** — provider-neutral discovery, resource identity, provenance, preview capability, persistent transfer jobs, and verified Library ingestion.
 
 ## Runtime stack
 
@@ -159,6 +160,32 @@ LexiPane records locally:
 
 Cloud pricing is an optional user-configurable input/output price per one million tokens. This avoids silently depending on stale pricing tables. The UI reports total, current-day, and current-month estimated cost plus local/cloud request counts.
 
+## Resource Acquisition Platform
+
+Resource acquisition is modeled separately from reading and separately from any one network protocol.
+
+~~~text
+Discovery / pasted resource input
+        ↓
+Resource resolver
+        ↓
+ResourceItem + ResourceSource + ResourceFile
+        ↓
+TransferJob
+        ↓
+future native transport engine
+        ↓
+verification / ingestion
+        ↓
+Library
+~~~
+
+RESOURCE-001 establishes the shared provider/resource/source/file/transfer contracts, provider capability registry, SQLite persistence, URI classification, and a Rust/Tauri capability boundary. HTTP, cloud OAuth, BitTorrent, and ED2K networking remain disabled until their later milestones.
+
+Discovery and transfer are distinct capabilities. A catalog may discover a resource without downloading it, and one logical resource may have multiple acquisition sources.
+
+Long-running network transfers belong to the Rust/native boundary rather than React component lifecycles. OAuth/service secrets belong in native secure credential storage rather than Resource Core SQLite tables.
+
 ## SQLite
 
 The schema is versioned and migrated incrementally for existing databases. Fresh databases are created directly at the newest schema version instead of replaying historical ALTER statements.
@@ -173,6 +200,9 @@ Persistent domains include:
 - provider configuration
 - AI usage/cache
 - application settings and route/execution policy
+- resource providers/accounts metadata (never secrets)
+- logical resource items, files, and source provenance
+- persistent resource transfer jobs/history
 
 ## UI composition
 
