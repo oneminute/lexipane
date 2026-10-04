@@ -1,7 +1,11 @@
 export const APP_DEFAULTS = {
   ai: {
     ollama: {
-      baseUrl: "http://127.0.0.1:11434",
+      baseUrl: "http://127.0.0.1:12000",
+      discoveryBaseUrls: [
+        "http://127.0.0.1:12000",
+        "http://127.0.0.1:11434",
+      ],
       preferredModelNameHints: ["qwen3.5", "qwen"],
     },
     privacyMode: "prefer-local",
