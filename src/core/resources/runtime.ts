@@ -15,6 +15,7 @@ import {
   listenForResourceTransferEvents,
   type ResourceTransferEvent,
 } from "./httpTransport";
+import { cleanupTorrentTransfer } from "./torrentTransport";
 import {
   appendResourceHistory,
   getTransferJob,
@@ -160,7 +161,12 @@ async function ingestDownloadedTransfer(
     },
   });
 
-  await cleanupHttpTransferTemp(event.jobId).catch((error) => {
+  const cleanup =
+    freshJob.providerId === "bittorrent"
+      ? cleanupTorrentTransfer
+      : cleanupHttpTransferTemp;
+
+  await cleanup(event.jobId).catch((error) => {
     console.warn("Unable to clean Resource Hub temp files", error);
   });
 
@@ -277,7 +283,8 @@ async function recoverInterruptedTransfers(
     }
 
     if (
-      job.providerId === "http" &&
+      (job.providerId === "http" ||
+        job.providerId === "bittorrent") &&
       (job.state === "running" || job.state === "queued")
     ) {
       await updateTransferJob(job.id, {
@@ -285,8 +292,8 @@ async function recoverInterruptedTransfers(
         downloadRate: 0,
         error:
           job.state === "queued"
-            ? "LexiPane restarted before this HTTP transfer began. Resume to start it."
-            : "LexiPane restarted while this HTTP transfer was running. Resume to continue from the partial file.",
+            ? "LexiPane restarted before this transfer began. Resume to start it."
+            : "LexiPane restarted while this transfer was running. Resume to continue from persisted data.",
       });
       dispatchTransferUpdated(job.id);
     }
