@@ -18,7 +18,7 @@ describe("resource provider registry", () => {
     expect(getResourceProvider("dropbox")?.live).toBe(true);
     expect(getResourceProvider("onedrive")?.live).toBe(true);
     expect(getResourceProvider("bittorrent")?.live).toBe(true);
-    expect(getResourceProvider("ed2k")?.live).toBe(false);
+    expect(getResourceProvider("ed2k")?.live).toBe(true);
   });
 
   it("queries declared capabilities", () => {
