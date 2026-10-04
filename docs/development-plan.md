@@ -71,81 +71,58 @@ Last updated: **2026-10-04**
 
 **Resource Acquisition Platform / Resource Hub**
 
-Status: **VERIFYING**
+Status: **READY**
 
-**RESOURCE-001 — Resource Core** implementation is present on `main`. Frontend validation has passed; Rust validation is still running. No live resource transport has been enabled.
+**RESOURCE-001 — Resource Core** is complete. The next selected milestone is **RESOURCE-002 — HTTP + OPDS vertical slice**. No cloud/P2P provider implementation has started.
 
 ## Most recently completed product work
 
-Reader interaction hardening is live on `main`, including:
+**RESOURCE-001 — Resource Core** is complete on `main`.
 
-- persistent current-sentence state separate from transient text selection;
-- sentence highlighting that can be reconstructed after EPUB/Kindle reflow;
-- visible Previous sentence / Next sentence controls in the reading pane;
-- Reader keep-alive across workspace navigation;
-- bookmarks and persisted reading-position restore;
-- reversible progress-bar peek mode;
-- longer local-AI execution timeouts;
-- structured-output recovery/fallback work for local models;
-- viewport-contained Reader scrolling.
+Delivered:
+
+- provider-neutral resource/provider/source/file/transfer contracts;
+- builtin provider capability registry with every live transport disabled;
+- non-networking input classification for web, OPDS hints, cloud share links, magnet/torrent, ED2K, WebDAV, S3, and SFTP;
+- provider-neutral identity normalization;
+- SQLite schema v10 Resource Core tables/migration;
+- Resource Core persistence services and inert draft transfer jobs;
+- Rust/Tauri Resource Core capability boundary;
+- Resources main-navigation entry and Search / Browse / Downloads / Accounts shell;
+- targeted resolver, identity, provider-registry, and schema migration tests.
 
 ## Development status history
 
 | Date | Task | Final status | Validation / evidence | Next |
 | --- | --- | --- | --- | --- |
 | 2026-10-04 | PLAN-001 — Establish authoritative development plan and Resource Hub roadmap | COMPLETE | Added `docs/development-plan.md`, root `AGENTS.md`, README workflow entry, and Resource Hub roadmap summary. Documentation-only change; no runtime validation required. | RESOURCE-001 |
+| 2026-10-04 | RESOURCE-001 — Resource Core | COMPLETE | Resource contracts, provider registry, resolver, identity, SQLite v10 persistence, draft jobs, native boundary, Resources UI shell. `npm run typecheck`, `npm test`, `npm run build`, and `cargo check --manifest-path src-tauri/Cargo.toml` all passed in CI run 37220879280. | RESOURCE-002 |
 
 ## Next selected task
 
-**RESOURCE-001 — Resource Core**
+**RESOURCE-002 — HTTP + OPDS vertical slice**
 
-Status: **VERIFYING**
+Status: **READY**
 
-Implementation completed in this pass:
+Intended next implementation scope:
 
-- establish provider/resource/transfer domain types;
-- add versioned SQLite persistence for resource providers, items, sources, files, and transfer jobs;
-- add the first Resources shell/page and navigation entry;
-- implement resource URI/link classification without performing network transfers yet;
-- define Rust/Tauri boundary contracts for future transfer engines;
-- add tests for resource identity, URI classification, and schema migration.
+- implement the first live native HTTP/HTTPS transfer path behind the Resource Core transfer contracts;
+- add HTTP metadata probing, redirects, content length/type handling, cancellation, retry, and resumable range behavior where supported;
+- add OPDS catalog configuration, browse/search, metadata, covers, and acquisition-link normalization;
+- connect live transfers to persistent `TransferJob` state/events;
+- implement the first verified ingestion path into the existing LexiPane Library/managed-library pipeline;
+- detect duplicate acquired books through existing SHA-256 identity;
+- keep cloud OAuth, BitTorrent, and ED2K out of scope for this milestone.
 
-Current risks / dependencies:
+Primary risks / dependencies to address before implementation:
 
-- SQLite migration must remain compatible with existing user databases.
-- Native/Tauri contracts must not start network activity in RESOURCE-001.
-- Resource identifiers and source provenance must remain provider-neutral so later cloud/P2P providers do not force schema rewrites.
-- The Resource Hub shell must fit the existing desktop layout without destabilizing Reader keep-alive behavior.
+- native HTTP transfer lifecycle must survive React navigation and must not be owned by the Resource Hub component;
+- temp-file paths, cancellation, resume metadata, disk-space checks, and atomic final movement must obey the security baseline;
+- OPDS parsing must not blur catalog discovery with transfer execution;
+- ingestion must reuse existing Library identity/managed-storage code rather than create a second library path;
+- provider/network errors need durable transfer-job diagnostics suitable for later Download Manager hardening.
 
-Implementation summary:
-
-- added provider-neutral TypeScript domain types for providers, resources, sources, files, identities, preview capabilities, and transfer jobs;
-- added builtin provider capability registry with all live transports disabled;
-- added non-networking resource-input classification for HTTP/HTTPS, OPDS hints, cloud share links, magnet, torrent metadata, ED2K, WebDAV, S3, and SFTP;
-- added provider-neutral content identity normalization/matching;
-- upgraded SQLite schema to v10 with Resource Core provider/account/item/source/file/job/history tables and migration;
-- added Resource Core persistence services, builtin-provider synchronization, bundle persistence/readback, and inert draft transfer jobs;
-- added native Rust/Tauri Resource Core capability boundary with all live transports explicitly false;
-- added Resources main-navigation entry and Search / Browse / Downloads / Accounts shell;
-- added targeted resolver, identity, provider-registry, and schema migration tests.
-
-Validation evidence so far:
-
-- `npm run typecheck`: PASS
-- `npm test`: PASS
-- `npm run build`: PASS
-- `cargo check --manifest-path src-tauri/Cargo.toml`: RUNNING
-
-Known limitations are intentional for RESOURCE-001:
-
-- no HTTP transfer engine;
-- no OPDS network fetch;
-- no cloud OAuth;
-- no BitTorrent or ED2K socket/sidecar activity;
-- draft jobs are persisted but never executed.
-
-Do **not** begin BitTorrent, ED2K, Google Drive, Dropbox, or OneDrive protocol implementation before RESOURCE-001 establishes these shared contracts.
-
+RESOURCE-002 must begin with a development-plan status change to `IN_PROGRESS` before any implementation commit.
 ---
 
 # Product direction
@@ -728,7 +705,7 @@ Planned native event categories:
 
 ## RESOURCE-001 — Resource Core
 
-Status: **VERIFYING**
+Status: **COMPLETE**
 
 Goal: establish shared contracts before implementing any provider protocol.
 
@@ -757,7 +734,7 @@ Acceptance criteria:
 
 ## RESOURCE-002 — HTTP + OPDS vertical slice
 
-Status: **PLANNED**
+Status: **READY**
 
 Goal: prove discovery → preview → download → ingestion → Library with comparatively simple protocols.
 
