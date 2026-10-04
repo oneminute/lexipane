@@ -4450,3 +4450,164 @@ button { cursor: pointer; }
 .torrent-preview-card {
   margin-top: 10px;
 }
+
+
+/* Connected cloud resource accounts */
+.cloud-connect-card {
+  display: grid;
+  grid-template-columns: 180px minmax(170px, 0.65fr) minmax(260px, 1.4fr) auto;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 14px;
+  background: #fafbfc;
+  border: 1px solid #e5e7ec;
+  border-radius: 12px;
+}
+
+.cloud-connect-card select,
+.cloud-connect-card input {
+  min-width: 0;
+  padding: 9px 10px;
+  color: #343847;
+  background: white;
+  border: 1px solid #dde0e7;
+  border-radius: 9px;
+  outline: none;
+}
+
+.cloud-account-list,
+.cloud-entry-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cloud-account-list article,
+.cloud-entry-list article {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 12px;
+  background: #fafbfc;
+  border: 1px solid #e5e7ec;
+  border-radius: 11px;
+}
+
+.cloud-account-list article > div:first-child {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+
+.cloud-account-list article > div:last-child {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cloud-account-list small,
+.cloud-entry-list small {
+  color: #8d929f;
+}
+
+.cloud-account-switcher {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.cloud-account-switcher button {
+  display: grid;
+  gap: 2px;
+  min-width: 130px;
+  padding: 9px 10px;
+  text-align: left;
+  background: #fafbfc;
+  border: 1px solid #e4e6ec;
+  border-radius: 10px;
+}
+
+.cloud-account-switcher button.selected {
+  background: #f3f1ff;
+  border-color: rgba(101, 88, 219, 0.34);
+}
+
+.cloud-account-switcher strong {
+  font-size: 9px;
+}
+
+.cloud-account-switcher small {
+  color: #9297a3;
+}
+
+.cloud-browser {
+  display: grid;
+  gap: 10px;
+}
+
+.cloud-breadcrumbs {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cloud-breadcrumbs button {
+  padding: 5px 8px;
+  font-size: 8px;
+  color: #625d82;
+  background: #f0eefc;
+  border: 0;
+  border-radius: 7px;
+}
+
+.cloud-breadcrumbs button:not(:last-child)::after {
+  content: " ›";
+}
+
+.cloud-entry-list article {
+  justify-content: flex-start;
+}
+
+.cloud-entry-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #6a638f;
+  background: #efedfb;
+  border-radius: 8px;
+}
+
+.cloud-entry-main {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 3px;
+}
+
+.cloud-entry-main strong {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-empty.compact {
+  padding: 18px;
+}
+
+@media (max-width: 850px) {
+  .cloud-connect-card {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-account-list article,
+  .cloud-entry-list article {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
