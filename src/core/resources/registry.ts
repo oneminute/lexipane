@@ -110,9 +110,9 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     id: "ed2k",
     name: "ED2K",
     kind: "p2p",
-    description: "ED2K search/transfer contract. Sidecar/native networking is not enabled yet.",
+    description: "aMule sidecar search, ED2K link acquisition, queue control, and Library ingestion.",
     builtin: true,
-    live: false,
+    live: true,
     capabilities: {
       search: true,
       resolve: true,
