@@ -1,3 +1,4 @@
+import { APP_DEFAULTS } from "../../config/appDefaults";
 import { getAppMeta, setAppMeta } from "../settings/appMeta";
 
 export type EbookTheme = "light" | "sepia" | "dark";
@@ -15,16 +16,22 @@ const FLOW_KEY = "reader.epub.flow";
 
 export function normalizeEbookFontScale(value: unknown): number {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 100;
+  if (!Number.isFinite(parsed)) {
+    return APP_DEFAULTS.reading.ebook.fontScale;
+  }
   return Math.max(70, Math.min(180, Math.round(parsed / 10) * 10));
 }
 
 export function normalizeEbookTheme(value: unknown): EbookTheme {
-  return value === "sepia" || value === "dark" ? value : "light";
+  return value === "sepia" || value === "dark"
+    ? value
+    : APP_DEFAULTS.reading.ebook.theme;
 }
 
 export function normalizeEpubFlow(value: unknown): EpubFlowMode {
-  return value === "paginated" ? "paginated" : "scrolled";
+  return value === "paginated"
+    ? "paginated"
+    : APP_DEFAULTS.reading.ebook.epubFlow;
 }
 
 export async function loadEbookReadingPreferences(): Promise<EbookReadingPreferences> {

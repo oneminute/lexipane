@@ -1,9 +1,11 @@
+import { APP_DEFAULTS } from "../../config/appDefaults";
 import { getAppMeta, setAppMeta } from "../settings/appMeta";
 
 export type ReadingLevel = "A2" | "B1" | "B2" | "C1";
 
 const READING_LEVEL_KEY = "reading.level";
-export const DEFAULT_READING_LEVEL: ReadingLevel = "B2";
+export const DEFAULT_READING_LEVEL: ReadingLevel =
+  APP_DEFAULTS.reading.level;
 
 export const readingLevels: Array<{
   id: ReadingLevel;

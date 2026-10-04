@@ -42,7 +42,9 @@ The current desktop build now includes PDF, EPUB, and Kindle-family reading flow
 - model capability probing and provider readiness diagnostics
 - optional cloud token pricing with total/today/month cost estimates
 
-The first live AI path is intentionally local: Ollama at `http://127.0.0.1:11434`.
+The first live AI path is intentionally local. Its default Ollama endpoint is
+defined in `src/config/appDefaults.ts` and currently resolves to
+`http://127.0.0.1:11434`.
 
 ## Current reading workflow
 
@@ -130,6 +132,7 @@ See:
 - `docs/architecture.md`
 - `docs/roadmap.md`
 - `docs/ai-providers.md`
+- `docs/configuration.md`
 
 ## Development
 

@@ -1,3 +1,4 @@
+import { APP_DEFAULTS } from "../../config/appDefaults";
 import { getAppMeta, setAppMeta } from "../settings/appMeta";
 
 export type AiPrivacyMode =
@@ -19,7 +20,7 @@ export async function loadAiPrivacyMode(): Promise<AiPrivacyMode> {
     return value;
   }
 
-  return "prefer-local";
+  return APP_DEFAULTS.ai.privacyMode;
 }
 
 export async function saveAiPrivacyMode(

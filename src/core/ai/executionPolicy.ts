@@ -1,3 +1,4 @@
+import { APP_DEFAULTS } from "../../config/appDefaults";
 import { getAppMeta, setAppMeta } from "../settings/appMeta";
 import type { ReadingTaskType } from "./taskRouting";
 
@@ -8,11 +9,11 @@ export interface AiExecutionPolicy {
 }
 
 const defaults: Record<ReadingTaskType, AiExecutionPolicy> = {
-  explain: { timeoutMs: 60000, retries: 1, retryDelayMs: 700 },
-  grammar: { timeoutMs: 75000, retries: 1, retryDelayMs: 700 },
-  ask: { timeoutMs: 75000, retries: 1, retryDelayMs: 700 },
-  difficulty: { timeoutMs: 30000, retries: 0, retryDelayMs: 500 },
-  region: { timeoutMs: 90000, retries: 0, retryDelayMs: 800 },
+  explain: { ...APP_DEFAULTS.ai.execution.explain },
+  grammar: { ...APP_DEFAULTS.ai.execution.grammar },
+  ask: { ...APP_DEFAULTS.ai.execution.ask },
+  difficulty: { ...APP_DEFAULTS.ai.execution.difficulty },
+  region: { ...APP_DEFAULTS.ai.execution.region },
 };
 
 const keyFor = (task: ReadingTaskType) => "ai.execution.v1." + task;

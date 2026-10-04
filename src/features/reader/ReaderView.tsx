@@ -189,10 +189,14 @@ export function ReaderView({
   onBackToLibrary,
 }: Props) {
   const [scale, setScale] = useState(1.1);
-  const [epubFontScale, setEpubFontScale] = useState(100);
-  const [ebookTheme, setEbookTheme] = useState<EbookTheme>("light");
+  const [epubFontScale, setEpubFontScale] = useState(
+    APP_DEFAULTS.reading.ebook.fontScale,
+  );
+  const [ebookTheme, setEbookTheme] = useState<EbookTheme>(
+    APP_DEFAULTS.reading.ebook.theme,
+  );
   const [epubFlowMode, setEpubFlowMode] =
-    useState<EpubFlowMode>("scrolled");
+    useState<EpubFlowMode>(APP_DEFAULTS.reading.ebook.epubFlow);
   const [pageCount, setPageCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [initialPage, setInitialPage] = useState<number | null>(null);
@@ -212,7 +216,9 @@ export function ReaderView({
     useState<"idle" | "saving" | "saved">("idle");
   const [annotations, setAnnotations] = useState<PdfTextAnnotation[]>([]);
   const annotationsRef = useRef<PdfTextAnnotation[]>([]);
-  const [readingLevel, setReadingLevel] = useState<ReadingLevel>("B2");
+  const [readingLevel, setReadingLevel] = useState<ReadingLevel>(
+    APP_DEFAULTS.reading.level,
+  );
   const [pageTexts, setPageTexts] = useState<Record<number, string>>({});
   const [autoTermsByPage, setAutoTermsByPage] =
     useState<Record<number, DifficultTerm[]>>({});
@@ -289,7 +295,7 @@ export function ReaderView({
 
     void loadReadingLevel()
       .then(setReadingLevel)
-      .catch(() => setReadingLevel("B2"));
+      .catch(() => setReadingLevel(APP_DEFAULTS.reading.level));
 
     void getLocalOcrStatus()
       .then(setOcrStatus)
@@ -1219,7 +1225,10 @@ export function ReaderView({
     setAiError(null);
 
     try {
-      const result = await recognizeImageDataUrl(capture.imageDataUrl, "eng");
+      const result = await recognizeImageDataUrl(
+        capture.imageDataUrl,
+        APP_DEFAULTS.ocr.language,
+      );
       const text = normalizedText(result.text);
 
       if (!text) {

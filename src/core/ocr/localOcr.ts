@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { APP_DEFAULTS } from "../../config/appDefaults";
 
 export interface LocalOcrStatus {
   available: boolean;
@@ -49,7 +50,7 @@ export async function getLocalOcrStatus(): Promise<LocalOcrStatus> {
 
 export async function recognizeImageDataUrl(
   imageDataUrl: string,
-  language = "eng",
+  language = APP_DEFAULTS.ocr.language,
 ): Promise<LocalOcrResult> {
   if (!isTauri()) {
     throw new Error("Local OCR requires the desktop application.");

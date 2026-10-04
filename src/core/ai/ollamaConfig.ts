@@ -1,7 +1,9 @@
+import { APP_DEFAULTS } from "../../config/appDefaults";
 import type { ModelInfo } from "./types";
 import { getAppMeta, setAppMeta } from "../settings/appMeta";
 
-export const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+export const DEFAULT_OLLAMA_BASE_URL =
+  APP_DEFAULTS.ai.ollama.baseUrl;
 
 const OLLAMA_MODEL_KEY = "ai.ollama.model";
 
@@ -29,15 +31,13 @@ export function choosePreferredOllamaModel(
     return storedModel;
   }
 
-  const qwen35 = models.find((model) =>
-    model.id.toLowerCase().includes("qwen3.5"),
-  );
-  if (qwen35) return qwen35.id;
+  for (const hint of APP_DEFAULTS.ai.ollama.preferredModelNameHints) {
+    const preferred = models.find((model) =>
+      model.id.toLowerCase().includes(hint.toLowerCase()),
+    );
 
-  const qwen = models.find((model) =>
-    model.id.toLowerCase().includes("qwen"),
-  );
-  if (qwen) return qwen.id;
+    if (preferred) return preferred.id;
+  }
 
   return models[0]?.id ?? null;
 }
