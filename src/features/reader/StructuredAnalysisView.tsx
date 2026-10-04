@@ -5,6 +5,21 @@ interface Props {
 }
 
 export function StructuredAnalysisView({ analysis }: Props) {
+  if (analysis.kind === "raw") {
+    return (
+      <div className="structured-analysis">
+        <section className="structured-primary">
+          <span>AI response</span>
+          <strong>Unstructured fallback</strong>
+          <p>{analysis.note}</p>
+        </section>
+        <section>
+          <div className="structured-raw-response">{analysis.text}</div>
+        </section>
+      </div>
+    );
+  }
+
   if (analysis.kind === "explanation") {
     return (
       <div className="structured-analysis">
