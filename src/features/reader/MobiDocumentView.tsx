@@ -550,16 +550,6 @@ export function MobiDocumentView({
     );
   }, [chapterId]);
 
-  useEffect(() => {
-    applyCurrentMarks();
-    restoreActiveSentenceHighlight();
-  }, [
-    annotations,
-    applyCurrentMarks,
-    autoTerms,
-    restoreActiveSentenceHighlight,
-  ]);
-
   const restoreActiveSentenceHighlight = useCallback(() => {
     const document = iframeRef.current?.contentDocument;
     if (!document) return;
@@ -599,6 +589,16 @@ export function MobiDocumentView({
       chapterId,
     };
   }, [chapterId]);
+
+  useEffect(() => {
+    applyCurrentMarks();
+    restoreActiveSentenceHighlight();
+  }, [
+    annotations,
+    applyCurrentMarks,
+    autoTerms,
+    restoreActiveSentenceHighlight,
+  ]);
 
   const handleFrameLoad = useCallback(() => {
     const iframe = iframeRef.current;
