@@ -466,3 +466,112 @@ export async function listTransferJobs(): Promise<TransferJob[]> {
 
   return rows.map(transferFromRow);
 }
+
+
+export interface TransferProgressUpdate {
+  state: TransferJob["state"];
+  progress?: number;
+  bytesTotal?: number;
+  bytesCompleted?: number;
+  downloadRate?: number;
+  uploadRate?: number;
+  error?: string | null;
+  temporaryPath?: string | null;
+  destinationPath?: string | null;
+  resumeData?: Record<string, unknown>;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export async function updateTransferJob(
+  jobId: string,
+  update: TransferProgressUpdate,
+): Promise<void> {
+  if (!isTauri()) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  const currentRows = await db.select<TransferJobRow[]>(
+    "SELECT * FROM transfer_jobs WHERE id = $1 LIMIT 1",
+    [jobId],
+  );
+  const current = currentRows[0];
+
+  if (!current) {
+    throw new Error("Transfer job not found: " + jobId);
+  }
+
+  const nextResume =
+    update.resumeData === undefined
+      ? current.resume_json
+      : JSON.stringify(update.resumeData);
+  const now = new Date().toISOString();
+
+  await db.execute(
+    "UPDATE transfer_jobs SET " +
+      "state=$2, progress=$3, bytes_total=$4, bytes_completed=$5, " +
+      "download_rate=$6, upload_rate=$7, error=$8, temporary_path=$9, " +
+      "destination_path=$10, resume_json=$11, updated_at=$12, " +
+      "started_at=$13, completed_at=$14 WHERE id=$1",
+    [
+      jobId,
+      update.state,
+      update.progress ?? current.progress,
+      update.bytesTotal ?? current.bytes_total,
+      update.bytesCompleted ?? current.bytes_completed,
+      update.downloadRate ?? current.download_rate,
+      update.uploadRate ?? current.upload_rate,
+      update.error === undefined ? current.error : update.error,
+      update.temporaryPath === undefined
+        ? current.temporary_path
+        : update.temporaryPath,
+      update.destinationPath === undefined
+        ? current.destination_path
+        : update.destinationPath,
+      nextResume,
+      now,
+      update.startedAt === undefined
+        ? current.started_at
+        : update.startedAt,
+      update.completedAt === undefined
+        ? current.completed_at
+        : update.completedAt,
+    ],
+  );
+}
+
+export async function getTransferJob(
+  jobId: string,
+): Promise<TransferJob | null> {
+  if (!isTauri()) return null;
+
+  const db = await initializeDatabase();
+  if (!db) return null;
+
+  const rows = await db.select<TransferJobRow[]>(
+    "SELECT * FROM transfer_jobs WHERE id = $1 LIMIT 1",
+    [jobId],
+  );
+
+  return rows[0] ? transferFromRow(rows[0]) : null;
+}
+
+export async function resetTransferJobForRetry(
+  jobId: string,
+): Promise<void> {
+  const job = await getTransferJob(jobId);
+  if (!job) {
+    throw new Error("Transfer job not found: " + jobId);
+  }
+
+  await updateTransferJob(jobId, {
+    state: "queued",
+    error: null,
+    progress: job.progress,
+    bytesTotal: job.bytesTotal,
+    bytesCompleted: job.bytesCompleted,
+    downloadRate: 0,
+    completedAt: null,
+  });
+}
