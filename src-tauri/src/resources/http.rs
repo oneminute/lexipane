@@ -693,16 +693,16 @@ pub async fn resource_http_start_download(
 pub async fn resource_http_pause(
     manager: State<'_, HttpTransferManager>,
     job_id: String,
-) -> bool {
-    manager.signal(&job_id, CONTROL_PAUSE).await
+) -> Result<bool, String> {
+    Ok(manager.signal(&job_id, CONTROL_PAUSE).await)
 }
 
 #[tauri::command]
 pub async fn resource_http_cancel(
     manager: State<'_, HttpTransferManager>,
     job_id: String,
-) -> bool {
-    manager.signal(&job_id, CONTROL_CANCEL).await
+) -> Result<bool, String> {
+    Ok(manager.signal(&job_id, CONTROL_CANCEL).await)
 }
 
 #[tauri::command]
