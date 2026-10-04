@@ -112,7 +112,10 @@ export interface ResourceFile {
 export type TransferJobState =
   | "draft"
   | "queued"
+  | "running"
   | "paused"
+  | "downloaded"
+  | "ingesting"
   | "completed"
   | "failed"
   | "canceled";
