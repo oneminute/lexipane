@@ -5,6 +5,7 @@ import {
 } from "./providerConfigs";
 import {
   choosePreferredOllamaModel,
+  getOllamaBaseUrlCandidates,
   loadOllamaConfig,
   saveOllamaModel,
 } from "./ollamaConfig";
@@ -65,8 +66,32 @@ async function localRuntime(
   requestedModel?: string,
 ): Promise<ResolvedTextRuntime> {
   const config = await loadOllamaConfig();
-  const provider = new OllamaProvider(config.baseUrl);
-  const models = await provider.listModels();
+
+  let provider: OllamaProvider | null = null;
+  let models = await Promise.resolve([] as Awaited<
+    ReturnType<OllamaProvider["listModels"]>
+  >);
+  let lastError: unknown = null;
+
+  for (const baseUrl of getOllamaBaseUrlCandidates(config.baseUrl)) {
+    try {
+      const candidateProvider = new OllamaProvider(baseUrl);
+      const candidateModels = await candidateProvider.listModels();
+
+      provider = candidateProvider;
+      models = candidateModels;
+
+      if (candidateModels.length > 0) break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!provider) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Unable to connect to local Ollama.");
+  }
 
   const requested = requestedModel
     ? models.find((model) => model.id === requestedModel)?.id ?? null
