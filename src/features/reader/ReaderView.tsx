@@ -40,8 +40,10 @@ import { analyzeRegionImage } from "../../core/ai/regionService";
 import type { AiPrivacyMode } from "../../core/ai/privacy";
 import type { StructuredReadingAnalysis } from "../../core/ai/readingStructured";
 import {
+  buildReadingRequestDebug,
   streamReadingSelection,
   type ReadingAnalysisMode,
+  type ReadingRequestDebug,
   type ReadingSelection,
 } from "../../core/ai/readingService";
 import {
@@ -123,6 +125,7 @@ import {
 import { PdfDocumentView } from "./PdfDocumentView";
 import { BookProviderPolicyControl } from "./BookProviderPolicyControl";
 import type { ReaderImagePreview } from "./readerImage";
+import { AiRequestDebugPanel } from "./AiRequestDebugPanel";
 import { StructuredAnalysisView } from "./StructuredAnalysisView";
 import { getPdfPageText, locatePdfTextRects } from "./pdfTextDom";
 import {
@@ -146,6 +149,8 @@ interface AiResultState {
   source?: string;
   fallbackUsed?: boolean;
   attemptedSources?: string[];
+  cached?: boolean;
+  rawResponse?: string;
 }
 
 interface ActiveReaderSelection extends ReadingSelection {
@@ -259,6 +264,8 @@ export function ReaderView({
     ) => Promise<void>) | null
   >(null);
   const [aiResult, setAiResult] = useState<AiResultState | null>(null);
+  const [aiRequestDebug, setAiRequestDebug] =
+    useState<ReadingRequestDebug | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [question, setQuestion] = useState("");
@@ -393,6 +400,7 @@ export function ReaderView({
     setBookmarksOpen(false);
     setBookmarkStatus("idle");
     setAiResult(null);
+    setAiRequestDebug(null);
     setAiError(null);
     setQuestion("");
     setNoteStatus("idle");
@@ -1746,8 +1754,19 @@ export function ReaderView({
           ? "Answer"
           : "Context explanation";
 
+    const requestSelection = {
+      ...targetSelection,
+      bookPath,
+    };
+    const requestDebug = buildReadingRequestDebug(
+      requestSelection,
+      mode,
+      readerQuestion,
+    );
+
     setAiBusy(true);
     setAiError(null);
+    setAiRequestDebug(requestDebug);
     setAiResult({
       title,
       text: "",
@@ -1756,10 +1775,7 @@ export function ReaderView({
 
     try {
       const result = await streamReadingSelection(
-        {
-          ...targetSelection,
-          bookPath,
-        },
+        requestSelection,
         mode,
         readerQuestion,
         (accumulatedText) => {
@@ -1772,6 +1788,7 @@ export function ReaderView({
       );
 
       setConfiguredModel(result.model);
+      setAiRequestDebug(result.requestDebug);
       setAiResult({
         title,
         text: result.text,
@@ -1780,6 +1797,8 @@ export function ReaderView({
         source: result.source,
         fallbackUsed: result.fallbackUsed,
         attemptedSources: result.attemptedSources,
+        cached: result.cached,
+        rawResponse: result.rawResponse,
       });
     } catch (error) {
       setAiResult(null);
@@ -3058,6 +3077,7 @@ export function ReaderView({
                       setSelection(null);
                       setActiveSentence(null);
                       setAiResult(null);
+                      setAiRequestDebug(null);
                       setAiError(null);
                       setNoteStatus("idle");
                       setHighlightStatus("idle");
@@ -3105,6 +3125,12 @@ export function ReaderView({
                   Open AI & Models to verify the selected provider, model,
                   credentials, privacy mode, and task route.
                 </p>
+                {aiRequestDebug && (
+                  <AiRequestDebugPanel
+                    debug={aiRequestDebug}
+                    model={configuredModel}
+                  />
+                )}
               </section>
             )}
 
@@ -3137,6 +3163,16 @@ export function ReaderView({
                       </ol>
                     </details>
                   )}
+
+                {aiRequestDebug && (
+                  <AiRequestDebugPanel
+                    debug={aiRequestDebug}
+                    model={aiResult.model}
+                    source={aiResult.source}
+                    rawResponse={aiResult.rawResponse}
+                    cached={Boolean(aiResult.cached)}
+                  />
+                )}
               </section>
             )}
 
