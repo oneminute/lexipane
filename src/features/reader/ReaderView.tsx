@@ -804,8 +804,9 @@ export function ReaderView({
 
   const handleEpubRelocated = useCallback(
     (cfi: string, progress: number | null) => {
+      setEpubCurrentCfi(cfi);
       setEpubProgress(progress);
-      if (!bookPath) return;
+      if (!bookPath || peekOriginRef.current) return;
 
       void saveEpubReadingPosition(bookPath, cfi, progress).catch(
         (error) => {
@@ -922,8 +923,9 @@ export function ReaderView({
 
   const handleKindleRelocated = useCallback(
     (chapterId: string, progress: number | null) => {
+      setKindleCurrentChapterId(chapterId);
       setKindleProgress(progress);
-      if (!bookPath) return;
+      if (!bookPath || peekOriginRef.current) return;
 
       void saveKindleReadingPosition(
         bookPath,
@@ -1022,7 +1024,7 @@ export function ReaderView({
     (page: number) => {
       setCurrentPage(page);
 
-      if (!bookPath || pageCount < 1) return;
+      if (!bookPath || pageCount < 1 || peekOriginRef.current) return;
 
       void savePdfReadingPosition(bookPath, page, pageCount).catch((error) => {
         console.error("Unable to save PDF reading position", error);
