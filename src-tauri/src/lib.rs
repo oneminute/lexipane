@@ -8,6 +8,7 @@ mod secrets;
 pub fn run() {
     tauri::Builder::default()
         .manage(resources::cloud::CloudTransferManager::default())
+        .manage(resources::ed2k::Ed2kManager::default())
         .manage(resources::http::HttpTransferManager::default())
         .manage(resources::torrent::TorrentManager::default())
         .plugin(tauri_plugin_dialog::init())
@@ -33,6 +34,14 @@ pub fn run() {
             resources::cloud::resource_cloud_pause,
             resources::cloud::resource_cloud_cancel,
             resources::cloud::resource_cloud_cleanup,
+            resources::ed2k::resource_ed2k_status,
+            resources::ed2k::resource_ed2k_search,
+            resources::ed2k::resource_ed2k_add_link,
+            resources::ed2k::resource_ed2k_download_result,
+            resources::ed2k::resource_ed2k_attach,
+            resources::ed2k::resource_ed2k_pause,
+            resources::ed2k::resource_ed2k_resume,
+            resources::ed2k::resource_ed2k_cancel,
             resources::http::resource_http_probe,
             resources::http::resource_http_fetch_text,
             resources::http::resource_http_start_download,
