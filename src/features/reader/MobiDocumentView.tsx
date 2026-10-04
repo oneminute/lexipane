@@ -552,7 +552,13 @@ export function MobiDocumentView({
 
   useEffect(() => {
     applyCurrentMarks();
-  }, [annotations, applyCurrentMarks, autoTerms]);
+    restoreActiveSentenceHighlight();
+  }, [
+    annotations,
+    applyCurrentMarks,
+    autoTerms,
+    restoreActiveSentenceHighlight,
+  ]);
 
   const restoreActiveSentenceHighlight = useCallback(() => {
     const document = iframeRef.current?.contentDocument;
