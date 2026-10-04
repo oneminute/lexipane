@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 export const schemaStatements = [
   "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -19,6 +19,9 @@ export const schemaStatements = [
   "CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at)",
   "CREATE TABLE IF NOT EXISTS ai_cache (cache_key TEXT PRIMARY KEY, task_type TEXT NOT NULL, model_id TEXT NOT NULL, content_json TEXT NOT NULL, created_at TEXT NOT NULL)",
   "CREATE INDEX IF NOT EXISTS idx_ai_cache_task ON ai_cache(task_type)",
+  "CREATE TABLE IF NOT EXISTS sentence_ai_versions (id TEXT PRIMARY KEY, book_path TEXT NOT NULL, sentence_key TEXT NOT NULL, sentence_text TEXT NOT NULL, context_hash TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'grammar', version_no INTEGER NOT NULL, model_id TEXT NOT NULL, source TEXT, analysis_json TEXT NOT NULL, text TEXT NOT NULL, raw_response TEXT, request_json TEXT, imported_legacy_cache INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, UNIQUE(book_path, sentence_key, mode, version_no))",
+  "CREATE INDEX IF NOT EXISTS idx_sentence_ai_versions_lookup ON sentence_ai_versions(book_path, sentence_key, mode, version_no DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_sentence_ai_versions_created ON sentence_ai_versions(created_at)",
   "CREATE TABLE IF NOT EXISTS resource_providers (id TEXT PRIMARY KEY, kind TEXT NOT NULL, display_name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, builtin INTEGER NOT NULL DEFAULT 0, live INTEGER NOT NULL DEFAULT 0, capabilities_json TEXT NOT NULL DEFAULT '{}', config_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
   "CREATE TABLE IF NOT EXISTS resource_accounts (id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, external_account_id TEXT, display_name TEXT, status TEXT NOT NULL DEFAULT 'disconnected', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(provider_id) REFERENCES resource_providers(id) ON DELETE CASCADE)",
   "CREATE INDEX IF NOT EXISTS idx_resource_accounts_provider ON resource_accounts(provider_id)",
@@ -119,6 +122,14 @@ export const schemaMigrations: SchemaMigration[] = [
     statements: [
       "CREATE TABLE IF NOT EXISTS resource_catalogs (id TEXT PRIMARY KEY, provider_id TEXT NOT NULL DEFAULT 'opds', name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL DEFAULT 1, metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(provider_id) REFERENCES resource_providers(id) ON DELETE RESTRICT)",
       "CREATE INDEX IF NOT EXISTS idx_resource_catalogs_provider ON resource_catalogs(provider_id)",
+    ],
+  },
+  {
+    version: 12,
+    statements: [
+      "CREATE TABLE IF NOT EXISTS sentence_ai_versions (id TEXT PRIMARY KEY, book_path TEXT NOT NULL, sentence_key TEXT NOT NULL, sentence_text TEXT NOT NULL, context_hash TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'grammar', version_no INTEGER NOT NULL, model_id TEXT NOT NULL, source TEXT, analysis_json TEXT NOT NULL, text TEXT NOT NULL, raw_response TEXT, request_json TEXT, imported_legacy_cache INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, UNIQUE(book_path, sentence_key, mode, version_no))",
+      "CREATE INDEX IF NOT EXISTS idx_sentence_ai_versions_lookup ON sentence_ai_versions(book_path, sentence_key, mode, version_no DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_sentence_ai_versions_created ON sentence_ai_versions(created_at)",
     ],
   },
 ];
