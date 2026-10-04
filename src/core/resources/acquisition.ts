@@ -70,10 +70,31 @@ export async function prepareHttpAcquisition(
     probe.fileName ?? probe.finalUrl,
   );
 
+  const metadataTitle =
+    typeof metadata.title === "string" && metadata.title.trim()
+      ? metadata.title.trim()
+      : undefined;
+  const metadataAuthors = Array.isArray(metadata.authors)
+    ? metadata.authors.filter(
+        (author): author is string =>
+          typeof author === "string" && Boolean(author.trim()),
+      )
+    : [];
+  const opdsCatalogUrl =
+    typeof metadata.opdsCatalogUrl === "string"
+      ? metadata.opdsCatalogUrl
+      : undefined;
+  const opdsEntryId =
+    typeof metadata.opdsEntryId === "string"
+      ? metadata.opdsEntryId
+      : undefined;
+
   const item: ResourceItem = {
     id: itemId,
-    title: resourceTitle(probe.finalUrl, probe.fileName),
-    authors: [],
+    title:
+      metadataTitle ??
+      resourceTitle(probe.finalUrl, probe.fileName),
+    authors: metadataAuthors,
     identifiers: {},
     availability: {
       sourceCount: 1,
@@ -123,9 +144,39 @@ export async function prepareHttpAcquisition(
     createdAt: now,
   };
 
+  const sources: ResourceSource[] = [source];
+
+  if (opdsCatalogUrl) {
+    sources.push({
+      id: createResourceRecordId("source"),
+      resourceItemId: itemId,
+      providerId: "opds",
+      sourceKey:
+        opdsEntryId ??
+        opdsCatalogUrl + "#" + probe.finalUrl,
+      sourceType: "catalog",
+      uri: opdsCatalogUrl,
+      metadata: {
+        entryId: opdsEntryId,
+        acquisitionUrl: probe.finalUrl,
+      },
+      availability: {
+        remoteAvailable: true,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
   const bundle: ResourceBundle = {
-    item,
-    sources: [source],
+    item: {
+      ...item,
+      availability: {
+        ...item.availability,
+        sourceCount: sources.length,
+      },
+    },
+    sources,
     files: [file],
   };
 
