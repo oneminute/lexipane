@@ -12,6 +12,7 @@ The current desktop build now includes PDF, EPUB, and Kindle-family reading flow
 - local SQLite bookshelf
 - bookshelf favorites, finished state, search, recent filter, covers, and reading progress
 - SHA-256 book identity with moved/renamed-file recovery and relinking
+- optional content-addressed managed copies inside the LexiPane app-data library
 - open books through the native file picker
 - drag supported ebook files into the application
 - real PDF.js rendering with metadata, contents navigation, protected-PDF handling, lazy rendering, and quote-recoverable highlights

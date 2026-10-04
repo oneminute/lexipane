@@ -33,14 +33,19 @@ export default function App() {
     ) => {
       if (!isSupportedBookPath(path)) return;
 
+      let resolvedPath = path;
+
       try {
-        await registerBookFile(path);
+        const registered = await registerBookFile(path);
+        if (registered) {
+          resolvedPath = registered.file_path;
+        }
         setLibraryRevision((revision) => revision + 1);
       } catch (error) {
         console.error("Unable to register book in local library", error);
       }
 
-      setActiveBookPath(path);
+      setActiveBookPath(resolvedPath);
       setActiveNavigationTarget(target);
       setView("reader");
     },

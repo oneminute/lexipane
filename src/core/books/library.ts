@@ -1,6 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { initializeDatabase } from "../db/database";
 import { computeBookFileHash } from "./fileIdentity";
+import { copyBookToManagedLibrary } from "./managedLibrary";
 import { getBookExtension } from "./openBook";
 
 export type BookReadingStatus = "reading" | "finished";
@@ -15,6 +16,7 @@ export interface LibraryBook {
   cover_path: string | null;
   favorite: number;
   reading_status: BookReadingStatus;
+  managed_copy: number;
   progress: number | null;
   added_at: string;
   last_opened_at: string | null;
@@ -28,7 +30,7 @@ function titleFromPath(path: string): string {
 
 const BOOK_SELECT =
   "SELECT b.id, b.file_path, b.file_hash, b.format, b.title, b.author, b.cover_path, " +
-  "b.favorite, b.reading_status, rp.progress, b.added_at, b.last_opened_at " +
+  "b.favorite, b.reading_status, b.managed_copy, rp.progress, b.added_at, b.last_opened_at " +
   "FROM books b LEFT JOIN reading_positions rp ON rp.book_id = b.id ";
 
 async function hashBookFile(path: string): Promise<string | null> {
@@ -82,12 +84,19 @@ export async function registerBookFile(path: string): Promise<LibraryBook | null
     );
 
     if (existingHash[0]) {
-      await db.execute(
-        "UPDATE books SET file_path = $2, format = $3, " +
-          "title = CASE WHEN title IS NULL OR TRIM(title) = '' THEN $4 ELSE title END, " +
-          "last_opened_at = $5 WHERE id = $1",
-        [existingHash[0].id, path, format, title, now],
-      );
+      if (existingHash[0].managed_copy === 1) {
+        await db.execute(
+          "UPDATE books SET last_opened_at = $2 WHERE id = $1",
+          [existingHash[0].id, now],
+        );
+      } else {
+        await db.execute(
+          "UPDATE books SET file_path = $2, format = $3, " +
+            "title = CASE WHEN title IS NULL OR TRIM(title) = '' THEN $4 ELSE title END, " +
+            "last_opened_at = $5 WHERE id = $1",
+          [existingHash[0].id, path, format, title, now],
+        );
+      }
 
       const rows = await db.select<LibraryBook[]>(
         BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
@@ -160,7 +169,7 @@ export async function relinkLibraryBook(
 
   await db.execute(
     "UPDATE books SET file_path = $2, file_hash = $3, format = $4, " +
-      "last_opened_at = $5 WHERE id = $1",
+      "managed_copy = 0, last_opened_at = $5 WHERE id = $1",
     [
       bookId,
       path,
@@ -177,6 +186,63 @@ export async function relinkLibraryBook(
 
   if (!rows[0]) {
     throw new Error("Relinked book could not be reloaded.");
+  }
+
+  return rows[0];
+}
+
+export async function copyLibraryBookToManagedStorage(
+  bookId: string,
+): Promise<LibraryBook> {
+  if (!isTauri()) {
+    throw new Error("Managed library copies require the desktop application.");
+  }
+
+  const db = await initializeDatabase();
+  if (!db) {
+    throw new Error("Database is unavailable.");
+  }
+
+  const current = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
+    [bookId],
+  );
+  const book = current[0];
+
+  if (!book) {
+    throw new Error("The library book no longer exists.");
+  }
+
+  if (book.managed_copy === 1) {
+    return book;
+  }
+
+  const managed = await copyBookToManagedLibrary(book.file_path);
+
+  const conflict = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.file_path = $1 AND b.id <> $2 LIMIT 1",
+    [managed.path, bookId],
+  );
+
+  if (conflict[0]) {
+    throw new Error(
+      "A managed copy of this book is already linked to another library entry.",
+    );
+  }
+
+  await db.execute(
+    "UPDATE books SET file_path = $2, file_hash = $3, managed_copy = 1, " +
+      "last_opened_at = $4 WHERE id = $1",
+    [bookId, managed.path, managed.fileHash, new Date().toISOString()],
+  );
+
+  const rows = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
+    [bookId],
+  );
+
+  if (!rows[0]) {
+    throw new Error("Managed library copy could not be reloaded.");
   }
 
   return rows[0];

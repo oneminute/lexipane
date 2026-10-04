@@ -2879,3 +2879,19 @@ button { cursor: pointer; }
     min-width: 82px;
   }
 }
+
+
+.book-managed-badge {
+  position: absolute;
+  z-index: 2;
+  right: 48px;
+  top: 11px;
+  padding: 4px 7px;
+  font-size: 7px;
+  font-weight: 800;
+  color: #3d6d5a;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  background: #e1f3ea;
+  border-radius: 999px;
+}

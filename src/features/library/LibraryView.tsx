@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  copyLibraryBookToManagedStorage,
   listLibraryBooks,
   relinkLibraryBook,
   setBookFavorite,
@@ -123,6 +124,26 @@ export function LibraryView({
     await refreshBooks();
   }
 
+  async function makeManagedCopy(book: LibraryBook) {
+    setMessage("");
+
+    try {
+      await copyLibraryBookToManagedStorage(book.id);
+      await refreshBooks();
+      setMessage(
+        "LexiPane now keeps its own managed copy of “" +
+          (book.title || "Untitled") +
+          "”.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to create a managed library copy.",
+      );
+    }
+  }
+
   async function relinkBook(book: LibraryBook) {
     setMessage("");
 
@@ -230,6 +251,9 @@ export function LibraryView({
               {missing && (
                 <span className="book-missing-badge">File missing</span>
               )}
+              {!missing && book.managed_copy === 1 && (
+                <span className="book-managed-badge">Managed copy</span>
+              )}
               <button
                 className="book-card-open"
                 onClick={() => {
@@ -288,6 +312,15 @@ export function LibraryView({
               </button>
 
               <div className="book-card-actions">
+                {!missing && book.managed_copy !== 1 && (
+                  <button
+                    aria-label="Keep a managed LexiPane copy"
+                    title="Copy into LexiPane Library"
+                    onClick={() => void makeManagedCopy(book)}
+                  >
+                    ⇩
+                  </button>
+                )}
                 {missing && (
                   <button
                     aria-label="Relink moved book"

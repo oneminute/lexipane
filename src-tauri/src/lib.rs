@@ -13,6 +13,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             library_files::book_file_sha256,
             library_files::check_book_files,
+            library_files::copy_book_to_managed_library,
             ocr::local_ocr_status,
             ocr::ocr_image,
             secrets::secret_set,

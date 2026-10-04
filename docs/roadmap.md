@@ -238,11 +238,14 @@ Implemented:
 - automatic moved/renamed-book recognition when the same content is opened at a new path
 - missing-file detection
 - explicit relink flow with content verification when a stored hash is available
+- optional "Copy into LexiPane Library" managed-storage mode
+- content-addressed managed copies stored in the app data library
+- managed-copy preference over external duplicates of the same book
 
 Next:
 
-- optional "Copy into LexiPane Library" managed-storage mode
 - background hash backfill for legacy library entries
+- managed-copy removal / storage cleanup controls
 
 ## AI provider milestones
 
