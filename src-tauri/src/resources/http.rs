@@ -343,19 +343,24 @@ pub async fn resource_http_fetch_text(
         }
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("Unable to read resource text: {error}"))?;
+    let mut stream = response.bytes_stream();
+    let mut bytes = Vec::new();
 
-    if bytes.len() > limit {
-        return Err(format!(
-            "Resource text is too large to inspect ({} bytes; limit {}).",
-            bytes.len(), limit
-        ));
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk
+            .map_err(|error| format!("Unable to read resource text: {error}"))?;
+
+        if bytes.len().saturating_add(chunk.len()) > limit {
+            return Err(format!(
+                "Resource text is too large to inspect (limit {} bytes).",
+                limit
+            ));
+        }
+
+        bytes.extend_from_slice(&chunk);
     }
 
-    let body = String::from_utf8(bytes.to_vec())
+    let body = String::from_utf8(bytes)
         .map_err(|_| "Resource text is not valid UTF-8.".to_string())?;
 
     Ok(HttpTextResponse {
