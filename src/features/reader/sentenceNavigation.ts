@@ -355,6 +355,14 @@ function selectRange(window: Window, range: Range) {
   selection.addRange(range);
 }
 
+export function getDomSentenceCount(
+  document: Document,
+  root: Node = document.body,
+): number {
+  const model = buildDomTextModel(root);
+  return segmentDomText(model.text).length;
+}
+
 export function selectDomSentenceAtPoint(
   document: Document,
   x: number,
