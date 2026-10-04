@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import "pdfjs-dist/web/pdf_viewer.css";
-import type { PdfTextAnnotation } from "../../core/annotations/pdfAnnotations";
+import type {
+  NormalizedRect,
+  PdfTextAnnotation,
+} from "../../core/annotations/pdfAnnotations";
 import {
   createPdfCoverDataUrl,
   readPdfMetadata,
@@ -20,6 +23,10 @@ interface Props {
   scale: number;
   initialPage?: number | null;
   annotations?: PdfTextAnnotation[];
+  activeSentence?: {
+    page: number;
+    rects: NormalizedRect[];
+  } | null;
   onDocumentLoaded?: (pageCount: number) => void;
   onCurrentPageChange?: (pageNumber: number) => void;
   onPageTextReady?: (pageNumber: number, text: string) => void;
@@ -33,6 +40,7 @@ export function PdfDocumentView({
   scale,
   initialPage,
   annotations = [],
+  activeSentence = null,
   onDocumentLoaded,
   onCurrentPageChange,
   onPageTextReady,
@@ -256,6 +264,11 @@ export function PdfDocumentView({
           key={pageNumber}
           document={document}
           annotations={annotationsByPage.get(pageNumber) ?? []}
+          activeSentenceRects={
+            activeSentence?.page === pageNumber
+              ? activeSentence.rects
+              : []
+          }
           pageNumber={pageNumber}
           scale={scale}
           onVisible={onCurrentPageChange}
