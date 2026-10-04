@@ -3376,6 +3376,71 @@ export function ReaderView({
                     {aiResult.fallbackUsed ? " · fallback" : ""}
                   </small>
                 </div>
+
+                {selection?.kind === "sentence" &&
+                  activeSentence &&
+                  sentenceVersions.length > 0 && (
+                    <div className="sentence-version-toolbar">
+                      <div>
+                        <strong>
+                          Version {sentenceVersionIndex + 1} /{" "}
+                          {sentenceVersions.length}
+                        </strong>
+                        <small>
+                          {sentenceVersions[sentenceVersionIndex]?.createdAt
+                            ? new Date(
+                                sentenceVersions[
+                                  sentenceVersionIndex
+                                ].createdAt,
+                              ).toLocaleString()
+                            : ""}
+                        </small>
+                      </div>
+
+                      <div>
+                        <button
+                          type="button"
+                          disabled={sentenceVersionIndex <= 0}
+                          onClick={() =>
+                            showSentenceVersion(
+                              sentenceVersions,
+                              sentenceVersionIndex - 1,
+                            )
+                          }
+                        >
+                          ← Older
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            sentenceVersionIndex >=
+                            sentenceVersions.length - 1
+                          }
+                          onClick={() =>
+                            showSentenceVersion(
+                              sentenceVersions,
+                              sentenceVersionIndex + 1,
+                            )
+                          }
+                        >
+                          Newer →
+                        </button>
+                        <button
+                          type="button"
+                          className="primary-button compact"
+                          disabled={aiBusy}
+                          onClick={() =>
+                            void runSentenceAi(activeSentence, {
+                              forceNew: true,
+                            })
+                          }
+                        >
+                          Regenerate
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                 {aiResult.analysis ? (
                   <StructuredAnalysisView analysis={aiResult.analysis} />
                 ) : (
