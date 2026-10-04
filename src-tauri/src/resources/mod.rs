@@ -1,3 +1,5 @@
+pub mod http;
+
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -23,7 +25,7 @@ pub fn resource_runtime_capabilities() -> ResourceRuntimeCapabilities {
         core_version: 1,
         persistent_jobs: true,
         live_transports: LiveTransportCapabilities {
-            http: false,
+            http: true,
             torrent: false,
             ed2k: false,
             cloud: false,
@@ -36,11 +38,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resource_core_does_not_enable_network_transports() {
+    fn resource_core_enables_only_http_transport() {
         let capabilities = resource_runtime_capabilities();
 
         assert!(capabilities.persistent_jobs);
-        assert!(!capabilities.live_transports.http);
+        assert!(capabilities.live_transports.http);
         assert!(!capabilities.live_transports.torrent);
         assert!(!capabilities.live_transports.ed2k);
         assert!(!capabilities.live_transports.cloud);
