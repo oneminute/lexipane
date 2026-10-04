@@ -321,6 +321,22 @@ export async function cleanupManagedLibraryStorage(): Promise<ManagedCleanupResu
   return cleanupManagedFiles(rows.map((row) => row.file_path));
 }
 
+export async function findLibraryBookByHash(
+  fileHash: string,
+): Promise<LibraryBook | null> {
+  if (!isTauri() || !fileHash.trim()) return null;
+
+  const db = await initializeDatabase();
+  if (!db) return null;
+
+  const rows = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.file_hash = $1 LIMIT 1",
+    [fileHash.trim().toLowerCase()],
+  );
+
+  return rows[0] ?? null;
+}
+
 export async function listLibraryBooks(): Promise<LibraryBook[]> {
   if (!isTauri()) return [];
 
