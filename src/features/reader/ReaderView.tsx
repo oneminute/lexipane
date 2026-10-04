@@ -50,6 +50,12 @@ import {
   isPdfPath,
 } from "../../core/books/openBook";
 import {
+  createReaderBookmark,
+  listReaderBookmarks,
+  removeReaderBookmark,
+  type ReaderBookmark,
+} from "../../core/books/bookmarks";
+import {
   serializeReaderNavigationTarget,
   type ReaderNavigationTarget,
 } from "../../core/books/navigation";
@@ -155,6 +161,11 @@ interface SentenceNavigationRequest {
   direction: -1 | 1;
 }
 
+interface ProgressNavigationRequest {
+  token: number;
+  progress: number;
+}
+
 interface RegionDragState {
   page: number;
   startX: number;
@@ -218,6 +229,17 @@ export function ReaderView({
   const [sentenceNavigation, setSentenceNavigation] =
     useState<SentenceNavigationRequest | null>(null);
   const sentenceNavigationTokenRef = useRef(0);
+  const [progressNavigation, setProgressNavigation] =
+    useState<ProgressNavigationRequest | null>(null);
+  const progressNavigationTokenRef = useRef(0);
+  const [progressDraft, setProgressDraft] = useState<number | null>(null);
+  const [peekOrigin, setPeekOrigin] =
+    useState<ReaderNavigationTarget | null>(null);
+  const peekOriginRef = useRef<ReaderNavigationTarget | null>(null);
+  const [bookmarks, setBookmarks] = useState<ReaderBookmark[]>([]);
+  const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [bookmarkStatus, setBookmarkStatus] =
+    useState<"idle" | "saving" | "saved">("idle");
   const wordSelectionTimerRef = useRef<number | null>(null);
   const runAiRef = useRef<
     ((
@@ -262,6 +284,7 @@ export function ReaderView({
   const [ocrStatus, setOcrStatus] = useState<LocalOcrStatus | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [epubInitialCfi, setEpubInitialCfi] = useState<string | null>(null);
+  const [epubCurrentCfi, setEpubCurrentCfi] = useState<string | null>(null);
   const [epubProgress, setEpubProgress] = useState<number | null>(null);
   const [epubMetadata, setEpubMetadata] = useState<EpubMetadataSummary>({
     title: null,
@@ -282,6 +305,8 @@ export function ReaderView({
   const [epubDifficultyError, setEpubDifficultyError] =
     useState<string | null>(null);
   const [kindleInitialChapterId, setKindleInitialChapterId] =
+    useState<string | null>(null);
+  const [kindleCurrentChapterId, setKindleCurrentChapterId] =
     useState<string | null>(null);
   const [kindleProgress, setKindleProgress] = useState<number | null>(null);
   const [kindleMetadata, setKindleMetadata] =
