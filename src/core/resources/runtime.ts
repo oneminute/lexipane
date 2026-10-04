@@ -12,8 +12,10 @@ import {
   type ResourceTransferEvent,
 } from "./httpTransport";
 import {
+  appendResourceHistory,
   getTransferJob,
   listTransferJobs,
+  recordResourceContentHash,
   updateTransferJob,
 } from "./persistence";
 
@@ -92,6 +94,25 @@ async function ingestDownloadedTransfer(
   }
 
   const freshJob = (await getTransferJob(event.jobId)) ?? job;
+
+  await recordResourceContentHash(
+    freshJob.resourceItemId,
+    freshJob.fileId,
+    fileHash,
+  );
+
+  await appendResourceHistory(
+    freshJob.resourceItemId,
+    freshJob.providerId,
+    duplicate ? "duplicate-detected" : "ingested",
+    {
+      transferJobId: event.jobId,
+      bookId,
+      sha256: fileHash,
+      destinationPath,
+      duplicate,
+    },
+  );
 
   await updateTransferJob(event.jobId, {
     state: "completed",
