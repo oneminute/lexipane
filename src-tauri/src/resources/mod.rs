@@ -1,4 +1,5 @@
 pub mod http;
+pub mod torrent;
 
 use serde::Serialize;
 
@@ -26,7 +27,7 @@ pub fn resource_runtime_capabilities() -> ResourceRuntimeCapabilities {
         persistent_jobs: true,
         live_transports: LiveTransportCapabilities {
             http: true,
-            torrent: false,
+            torrent: true,
             ed2k: false,
             cloud: false,
         },
@@ -43,7 +44,7 @@ mod tests {
 
         assert!(capabilities.persistent_jobs);
         assert!(capabilities.live_transports.http);
-        assert!(!capabilities.live_transports.torrent);
+        assert!(capabilities.live_transports.torrent);
         assert!(!capabilities.live_transports.ed2k);
         assert!(!capabilities.live_transports.cloud);
     }
