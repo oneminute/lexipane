@@ -61,6 +61,7 @@ import {
   saveBookPrivacyMode,
 } from "../../core/books/bookPrivacy";
 import { createReaderNote } from "../../core/notes/notes";
+import { createNoteImageAsset } from "../../core/notes/noteAssets";
 import {
   getLocalOcrStatus,
   recognizeImageDataUrl,
@@ -1303,6 +1304,47 @@ export function ReaderView({
     }
   }
 
+  async function saveCapturedRegionNote() {
+    if (!bookPath || !regionCapture || noteStatus === "saving") return;
+
+    setNoteStatus("saving");
+
+    try {
+      const anchorJson = serializeReaderNavigationTarget({
+        kind: "pdf-page",
+        page: regionCapture.page,
+      });
+      const sourceText =
+        regionCapture.text ||
+        "PDF region image · Page " + regionCapture.page;
+
+      const noteId = await createReaderNote(
+        bookPath,
+        sourceText,
+        aiResult?.text ?? null,
+        anchorJson,
+      );
+
+      if (noteId && regionCapture.imageDataUrl) {
+        await createNoteImageAsset(
+          noteId,
+          regionCapture.imageDataUrl,
+        );
+      }
+
+      setNoteStatus("saved");
+      window.setTimeout(() => setNoteStatus("idle"), 1500);
+    } catch (error) {
+      console.error("Unable to save PDF region note", error);
+      setNoteStatus("idle");
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : "Unable to save this region to Notebook.",
+      );
+    }
+  }
+
   async function analyzeCapturedRegionImage() {
     if (!regionCapture?.imageDataUrl || aiBusy) return;
 
@@ -2338,6 +2380,16 @@ export function ReaderView({
                         onClick={() => void analyzeCapturedRegionImage()}
                       >
                         Analyze image
+                      </button>
+                      <button
+                        disabled={aiBusy || noteStatus === "saving"}
+                        onClick={() => void saveCapturedRegionNote()}
+                      >
+                        {noteStatus === "saving"
+                          ? "Saving…"
+                          : noteStatus === "saved"
+                            ? "Saved"
+                            : "Save region"}
                       </button>
                     </>
                   )}

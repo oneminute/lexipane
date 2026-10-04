@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const schemaStatements = [
   "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -7,6 +7,9 @@ export const schemaStatements = [
   "CREATE TABLE IF NOT EXISTS annotations (id TEXT PRIMARY KEY, book_id TEXT NOT NULL, source TEXT NOT NULL, type TEXT NOT NULL, anchor_json TEXT NOT NULL, selected_text TEXT, status TEXT NOT NULL DEFAULT 'active', color TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE)",
   "CREATE INDEX IF NOT EXISTS idx_annotations_book ON annotations(book_id)",
   "CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, book_id TEXT, annotation_id TEXT, source_text TEXT, ai_content TEXT, user_content TEXT, tags_json TEXT NOT NULL DEFAULT '[]', anchor_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE, FOREIGN KEY(annotation_id) REFERENCES annotations(id) ON DELETE SET NULL)",
+  "CREATE TABLE IF NOT EXISTS note_assets (id TEXT PRIMARY KEY, note_id TEXT NOT NULL, kind TEXT NOT NULL, mime_type TEXT NOT NULL, file_path TEXT NOT NULL, file_hash TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE)",
+  "CREATE INDEX IF NOT EXISTS idx_note_assets_note ON note_assets(note_id)",
+  "CREATE INDEX IF NOT EXISTS idx_note_assets_hash ON note_assets(file_hash)",
   "CREATE TABLE IF NOT EXISTS known_terms (normalized_term TEXT PRIMARY KEY, language TEXT NOT NULL, status TEXT NOT NULL, seen_count INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL)",
   "CREATE TABLE IF NOT EXISTS ai_provider_configs (id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, display_name TEXT NOT NULL, base_url TEXT, enabled INTEGER NOT NULL DEFAULT 1, settings_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
   "CREATE TABLE IF NOT EXISTS ai_task_routes (task_type TEXT PRIMARY KEY, provider_config_id TEXT, model_id TEXT, fallback_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL, FOREIGN KEY(provider_config_id) REFERENCES ai_provider_configs(id) ON DELETE SET NULL)",
@@ -51,6 +54,14 @@ export const schemaMigrations: SchemaMigration[] = [
     version: 7,
     statements: [
       "ALTER TABLE books ADD COLUMN managed_copy INTEGER NOT NULL DEFAULT 0",
+    ],
+  },
+  {
+    version: 8,
+    statements: [
+      "CREATE TABLE IF NOT EXISTS note_assets (id TEXT PRIMARY KEY, note_id TEXT NOT NULL, kind TEXT NOT NULL, mime_type TEXT NOT NULL, file_path TEXT NOT NULL, file_hash TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE)",
+      "CREATE INDEX IF NOT EXISTS idx_note_assets_note ON note_assets(note_id)",
+      "CREATE INDEX IF NOT EXISTS idx_note_assets_hash ON note_assets(file_hash)",
     ],
   },
 ];

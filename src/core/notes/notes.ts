@@ -1,6 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { registerBookFile } from "../books/library";
 import { initializeDatabase } from "../db/database";
+import { deleteUnreferencedNoteAssetFiles } from "./noteAssets";
 
 export interface ReaderNote {
   id: string;
@@ -114,7 +115,16 @@ export async function deleteReaderNote(noteId: string): Promise<void> {
   const db = await initializeDatabase();
   if (!db) return;
 
+  const assets = await db.select<Array<{ file_path: string }>>(
+    "SELECT file_path FROM note_assets WHERE note_id = $1",
+    [noteId],
+  );
+
   await db.execute("DELETE FROM notes WHERE id = $1", [noteId]);
+
+  await deleteUnreferencedNoteAssetFiles(
+    assets.map((asset) => asset.file_path),
+  );
 }
 
 export function parseNoteTags(tagsJson: string): string[] {

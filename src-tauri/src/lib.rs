@@ -1,4 +1,5 @@
 mod library_files;
+mod note_assets;
 mod ocr;
 mod secrets;
 
@@ -16,6 +17,8 @@ pub fn run() {
             library_files::copy_book_to_managed_library,
             library_files::delete_managed_book_copy,
             library_files::cleanup_managed_library,
+            note_assets::save_note_asset,
+            note_assets::delete_note_asset,
             ocr::local_ocr_status,
             ocr::ocr_image,
             secrets::secret_set,

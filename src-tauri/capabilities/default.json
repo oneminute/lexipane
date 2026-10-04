@@ -16,6 +16,12 @@
         },
         {
           "path": "$APPDATA/library/**/*"
+        },
+        {
+          "path": "$APPDATA/notebook-assets/*"
+        },
+        {
+          "path": "$APPDATA/notebook-assets/**/*"
         }
       ]
     },

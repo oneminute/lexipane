@@ -5,6 +5,11 @@ import {
 } from "../../core/books/navigation";
 import { exportNotesAsMarkdown } from "../../core/notes/exportMarkdown";
 import {
+  listNoteAssets,
+  loadNoteAssetDataUrl,
+  type NoteAsset,
+} from "../../core/notes/noteAssets";
+import {
   deleteReaderNote,
   listReaderNotes,
   parseNoteTags,
@@ -19,10 +24,66 @@ interface NoteCardProps {
     path: string,
     target?: ReaderNavigationTarget | null,
   ) => void | Promise<void>;
+  assets: NoteAsset[];
   onDelete: (noteId: string) => void;
 }
 
-function NoteCard({ note, onOpenBook, onDelete }: NoteCardProps) {
+function NoteAttachment({ asset }: { asset: NoteAsset }) {
+  const [src, setSrc] = useState("");
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadNoteAssetDataUrl(asset)
+      .then((dataUrl) => {
+        if (!cancelled) setSrc(dataUrl);
+      })
+      .catch((loadError) => {
+        console.error("Unable to load notebook attachment", loadError);
+        if (!cancelled) setError(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [asset]);
+
+  if (error) {
+    return (
+      <div className="note-attachment-error">
+        Region image is unavailable.
+      </div>
+    );
+  }
+
+  if (!src) {
+    return (
+      <div className="note-attachment-loading">
+        Loading region image…
+      </div>
+    );
+  }
+
+  return (
+    <a
+      className="note-attachment-image"
+      href={src}
+      target="_blank"
+      rel="noreferrer"
+      title="Open image"
+    >
+      <img src={src} alt="Saved reading region" />
+    </a>
+  );
+}
+
+function NoteCard({
+  note,
+  assets,
+  onOpenBook,
+  onDelete,
+}: NoteCardProps) {
   const [userContent, setUserContent] = useState(note.user_content ?? "");
   const [tagsText, setTagsText] = useState(
     parseNoteTags(note.tags_json).join(", "),
@@ -103,6 +164,17 @@ function NoteCard({ note, onOpenBook, onDelete }: NoteCardProps) {
         </section>
       )}
 
+      {assets.length > 0 && (
+        <section className="note-attachments">
+          <span>Attachments</span>
+          <div className="note-attachment-grid">
+            {assets.map((asset) => (
+              <NoteAttachment key={asset.id} asset={asset} />
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="note-user">
         <div className="note-section-heading">
           <span>My notes</span>
@@ -163,6 +235,7 @@ interface Props {
 
 export function NotebookView({ onOpenBook }: Props) {
   const [notes, setNotes] = useState<ReaderNote[]>([]);
+  const [assets, setAssets] = useState<NoteAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -171,9 +244,15 @@ export function NotebookView({ onOpenBook }: Props) {
   useEffect(() => {
     let cancelled = false;
 
-    void listReaderNotes()
-      .then((items) => {
-        if (!cancelled) setNotes(items);
+    void Promise.all([
+      listReaderNotes(),
+      listNoteAssets(),
+    ])
+      .then(([items, noteAssets]) => {
+        if (!cancelled) {
+          setNotes(items);
+          setAssets(noteAssets);
+        }
       })
       .catch((error) => {
         console.error("Unable to load notebook", error);
@@ -239,7 +318,8 @@ export function NotebookView({ onOpenBook }: Props) {
           <h1>Keep what was worth understanding.</h1>
           <p>
             Saved selections keep the original passage and the AI explanation
-            separate from your own editable notes.
+            separate from your own editable notes. Region captures are stored
+            as durable local attachments.
           </p>
         </div>
         <div className="notebook-header-actions">
@@ -285,12 +365,18 @@ export function NotebookView({ onOpenBook }: Props) {
             <NoteCard
               key={note.id}
               note={note}
+              assets={assets.filter(
+                (asset) => asset.note_id === note.id,
+              )}
               onOpenBook={onOpenBook}
-              onDelete={(noteId) =>
+              onDelete={(noteId) => {
                 setNotes((items) =>
                   items.filter((item) => item.id !== noteId),
-                )
-              }
+                );
+                setAssets((items) =>
+                  items.filter((item) => item.note_id !== noteId),
+                );
+              }}
             />
           ))}
         </div>

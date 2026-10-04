@@ -128,11 +128,14 @@ Implemented:
 - local/cloud multimodal analysis for images, charts, formulas, and scanned text
 - local Tesseract OCR fallback for selected regions and scanned PDF pages
 - automatic OCR fallback when region vision analysis is unavailable
+- durable content-addressed region/image attachments in app data
+- note-asset persistence and Notebook image rendering
+- shared attachment files retained until the final referencing note is deleted
 
 Next:
 
 - batch/tag-filtered Markdown export
-- image/region attachments stored as durable Notebook assets instead of transient captures
+- Notebook asset cleanup/diagnostic tooling
 
 ## Phase 4 — EPUB
 

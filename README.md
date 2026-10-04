@@ -34,7 +34,7 @@ The current desktop build now includes PDF, EPUB, and Kindle-family reading flow
 - ordered Primary → Fallback 1 → Fallback 2 routing per AI task
 - per-book AI privacy override that can inherit or override the global policy
 - double-click sentence selection with automatic grammar/structure analysis
-- persistent Notebook entries containing source text, AI explanation, and editable user notes
+- persistent Notebook entries containing source text, AI explanation, editable user notes, and durable region/image attachments
 - provider registry covering major local, global-cloud, and China-cloud AI families
 - secure cloud/provider credentials in the native OS credential store
 - per-task local/cloud routing, ordered fallbacks, timeout/retry policy, privacy modes, streaming responses, and structured multimodal region analysis
