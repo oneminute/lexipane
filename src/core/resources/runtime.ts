@@ -15,6 +15,7 @@ import {
   listenForResourceTransferEvents,
   type ResourceTransferEvent,
 } from "./httpTransport";
+import { cleanupCloudTransfer } from "./cloudTransport";
 import { cleanupTorrentTransfer } from "./torrentTransport";
 import {
   appendResourceHistory,
@@ -164,7 +165,11 @@ async function ingestDownloadedTransfer(
   const cleanup =
     freshJob.providerId === "bittorrent"
       ? cleanupTorrentTransfer
-      : cleanupHttpTransferTemp;
+      : freshJob.providerId === "google-drive" ||
+          freshJob.providerId === "dropbox" ||
+          freshJob.providerId === "onedrive"
+        ? cleanupCloudTransfer
+        : cleanupHttpTransferTemp;
 
   await cleanup(event.jobId).catch((error) => {
     console.warn("Unable to clean Resource Hub temp files", error);
@@ -284,7 +289,10 @@ async function recoverInterruptedTransfers(
 
     if (
       (job.providerId === "http" ||
-        job.providerId === "bittorrent") &&
+        job.providerId === "bittorrent" ||
+        job.providerId === "google-drive" ||
+        job.providerId === "dropbox" ||
+        job.providerId === "onedrive") &&
       (job.state === "running" || job.state === "queued")
     ) {
       await updateTransferJob(job.id, {
