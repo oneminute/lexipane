@@ -14,11 +14,12 @@ const RESOURCE_TABLES = [
   "transfer_jobs",
   "transfer_files",
   "resource_history",
+  "resource_catalogs",
 ];
 
 describe("Resource Core schema", () => {
-  it("bumps the schema to version 10", () => {
-    expect(SCHEMA_VERSION).toBe(10);
+  it("bumps the schema to version 11", () => {
+    expect(SCHEMA_VERSION).toBe(11);
   });
 
   it("creates every Resource Core table for fresh databases", () => {
@@ -31,19 +32,32 @@ describe("Resource Core schema", () => {
     }
   });
 
-  it("contains an incremental v10 migration for existing databases", () => {
+  it("contains incremental resource migrations for existing databases", () => {
     const migration = schemaMigrations.find(
       (item) => item.version === 10,
     );
 
     expect(migration).toBeDefined();
 
-    for (const table of RESOURCE_TABLES) {
+    for (const table of RESOURCE_TABLES.filter(
+      (table) => table !== "resource_catalogs",
+    )) {
       expect(
         migration?.statements.some((statement) =>
           statement.includes("CREATE TABLE IF NOT EXISTS " + table),
         ),
       ).toBe(true);
     }
+
+    const catalogMigration = schemaMigrations.find(
+      (item) => item.version === 11,
+    );
+    expect(
+      catalogMigration?.statements.some((statement) =>
+        statement.includes(
+          "CREATE TABLE IF NOT EXISTS resource_catalogs",
+        ),
+      ),
+    ).toBe(true);
   });
 });
