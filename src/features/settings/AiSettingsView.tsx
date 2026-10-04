@@ -6,6 +6,7 @@ import {
   saveAiExecutionPolicy,
   type AiExecutionPolicy,
 } from "../../core/ai/executionPolicy";
+import { modelCapabilityLabels } from "../../core/ai/modelCapabilities";
 import {
   choosePreferredOllamaModel,
   loadOllamaConfig,
@@ -169,6 +170,8 @@ export function AiSettingsView() {
   );
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
+  const [ollamaCapabilityLabels, setOllamaCapabilityLabels] =
+    useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>("B2");
   const [routePlans, setRoutePlans] =
@@ -265,6 +268,20 @@ export function AiSettingsView() {
       setSelectedModel(preferred ?? "");
       setOllamaStatus("connected");
 
+      if (preferred) {
+        try {
+          const capabilities =
+            await provider.getModelCapabilities(preferred);
+          setOllamaCapabilityLabels(
+            modelCapabilityLabels(capabilities),
+          );
+        } catch {
+          setOllamaCapabilityLabels([]);
+        }
+      } else {
+        setOllamaCapabilityLabels([]);
+      }
+
       if (preferred && preferred !== config.model) {
         await saveOllamaModel(preferred);
       }
@@ -295,8 +312,21 @@ export function AiSettingsView() {
 
   async function changeModel(model: string) {
     setSelectedModel(model);
+    setOllamaCapabilityLabels([]);
+
     if (model) {
       await saveOllamaModel(model);
+
+      try {
+        const config = await loadOllamaConfig();
+        const provider = new OllamaProvider(config.baseUrl);
+        const capabilities = await provider.getModelCapabilities(model);
+        setOllamaCapabilityLabels(
+          modelCapabilityLabels(capabilities),
+        );
+      } catch {
+        setOllamaCapabilityLabels([]);
+      }
     }
   }
 
@@ -490,9 +520,18 @@ export function AiSettingsView() {
           </button>
         </div>
 
+        {ollamaCapabilityLabels.length > 0 && (
+          <div className="capability-chips">
+            {ollamaCapabilityLabels.map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
+        )}
+
         <small className="ollama-hint">
-          Installed models are discovered automatically. Qwen 3.5 is preferred
-          when no local default has been selected.
+          Installed models are discovered automatically. The selected Ollama
+          model is probed through /api/show for capabilities such as vision,
+          tools, structured output, streaming, and context length.
         </small>
       </section>
 

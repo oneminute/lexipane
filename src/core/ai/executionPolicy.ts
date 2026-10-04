@@ -122,7 +122,7 @@ export function isRetryableAiError(error: unknown): boolean {
 
 function delay(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
 export async function runWithAiExecutionPolicy<T>(
@@ -137,7 +137,7 @@ export async function runWithAiExecutionPolicy<T>(
     const controller = new AbortController();
     let timedOut = false;
 
-    const timeoutId = window.setTimeout(() => {
+    const timeoutId = globalThis.setTimeout(() => {
       timedOut = true;
       controller.abort();
     }, policy.timeoutMs);
@@ -162,7 +162,7 @@ export async function runWithAiExecutionPolicy<T>(
 
       await delay(policy.retryDelayMs * (attempt + 1));
     } finally {
-      window.clearTimeout(timeoutId);
+      globalThis.clearTimeout(timeoutId);
     }
   }
 
