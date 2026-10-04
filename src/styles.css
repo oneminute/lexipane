@@ -3098,3 +3098,41 @@ button { cursor: pointer; }
   background: #fff2f3;
   border-radius: 9px;
 }
+
+
+/* Real LLM inference health check */
+
+.llm-test-result {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  border: 1px solid #e2e4e9;
+  border-radius: 10px;
+}
+
+.llm-test-result strong {
+  font-size: 10px;
+}
+
+.llm-test-result span {
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.llm-test-result.testing {
+  color: #666d7b;
+  background: #f4f5f8;
+}
+
+.llm-test-result.success {
+  color: #286a4c;
+  background: #eaf7f0;
+  border-color: #cae8d8;
+}
+
+.llm-test-result.failure {
+  color: #8b4650;
+  background: #fff0f2;
+  border-color: #efcfd3;
+}

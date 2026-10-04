@@ -5,6 +5,9 @@ export const APP_DEFAULTS = {
       preferredModelNameHints: ["qwen3.5", "qwen"],
     },
     privacyMode: "prefer-local",
+    healthCheck: {
+      timeoutMs: 30_000,
+    },
     execution: {
       explain: {
         timeoutMs: 60_000,

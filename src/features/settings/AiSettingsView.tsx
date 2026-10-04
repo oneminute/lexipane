@@ -7,6 +7,7 @@ import {
   type AiExecutionPolicy,
 } from "../../core/ai/executionPolicy";
 import { modelCapabilityLabels } from "../../core/ai/modelCapabilities";
+import { testTextModel } from "../../core/ai/modelHealth";
 import {
   choosePreferredOllamaModel,
   loadOllamaConfig,
@@ -85,6 +86,7 @@ const taskRoutes: Array<{
 ];
 
 type OllamaStatus = "checking" | "connected" | "offline";
+type LlmTestStatus = "idle" | "testing" | "success" | "failure";
 
 const emptyUsage: AiUsageSummary = {
   requests: 0,
@@ -173,6 +175,9 @@ export function AiSettingsView() {
   const [ollamaCapabilityLabels, setOllamaCapabilityLabels] =
     useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [llmTestStatus, setLlmTestStatus] =
+    useState<LlmTestStatus>("idle");
+  const [llmTestMessage, setLlmTestMessage] = useState("");
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>("B2");
   const [routePlans, setRoutePlans] =
     useState<Partial<Record<ReadingTaskType, TaskRoutePlan>>>({});
@@ -244,6 +249,8 @@ export function AiSettingsView() {
   async function refreshOllama() {
     setRefreshing(true);
     setOllamaStatus("checking");
+    setLlmTestStatus("idle");
+    setLlmTestMessage("");
     setOllamaMessage("Checking local Ollama…");
 
     try {
@@ -313,6 +320,8 @@ export function AiSettingsView() {
   async function changeModel(model: string) {
     setSelectedModel(model);
     setOllamaCapabilityLabels([]);
+    setLlmTestStatus("idle");
+    setLlmTestMessage("");
 
     if (model) {
       await saveOllamaModel(model);
@@ -327,6 +336,35 @@ export function AiSettingsView() {
       } catch {
         setOllamaCapabilityLabels([]);
       }
+    }
+  }
+
+  async function testSelectedLlm() {
+    if (!selectedModel || llmTestStatus === "testing") return;
+
+    setLlmTestStatus("testing");
+    setLlmTestMessage(
+      'Sending a real inference request to "' + selectedModel + '"…',
+    );
+
+    try {
+      const config = await loadOllamaConfig();
+      const provider = new OllamaProvider(config.baseUrl);
+      const result = await testTextModel(provider, selectedModel);
+
+      setLlmTestStatus(result.ok ? "success" : "failure");
+      setLlmTestMessage(
+        result.responsePreview
+          ? result.message + ' · Reply: "' + result.responsePreview + '"'
+          : result.message,
+      );
+    } catch (error) {
+      setLlmTestStatus("failure");
+      setLlmTestMessage(
+        error instanceof Error
+          ? "LLM inference failed: " + error.message
+          : "LLM inference failed.",
+      );
     }
   }
 
@@ -518,7 +556,42 @@ export function AiSettingsView() {
           >
             {refreshing ? "Checking…" : "Refresh models"}
           </button>
+
+          <button
+            className="primary-button compact"
+            disabled={
+              refreshing ||
+              !selectedModel ||
+              llmTestStatus === "testing"
+            }
+            onClick={() => void testSelectedLlm()}
+          >
+            {llmTestStatus === "testing" ? "Testing LLM…" : "Test LLM"}
+          </button>
         </div>
+
+        {llmTestMessage && (
+          <div
+            className={
+              "llm-test-result " +
+              (llmTestStatus === "success"
+                ? "success"
+                : llmTestStatus === "failure"
+                  ? "failure"
+                  : "testing")
+            }
+            role="status"
+          >
+            <strong>
+              {llmTestStatus === "success"
+                ? "✓ LLM ready"
+                : llmTestStatus === "failure"
+                  ? "✕ LLM test failed"
+                  : "Testing selected model"}
+            </strong>
+            <span>{llmTestMessage}</span>
+          </div>
+        )}
 
         {ollamaCapabilityLabels.length > 0 && (
           <div className="capability-chips">
@@ -529,9 +602,9 @@ export function AiSettingsView() {
         )}
 
         <small className="ollama-hint">
-          Installed models are discovered automatically. The selected Ollama
-          model is probed through /api/show for capabilities such as vision,
-          tools, structured output, streaming, and context length.
+          Refresh models checks the Ollama service and model list. Test LLM
+          sends a real text-generation request to the selected model, so a
+          green result confirms that inference is actually working.
         </small>
       </section>
 
