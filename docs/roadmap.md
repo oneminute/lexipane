@@ -246,10 +246,10 @@ Implemented:
 - optional "Copy into LexiPane Library" managed-storage mode
 - content-addressed managed copies stored in the app data library
 - managed-copy preference over external duplicates of the same book
+- gradual background SHA-256 backfill for legacy library entries
 
 Next:
 
-- background hash backfill for legacy library entries
 - managed-copy removal / storage cleanup controls
 
 ## AI provider milestones

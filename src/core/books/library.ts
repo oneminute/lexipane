@@ -248,6 +248,36 @@ export async function copyLibraryBookToManagedStorage(
   return rows[0];
 }
 
+export async function backfillLibraryBookHashes(
+  limit = 2,
+): Promise<number> {
+  if (!isTauri() || limit <= 0) return 0;
+
+  const db = await initializeDatabase();
+  if (!db) return 0;
+
+  const rows = await db.select<LibraryBook[]>(
+    BOOK_SELECT +
+      "WHERE b.file_hash IS NULL ORDER BY COALESCE(b.last_opened_at, b.added_at) DESC LIMIT $1",
+    [Math.max(1, Math.min(20, Math.round(limit)))],
+  );
+
+  let updated = 0;
+
+  for (const book of rows) {
+    const fileHash = await hashBookFile(book.file_path);
+    if (!fileHash) continue;
+
+    await db.execute(
+      "UPDATE books SET file_hash = $2 WHERE id = $1 AND file_hash IS NULL",
+      [book.id, fileHash],
+    );
+    updated += 1;
+  }
+
+  return updated;
+}
+
 export async function listLibraryBooks(): Promise<LibraryBook[]> {
   if (!isTauri()) return [];
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  backfillLibraryBookHashes,
   copyLibraryBookToManagedStorage,
   listLibraryBooks,
   relinkLibraryBook,
@@ -77,6 +78,10 @@ export function LibraryView({
                 .map((status) => status.path),
             ),
           );
+
+          void backfillLibraryBookHashes(2).catch((error) => {
+            console.warn("Unable to backfill legacy book hashes", error);
+          });
         }
       })
       .catch((error) => {
