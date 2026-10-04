@@ -9,7 +9,7 @@ describe("OPDS parser", () => {
         links: [
           {
             rel: "search",
-            href: "/search{?q}",
+            href: "/search?q={searchTerms}",
             type: "application/opds+json",
           },
         ],
@@ -55,7 +55,7 @@ describe("OPDS parser", () => {
       type: "application/epub+zip",
     });
     expect(feed.searchUrl).toBe(
-      "https://example.test/search%7B?q%7D",
+      "https://example.test/search?q={searchTerms}",
     );
   });
 
