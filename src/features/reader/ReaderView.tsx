@@ -32,6 +32,11 @@ import {
 } from "../../core/annotations/pdfAnnotations";
 import { stableHash } from "../../core/ai/cache";
 import {
+  createSentenceAnalysisKey,
+  resolveSentenceAnalysis,
+  type SentenceAnalysisVersion,
+} from "../../core/ai/sentenceAnalysisHistory";
+import {
   detectDifficultTerms,
   type DifficultTerm,
 } from "../../core/ai/difficultyService";
@@ -165,6 +170,9 @@ interface ActiveSentenceState extends ActiveReaderSelection {
   kind: "sentence";
   sentenceIndex: number;
   sentenceCount: number;
+  sentenceFormat: "pdf" | "epub" | "kindle";
+  sentenceContainer: string;
+  historyKey: string;
   epubCfi?: string;
   kindleChapterId?: string;
 }
@@ -263,7 +271,17 @@ export function ReaderView({
       overrideSelection?: ActiveReaderSelection,
     ) => Promise<void>) | null
   >(null);
+  const runSentenceAiRef = useRef<
+    ((
+      sentence: ActiveSentenceState,
+      options?: { forceNew?: boolean },
+    ) => Promise<void>) | null
+  >(null);
   const [aiResult, setAiResult] = useState<AiResultState | null>(null);
+  const [sentenceVersions, setSentenceVersions] =
+    useState<SentenceAnalysisVersion[]>([]);
+  const [sentenceVersionIndex, setSentenceVersionIndex] = useState(-1);
+  const sentenceAiRequestTokenRef = useRef(0);
   const [aiRequestDebug, setAiRequestDebug] =
     useState<ReadingRequestDebug | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -400,6 +418,8 @@ export function ReaderView({
     setBookmarksOpen(false);
     setBookmarkStatus("idle");
     setAiResult(null);
+    setSentenceVersions([]);
+    setSentenceVersionIndex(-1);
     setAiRequestDebug(null);
     setAiError(null);
     setQuestion("");
