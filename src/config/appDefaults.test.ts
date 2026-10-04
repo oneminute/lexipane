@@ -15,6 +15,7 @@ describe("application defaults", () => {
     expect(APP_DEFAULTS.ai.execution.grammar.timeoutMs).toBe(180_000);
     expect(APP_DEFAULTS.ai.execution.ask.timeoutMs).toBe(180_000);
     expect(APP_DEFAULTS.reading.level).toBe("B2");
+    expect(APP_DEFAULTS.reading.ai.sentencePrefetchCount).toBe(3);
     expect(APP_DEFAULTS.reading.ebook.fontScale).toBe(100);
     expect(APP_DEFAULTS.ocr.language).toBe("eng");
   });
