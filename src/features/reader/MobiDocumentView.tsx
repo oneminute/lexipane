@@ -22,6 +22,7 @@ import type { EbookTheme } from "../../core/reading/ebookPreferences";
 import type { ReaderImagePreview } from "./readerImage";
 import {
   clearDomSentenceHighlight,
+  findDomSentenceByText,
   getDomSentenceCount,
   selectDomSentenceAtPoint,
   selectDomSentenceByIndex,
@@ -77,6 +78,12 @@ export interface KindleProgressNavigationRequest {
   progress: number;
 }
 
+export interface KindleActiveSentence {
+  chapterId: string;
+  text: string;
+  sentenceIndex: number;
+}
+
 interface Props {
   path: string;
   fontScale?: number;
@@ -85,6 +92,7 @@ interface Props {
   navigationChapterId?: string | null;
   annotations?: KindleTextAnnotation[];
   autoTerms?: DifficultTerm[];
+  activeSentence?: KindleActiveSentence | null;
   sentenceNavigation?: SentenceNavigationRequest | null;
   progressNavigation?: KindleProgressNavigationRequest | null;
   onMetadataReady?: (metadata: KindleMetadataSummary) => void;
@@ -365,6 +373,7 @@ export function MobiDocumentView({
   navigationChapterId,
   annotations = [],
   autoTerms = [],
+  activeSentence = null,
   sentenceNavigation = null,
   progressNavigation = null,
   onMetadataReady,
@@ -382,6 +391,9 @@ export function MobiDocumentView({
   const pendingSelectorRef = useRef<string | null>(null);
   const annotationsRef = useRef(annotations);
   const autoTermsRef = useRef(autoTerms);
+  const activeSentenceStateRef = useRef<KindleActiveSentence | null>(
+    activeSentence,
+  );
   const wordSelectionTimerRef = useRef<number | null>(null);
   const handledSentenceNavigationRef = useRef(0);
   const handledProgressNavigationRef = useRef(0);
@@ -404,6 +416,7 @@ export function MobiDocumentView({
 
   annotationsRef.current = annotations;
   autoTermsRef.current = autoTerms;
+  activeSentenceStateRef.current = activeSentence;
   onWordSelectionRef.current = onWordSelection;
   onSentenceSelectionRef.current = onSentenceSelection;
 
@@ -541,6 +554,46 @@ export function MobiDocumentView({
     applyCurrentMarks();
   }, [annotations, applyCurrentMarks, autoTerms]);
 
+  const restoreActiveSentenceHighlight = useCallback(() => {
+    const document = iframeRef.current?.contentDocument;
+    if (!document) return;
+
+    clearDomSentenceHighlight(document);
+
+    const desired = activeSentenceStateRef.current;
+    if (!desired || desired.chapterId !== chapterId) {
+      if (
+        activeSentenceRef.current?.document === document &&
+        activeSentenceRef.current.chapterId !== desired?.chapterId
+      ) {
+        activeSentenceRef.current = null;
+      }
+      return;
+    }
+
+    let sentence = selectDomSentenceByIndex(
+      document,
+      desired.sentenceIndex,
+    );
+
+    if (
+      !sentence ||
+      normalizeText(sentence.text) !== normalizeText(desired.text)
+    ) {
+      sentence = findDomSentenceByText(document, desired.text);
+    }
+
+    if (!sentence) return;
+
+    setDomSentenceHighlight(document, sentence.range);
+    activeSentenceRef.current = {
+      document,
+      index: sentence.index,
+      count: sentence.count,
+      chapterId,
+    };
+  }, [chapterId]);
+
   const handleFrameLoad = useCallback(() => {
     const iframe = iframeRef.current;
     const document = iframe?.contentDocument;
@@ -550,6 +603,7 @@ export function MobiDocumentView({
 
     document.documentElement.style.fontSize = fontScale + "%";
     applyCurrentMarks();
+    restoreActiveSentenceHighlight();
 
     const context = normalizeText(document.body?.textContent).slice(
       0,
@@ -671,7 +725,6 @@ export function MobiDocumentView({
         const text = normalizeText(selection?.toString());
         if (!selection || selection.rangeCount === 0 || !text) return;
 
-        activeSentenceRef.current = null;
         onWordSelectionRef.current?.({
           text,
           context: normalizeText(document.body?.textContent).slice(
@@ -787,6 +840,7 @@ export function MobiDocumentView({
     onImageOpen,
     onSelection,
     parser,
+    restoreActiveSentenceHighlight,
   ]);
 
   useEffect(() => {
@@ -794,7 +848,23 @@ export function MobiDocumentView({
     if (document) {
       document.documentElement.style.fontSize = fontScale + "%";
     }
-  }, [fontScale]);
+    restoreActiveSentenceHighlight();
+  }, [fontScale, restoreActiveSentenceHighlight]);
+
+  useEffect(() => {
+    restoreActiveSentenceHighlight();
+  }, [activeSentence, restoreActiveSentenceHighlight]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      window.requestAnimationFrame(() => {
+        restoreActiveSentenceHighlight();
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [restoreActiveSentenceHighlight]);
 
   const chapterIndex = useMemo(
     () => spine.findIndex((item) => item.id === chapterId),
