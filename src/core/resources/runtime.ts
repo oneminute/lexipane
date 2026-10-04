@@ -3,8 +3,12 @@ import {
   copyLibraryBookToManagedStorage,
   findLibraryBookByHash,
   registerBookFile,
+  relinkLibraryBook,
 } from "../books/library";
-import { computeBookFileHash } from "../books/fileIdentity";
+import {
+  checkBookFiles,
+  computeBookFileHash,
+} from "../books/fileIdentity";
 import { isSupportedBookPath } from "../books/openBook";
 import {
   cleanupHttpTransferTemp,
@@ -73,11 +77,30 @@ async function ingestDownloadedTransfer(
   let destinationPath: string;
   let bookId: string;
   let duplicate = false;
+  let repairedMissingCopy = false;
 
   if (existing) {
-    destinationPath = existing.file_path;
-    bookId = existing.id;
-    duplicate = true;
+    const status = await checkBookFiles([existing.file_path]);
+    const existingFilePresent = status[0]?.exists === true;
+
+    if (existingFilePresent) {
+      destinationPath = existing.file_path;
+      bookId = existing.id;
+      duplicate = true;
+    } else {
+      const relinked = await relinkLibraryBook(
+        existing.id,
+        event.tempPath,
+      );
+      const managed = await copyLibraryBookToManagedStorage(
+        relinked.id,
+      );
+
+      destinationPath = managed.file_path;
+      bookId = managed.id;
+      duplicate = true;
+      repairedMissingCopy = true;
+    }
   } else {
     const registered = await registerBookFile(event.tempPath);
     if (!registered) {
@@ -104,13 +127,18 @@ async function ingestDownloadedTransfer(
   await appendResourceHistory(
     freshJob.resourceItemId,
     freshJob.providerId,
-    duplicate ? "duplicate-detected" : "ingested",
+    repairedMissingCopy
+      ? "duplicate-restored"
+      : duplicate
+        ? "duplicate-detected"
+        : "ingested",
     {
       transferJobId: event.jobId,
       bookId,
       sha256: fileHash,
       destinationPath,
       duplicate,
+      repairedMissingCopy,
     },
   );
 
@@ -130,6 +158,7 @@ async function ingestDownloadedTransfer(
       detectedFormat: event.detectedFormat,
       ingestedBookId: bookId,
       duplicate,
+      repairedMissingCopy,
     },
   });
 
