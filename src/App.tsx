@@ -60,6 +60,16 @@ export default function App() {
   }, [openBookPath]);
 
   useEffect(() => {
+    if (view !== "reader") return;
+
+    const frame = window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [view]);
+
+  useEffect(() => {
     let unlisten: (() => void) | undefined;
 
     void listenForBookDrops((path) => {
@@ -85,7 +95,14 @@ export default function App() {
             revision={libraryRevision}
           />
         )}
-        {view === "reader" && (
+        <div
+          className={
+            view === "reader"
+              ? "reader-view-keepalive active"
+              : "reader-view-keepalive"
+          }
+          aria-hidden={view !== "reader"}
+        >
           <ReaderErrorBoundary
             onBackToLibrary={() => setView("library")}
           >
@@ -96,7 +113,7 @@ export default function App() {
               onBackToLibrary={() => setView("library")}
             />
           </ReaderErrorBoundary>
-        )}
+        </div>
         {view === "notebook" && (
           <NotebookView onOpenBook={openBookPath} />
         )}
