@@ -5,6 +5,9 @@ import { getAppMeta, setAppMeta } from "../settings/appMeta";
 export const DEFAULT_OLLAMA_BASE_URL =
   APP_DEFAULTS.ai.ollama.baseUrl;
 
+export const OLLAMA_DISCOVERY_BASE_URLS =
+  APP_DEFAULTS.ai.ollama.discoveryBaseUrls;
+
 const OLLAMA_MODEL_KEY = "ai.ollama.model";
 const OLLAMA_BASE_URL_KEY = "ai.ollama.base-url";
 
@@ -23,6 +26,28 @@ export function normalizeOllamaBaseUrl(value: string | null | undefined): string
   }
 
   return trimmed;
+}
+
+export function getOllamaBaseUrlCandidates(
+  preferredBaseUrl?: string | null,
+): string[] {
+  const candidates = [
+    preferredBaseUrl,
+    DEFAULT_OLLAMA_BASE_URL,
+    ...OLLAMA_DISCOVERY_BASE_URLS,
+  ];
+  const normalized: string[] = [];
+
+  for (const candidate of candidates) {
+    if (!candidate?.trim()) continue;
+
+    const value = normalizeOllamaBaseUrl(candidate);
+    if (!normalized.includes(value)) {
+      normalized.push(value);
+    }
+  }
+
+  return normalized;
 }
 
 export async function loadOllamaConfig(): Promise<OllamaConfig> {
