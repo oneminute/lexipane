@@ -17,7 +17,7 @@ function errorMessage(error: unknown): string {
 export async function testTextModel(
   provider: AIProvider,
   model: string,
-  timeoutMs = APP_DEFAULTS.ai.healthCheck.timeoutMs,
+  timeoutMs: number = APP_DEFAULTS.ai.healthCheck.timeoutMs,
 ): Promise<ModelHealthResult> {
   const trimmedModel = model.trim();
 
