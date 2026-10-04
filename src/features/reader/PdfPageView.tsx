@@ -5,11 +5,15 @@ import type {
   RenderTask,
 } from "pdfjs-dist";
 import { TextLayerBuilder } from "pdfjs-dist/web/pdf_viewer.mjs";
-import type { PdfTextAnnotation } from "../../core/annotations/pdfAnnotations";
+import type {
+  NormalizedRect,
+  PdfTextAnnotation,
+} from "../../core/annotations/pdfAnnotations";
 
 interface Props {
   document: PDFDocumentProxy;
   annotations?: PdfTextAnnotation[];
+  activeSentenceRects?: NormalizedRect[];
   pageNumber: number;
   scale: number;
   onVisible?: (pageNumber: number) => void;
@@ -30,6 +34,7 @@ const NO_TEXT_LAYER_IMAGES =
 export function PdfPageView({
   document,
   annotations = [],
+  activeSentenceRects = [],
   pageNumber,
   scale,
   onVisible,
@@ -261,6 +266,18 @@ export function PdfPageView({
             />
           )),
         )}
+        {activeSentenceRects.map((rect, index) => (
+          <span
+            key={"active-sentence:" + index}
+            className="pdf-highlight active-sentence"
+            style={{
+              left: rect.x * 100 + "%",
+              top: rect.y * 100 + "%",
+              width: rect.width * 100 + "%",
+              height: rect.height * 100 + "%",
+            }}
+          />
+        ))}
       </div>
       <div ref={textLayerHostRef} className="pdf-text-layer-host" />
     </div>
