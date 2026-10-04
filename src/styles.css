@@ -4398,3 +4398,55 @@ button { cursor: pointer; }
     justify-content: flex-start;
   }
 }
+
+
+/* Native BitTorrent resource preview */
+.torrent-file-list {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.torrent-file-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px 9px;
+  border: 1px solid #e7e8ed;
+  border-radius: 9px;
+  background: #f8f9fb;
+  opacity: 0.62;
+}
+
+.torrent-file-row.book {
+  opacity: 1;
+  background: #fbfbff;
+  border-color: rgba(101, 88, 219, 0.16);
+}
+
+.torrent-file-row input {
+  margin-top: 2px;
+}
+
+.torrent-file-row > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.torrent-file-row strong {
+  overflow: hidden;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.torrent-file-row small {
+  color: #8b909d;
+}
+
+.torrent-preview-card {
+  margin-top: 10px;
+}
