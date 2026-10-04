@@ -3466,3 +3466,10 @@ button { cursor: pointer; }
     grid-row: 1;
   }
 }
+
+
+.reader-view-keepalive {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
