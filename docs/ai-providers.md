@@ -1,143 +1,124 @@
 # AI provider strategy
 
-LexiPane is model-agnostic by design.
+LexiPane is model-agnostic. Reading features call semantic tasks and never depend directly on one vendor SDK.
 
-## Provider boundary
+## Live adapters
 
-Reader features call semantic reading tasks rather than vendor APIs directly.
+- **Ollama** — first-class local runtime, model discovery, streaming, vision, and model capability inspection.
+- **OpenAI-compatible** — configurable local/self-hosted/cloud endpoints.
+- **Anthropic native** — text, streaming, model metadata, and vision.
+- **Gemini native** — text, streaming, model metadata, and vision.
 
-Examples:
+The provider registry also catalogs other major local/global/China provider families.
 
-- explain selected text in context
-- analyze grammar and sentence structure
-- detect difficult vocabulary
-- explain a phrase or collocation
-- analyze a selected image/region
-- answer a question about the current reading context
+## Provider configuration
 
-The task layer selects a configured model through the provider/model registry.
+A provider connection stores:
 
-## Ollama — live local path
+- provider family
+- display name
+- base URL
+- selected model
+- enabled state
+- optional input price per 1M tokens
+- optional output price per 1M tokens
 
-Ollama is the first fully connected runtime.
+API keys are stored separately in the operating system credential store.
 
-Default endpoint:
+Provider cards expose readiness checks, connection tests, model discovery, and capability inspection.
 
-`http://127.0.0.1:11434`
+## Model capabilities
 
-The desktop application uses Tauri's Rust-backed HTTP client for this connection, so the reader does not depend on WebView CORS behavior.
-
-The application currently allows only the default local Ollama origin through the Tauri HTTP capability.
-
-At startup or when AI & Models is opened:
-
-1. LexiPane checks Ollama.
-2. It requests the installed model list.
-3. It restores the user's saved model choice when available.
-4. Otherwise it prefers an installed Qwen 3.5 model.
-5. Otherwise it prefers another Qwen model.
-6. Otherwise it uses the first available model.
-
-The exact Qwen model identifier is never hard-coded.
-
-## Context sent to local AI
-
-For a PDF text selection, the first live reading task supplies:
-
-- the exact selected text
-- page number in application state
-- normalized surrounding text from the PDF text layer
-- task intent such as contextual explanation, grammar analysis, or a reader question
-
-The local prompt asks for Simplified Chinese explanations while preserving useful English expressions and structures.
-
-## OpenAI-compatible adapter
-
-A generic adapter foundation exists for APIs exposing OpenAI-compatible model listing and chat-completions semantics.
-
-It is intended to cover many local/self-hosted and cloud services without coupling reader code to each provider.
-
-Cloud use is not considered complete until secure credential storage and explicit privacy/routing controls are implemented.
-
-## Native adapters
-
-Native provider adapters remain appropriate when important features do not map cleanly to compatibility APIs, especially:
-
-- multimodal request formats
-- prompt caching
-- reasoning controls
-- structured-output differences
-- file APIs
-- provider-specific token accounting
-- provider-specific authentication
-
-Planned native/provider-specific work includes OpenAI, Anthropic Claude, Google Gemini, and other providers where native functionality matters.
-
-## Provider catalog
-
-The registry already catalogs major families:
-
-Local:
-
-- Ollama
-- LM Studio
-- llama.cpp server
-- vLLM
-- LocalAI
-- custom local endpoints
-
-Global cloud:
-
-- OpenAI
-- Anthropic Claude
-- Google Gemini
-- xAI Grok
-- OpenRouter
-- Mistral
-- custom cloud endpoints
-
-China cloud:
-
-- Alibaba Qwen / Model Studio
-- DeepSeek
-- Moonshot / Kimi
-- Zhipu / GLM
-- MiniMax
-- ByteDance / Doubao
-- Baidu ERNIE / Qianfan
-- Tencent Hunyuan
-
-Catalog presence means the architecture knows about the provider family; it does not imply that provider credentials and every native feature are already implemented.
-
-## Model registry
-
-Provider identity and model identity are separate.
-
-Model capabilities will track fields such as:
+The common capability model tracks:
 
 - text
 - vision
-- embeddings
 - structured output
 - streaming
-- tool use
-- context length
-- local/cloud placement
-- optional pricing metadata
+- tools
+- embeddings
+- context window
 
-Routing should depend on capabilities rather than hard-coded model-name branches.
+Capability sources can be provider metadata, an explicit probe, or compatible-model inference.
 
-## Privacy contract
+For Ollama, LexiPane inspects the installed model through Ollama's model-info endpoint. Region/image routing also checks vision capability before sending an image whenever reliable capability metadata is available.
 
-Target modes:
+## Routing
+
+Every semantic task may have an independent route plan:
+
+~~~text
+Primary
+Fallback 1
+Fallback 2
+~~~
+
+Tasks currently include:
+
+- automatic difficulty
+- contextual explanation
+- grammar
+- reader question
+- region/image
+
+A transient failure can be retried according to the task's execution policy before moving to the next route.
+
+Structured-output validation is part of success: invalid JSON/schema output can fall through to the next configured model.
+
+## Execution policy
+
+Per-task policy includes:
+
+- timeout
+- retry count
+- retry delay behavior
+
+LexiPane retries transient conditions such as timeouts, selected rate-limit/server failures, and network interruptions. It avoids retrying obvious authentication/client configuration errors and structured-schema failures on the same route.
+
+## Privacy
+
+Global modes:
 
 - Local only
 - Prefer local
 - Automatic
 - Cloud only
 
-Local-only mode must prevent reading content from reaching a cloud provider.
+Each book may override that mode.
 
-Prefer-local mode may offer escalation when a required capability is unavailable locally, but the user must be told when selected content would leave the device.
+Each book may also narrow providers with an allow-only or deny list. Provider filtering happens before reading content is sent.
 
-Cloud API credentials must never be persisted as plaintext SQLite values.
+## Structured contracts
+
+Text tasks render structured cards instead of arbitrary model prose.
+
+Region/image analysis returns:
+
+- content type
+- summary
+- extracted visible text when reliable
+- key points
+- visual details
+
+## Usage and pricing
+
+Token counts and latency are stored locally when providers expose usage.
+
+For cloud cost estimates, users may enter current input/output rates per one million tokens for a configured provider/model. This is intentionally user-controlled because commercial model pricing changes independently of LexiPane releases.
+
+The settings UI summarizes:
+
+- total tokens
+- average latency
+- local vs cloud request counts
+- estimated total cost
+- estimated cost today
+- estimated cost this month
+
+## Ollama default
+
+Default local endpoint:
+
+`http://127.0.0.1:11434`
+
+When no model has been selected, LexiPane prefers an installed Qwen 3.5 model, then another Qwen model, then the first available model. The exact model identifier is not hard-coded.

@@ -35,7 +35,10 @@ The current desktop build now includes PDF, EPUB, and Kindle-family reading flow
 - persistent Notebook entries containing source text, AI explanation, and editable user notes
 - provider registry covering major local, global-cloud, and China-cloud AI families
 - secure cloud/provider credentials in the native OS credential store
-- per-task local/cloud routing, privacy modes, streaming responses, and multimodal region analysis
+- per-task local/cloud routing, ordered fallbacks, timeout/retry policy, privacy modes, streaming responses, and structured multimodal region analysis
+- per-book provider allow/deny controls
+- model capability probing and provider readiness diagnostics
+- optional cloud token pricing with total/today/month cost estimates
 
 The first live AI path is intentionally local: Ollama at `http://127.0.0.1:11434`.
 
@@ -59,13 +62,17 @@ LexiPane is model-agnostic.
 ### Live now
 
 - Ollama local runtime
-- runtime model discovery
-- local model selection
-- contextual reading analysis
-
-### Adapter foundation already present
-
 - generic OpenAI-compatible provider adapter
+- native Anthropic provider
+- native Gemini provider
+- runtime model discovery and capability inspection
+- structured contextual reading analysis
+- Primary / Fallback 1 / Fallback 2 routing
+- per-task timeout and transient retry policy
+- global and per-book privacy controls
+- per-book provider allow/deny policy
+- secure provider credentials
+- token/latency usage and optional cost estimates
 
 ### Provider catalog
 
@@ -95,26 +102,25 @@ Cloud targets:
 - Baidu ERNIE / Qianfan
 - Tencent Hunyuan
 
-Catalog presence does not mean every provider is fully configured in the UI yet. Cloud credential storage and provider-native integrations are still under development.
+Catalog presence does not mean every cataloged provider has a dedicated native adapter. Configurable compatible endpoints plus native Anthropic/Gemini are live, and cloud credentials use native secure storage.
 
 ## Architecture
 
 ~~~text
 LexiPane
-├─ Document Engine
-│  └─ PDF.js                 live
-├─ Annotation Engine
-│  └─ PDF text-range anchors live
-├─ Notebook Engine           live foundation
+├─ Document Engine          PDF / EPUB / Kindle-family live
+├─ Annotation Engine        stable format-specific anchors live
+├─ Notebook Engine          persistent notes/tags/navigation live
 ├─ AI Platform
-│  ├─ Provider Registry
-│  ├─ Model Registry
-│  ├─ Ollama Runtime         live
-│  ├─ Task Router            in progress
-│  ├─ Structured Output      planned
-│  ├─ Usage / Cost           planned
-│  └─ Privacy Policy
-└─ Personal Reading Model    planned
+│  ├─ Provider / Model Registry
+│  ├─ Ollama / Compatible / Anthropic / Gemini
+│  ├─ Capability Probing
+│  ├─ Primary + Fallback Routing
+│  ├─ Timeout / Retry Policy
+│  ├─ Structured Output
+│  ├─ Usage / Cost
+│  └─ Global + Per-book Privacy / Provider Policy
+└─ Personal Reading Model   feedback-driven foundation live
 ~~~
 
 See:
@@ -209,18 +215,13 @@ The reader never hard-codes one exact Qwen model identifier.
 
 ## Formats
 
-Current live reader:
+Current live readers:
 
 - PDF
-
-Library recognition already includes:
-
 - EPUB
 - MOBI
 - AZW
 - AZW3
-
-Those formats will connect to the shared Document Engine in later phases.
 
 DRM-protected content is outside the initial scope.
 
@@ -234,9 +235,10 @@ SQLite stores local application data including:
 - highlights
 - notes
 - model preferences
-- future provider configuration and usage data
+- provider configuration and AI usage data
+- per-book privacy/provider policy
 
-The current Ollama reading path runs locally. Cloud API keys must not be stored as plaintext SQLite values; platform secure credential storage will be added before cloud-provider configuration is considered complete.
+Ollama can keep reading tasks local. Cloud API keys are stored in native OS credential storage rather than plaintext SQLite values.
 
 ## License
 

@@ -2,125 +2,194 @@
 
 ## Design principles
 
-LexiPane is not a chat window attached to a document viewer. The source document remains the primary reading surface and AI is a contextual assistance layer bound to stable locations in the book.
+LexiPane is a contextual reading system, not a chat window attached to a document viewer. The source document remains the primary surface; annotations, AI results, Notebook entries, and personal-reading feedback remain tied to stable book locations.
 
-The architecture separates five concerns:
+The application separates five concerns:
 
-1. Document Engine — normalize PDF, EPUB and Kindle-style formats behind one reading model.
-2. Annotation Engine — bind automatic terms, user selections, sentence analyses and region captures to stable document anchors.
-3. Notebook Engine — preserve source text, AI explanations and user-authored notes separately.
-4. AI Platform — route reading tasks to local or cloud models without coupling UI to any vendor.
-5. Personal Reading Model — learn from Known, removed and manually-added terms.
+1. **Document Engine** — format-native PDF, EPUB, and Kindle-family readers behind shared reading operations.
+2. **Annotation Engine** — stable format-specific anchors for user and automatic annotations.
+3. **Notebook Engine** — source text, AI analysis, user notes, tags, and navigation targets.
+4. **AI Platform** — provider/model abstraction, routing, privacy, structured output, execution policy, usage, and cost.
+5. **Personal Reading Model** — Known / Difficult / Removed feedback that adapts future assistance.
 
 ## Runtime stack
 
-- Tauri 2: desktop and mobile application shell.
-- React + TypeScript: shared UI.
-- Rust: native boundary, file/runtime integration and future document/native helpers.
-- SQLite: local library metadata, positions, annotations, notes, provider configuration and usage records.
+- Tauri 2
+- React + TypeScript
+- Rust native boundary
+- SQLite local persistence
+- PDF.js
+- EPUB.js
+- local MOBI/AZW/AZW3 engine
 
-The first implementation target is desktop. Android and iOS should reuse the same domain services and responsive UI rather than becoming separate products.
+Android and iOS should reuse the same domain services rather than becoming separate products.
 
 ## Document Engine
 
-The future interface should expose a normalized model similar to:
+Format rendering remains native to each document type rather than forcing PDF and reflowable books into one render tree.
 
-~~~ts
-interface DocumentEngine {
-  open(source: BookSource): Promise<OpenedDocument>;
-  getMetadata(): Promise<BookMetadata>;
-  getToc(): Promise<TocItem[]>;
-  getPageOrSection(locator: DocumentLocator): Promise<DocumentContent>;
-  resolveAnchor(anchor: AnnotationAnchor): Promise<ResolvedAnchor | null>;
-}
+~~~text
+Document layer
+├─ PDF   -> PDF.js
+├─ EPUB  -> EPUB.js
+└─ MOBI / AZW / AZW3 -> Kindle-family reader
+        ↓
+Shared reading operations
+metadata / contents / position / selection / annotation / note / AI context
 ~~~
 
-Planned backends:
+Current stable locations include:
 
-- PDF: PDF.js first.
-- EPUB: epub.js or a wrapped EPUB engine.
-- MOBI/AZW/AZW3: parse or convert through a dedicated adapter, likely libmobi on the native side.
+- PDF: page + exact quote + prefix/suffix quote context + normalized rectangles
+- EPUB: EPUB CFI + exact selected text/context
+- Kindle-family: chapter/spine location + selected text/context
 
-DRM-protected content is outside the initial scope.
+PDF quote context is used to recover highlight geometry if text-layer segmentation or layout changes.
 
-## Annotation anchors
-
-Never store only a page number and selected text.
-
-PDF anchors should eventually include page, text item and character offsets, bounding rectangles, quote context and a context hash.
-
-EPUB anchors should use CFI plus selected text and quote context.
-
-Converted or reflowable formats should keep chapter/block IDs, offsets and a quote fallback.
-
-The annotation record remains format-neutral by storing the engine-specific anchor as versioned JSON.
+DRM-protected books are outside the initial scope.
 
 ## AI Platform
 
-The reader calls semantic operations such as:
+Reader features call semantic tasks rather than vendor APIs:
 
-- detect difficult terms
-- explain word in context
-- explain phrase in context
-- analyze sentence
-- explain passage
-- analyze selected region or image
-- summarize chapter
-- answer a question about current context
+- automatic difficulty detection
+- contextual explanation
+- grammar/structure analysis
+- reader questions
+- region/image analysis
 
-The task layer does not import vendor clients directly.
+### Providers
 
-Current executable adapters:
+Live provider families include:
 
 - Ollama
-- generic OpenAI-compatible endpoint
+- generic OpenAI-compatible endpoints
+- native Anthropic
+- native Gemini
 
-Cataloged provider families include OpenAI, Anthropic Claude, Google Gemini, xAI Grok, OpenRouter, Mistral, Alibaba Qwen, DeepSeek, Kimi, GLM, MiniMax, Doubao, ERNIE, Hunyuan, LM Studio, llama.cpp, vLLM and LocalAI.
+The registry also catalogs additional local, global-cloud, and China-cloud families that can use compatibility adapters or future provider-native adapters.
 
-Provider-specific native adapters should be added when they unlock capabilities that should not be forced through a compatibility API.
+### Structured output
 
-Routing is task based, not global-model based. A typical user may route vocabulary, phrases and grammar to local Qwen while reserving vision or unusually difficult passages for another configured model.
+Core reading tasks validate typed JSON before rendering:
 
-Privacy modes:
+~~~text
+Explain -> meaning / natural Chinese / expressions / usage
+Grammar -> translation / structure / grammar points / difficult expressions
+Ask -> answer / key points / evidence
+Region -> content type / summary / extracted text / key points / visual details
+~~~
+
+Invalid structured output is a route failure and may trigger the next configured fallback.
+
+### Routing and execution
+
+Each task has:
+
+~~~text
+Primary
+  ↓ failure
+Fallback 1
+  ↓ failure
+Fallback 2
+~~~
+
+Each task also has an execution policy:
+
+- timeout
+- transient retry count
+- retry delay policy
+
+Authentication/schema errors do not retry blindly. Timeouts, rate limits, selected transient HTTP failures, and network failures may retry before moving to the next route.
+
+### Model capabilities
+
+Capabilities include:
+
+- text
+- vision
+- structured output
+- streaming
+- tools
+- embeddings
+- context window
+
+Ollama is probed with its model inspection API. Native providers use provider model metadata where available. Generic compatible endpoints use explicit/inferred capability information and the real request remains the final authority.
+
+### Privacy and provider policy
+
+Global privacy modes:
 
 - Local only
 - Prefer local
 - Automatic
 - Cloud only
 
-Cloud escalation must be visible to the user when selected content would leave the device.
+A book can override the global privacy mode.
 
-## Secrets
+A book can additionally apply:
 
-Provider configuration belongs in SQLite, but API keys do not.
+- all providers allowed by privacy mode
+- allow only selected providers
+- deny selected providers
 
-A SecretStore abstraction will use OS-provided secure storage:
+Privacy is evaluated before provider policy and before book content is sent.
+
+### Secrets
+
+Provider configuration is stored in SQLite. API keys are not.
+
+Native secure storage is used:
 
 - Windows Credential Manager
-- macOS and iOS Keychain
-- Linux Secret Service
-- Android Keystore
+- macOS / iOS Keychain
+- Linux native keyring
+- Android secure storage is validated during the Android phase
 
-Until that abstraction is implemented, no cloud API key should be persisted by the application.
+### Usage and cost
+
+LexiPane records locally:
+
+- task
+- model
+- provider configuration
+- input/output tokens when supplied by the provider
+- latency
+- estimated cost
+
+Cloud pricing is an optional user-configurable input/output price per one million tokens. This avoids silently depending on stale pricing tables. The UI reports total, current-day, and current-month estimated cost plus local/cloud request counts.
 
 ## SQLite
 
-Schema v1 reserves tables for books, reading positions, annotations, notes, known terms, provider configuration, task routing and AI usage.
+The schema is versioned and migrated incrementally for existing databases. Fresh databases are created directly at the newest schema version instead of replaying historical ALTER statements.
 
-Schema changes should move to numbered migrations before the first public release.
+Persistent domains include:
+
+- books and book-level privacy/provider policy
+- reading positions
+- annotations
+- Notebook notes
+- personal reading feedback
+- provider configuration
+- AI usage/cache
+- application settings and route/execution policy
 
 ## UI composition
 
-Desktop uses a true split workspace: document pane on the left and structured AI assistance on the right.
+Desktop uses a split reader: document on the left and structured contextual assistance on the right.
 
-Mobile uses the same domain model with a reading-first layout and an AI bottom sheet or tab instead of forcing a horizontal split.
+The AI settings surface manages:
 
-Structured AI cards come before free-form chat.
+- Ollama and configured providers
+- secure credentials
+- model discovery/capability inspection
+- task routing and fallbacks
+- timeout/retry policies
+- global privacy
+- pricing and usage estimates
 
-## Near-term implementation boundary
+The Reader surface owns per-book privacy/provider restrictions so those controls are visible where sensitive content is actually being read.
 
-The current repository is a foundation scaffold. It intentionally does not pretend to render PDF or persist cloud credentials yet.
+## Mobile boundary
 
-The next vertical slice is:
-
-open PDF → render pages → select text → create stable anchor → show contextual explanation → persist annotation and reading position.
+Mobile will reuse the same Document/Annotation/Notebook/AI domain layers with touch-first selection and an AI bottom sheet instead of a permanent desktop split pane.

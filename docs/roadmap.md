@@ -61,7 +61,7 @@ Remaining PDF hardening:
 
 ## Phase 2 — Contextual AI reading
 
-Status: **core reading-assistance loop implemented**
+Status: **desktop AI platform v1 complete**
 
 Implemented:
 
@@ -92,13 +92,23 @@ Implemented:
 - configurable OpenAI-compatible providers
 - native Anthropic and Gemini providers
 - multimodal routing for region/image tasks
+- structured multimodal region output
+- model capability probing with provider metadata / Ollama inspection / compatible-model inference
+- configurable timeout and transient-retry policy per task
+- provider readiness diagnostics
+- route-attempt diagnostics in reading results
+- optional per-million-token pricing overrides
+- total / today / monthly estimated cloud cost
+- local-vs-cloud request counts
+- per-book provider allow-only / deny policy in addition to privacy mode
 
-Next:
+Future AI-platform enhancements are non-blocking for desktop v0.1:
 
-- cost estimates using provider/model pricing metadata or user overrides
-- model capability probing beyond current text/vision checks
-- configurable fallback retry policy / timeout rules
-- per-book provider allow/deny lists in addition to the privacy mode
+- provider-native prompt caching controls
+- provider-native reasoning controls where useful
+- automatic pricing catalogs with freshness/version tracking
+- configurable monthly budgets and notifications
+- more detailed usage breakdown by provider/model/task
 
 ## Phase 3 — Notebook and region intelligence
 
@@ -246,6 +256,9 @@ Core:
 - [x] native Gemini adapter
 - [x] local/cloud multimodal region routing
 - [x] structured contracts for explain / grammar / ask
-- [ ] pricing metadata and cost estimates
-- [ ] richer structured contracts for multimodal region analysis
-- [ ] per-book provider allow/deny policy
+- [x] user-configurable pricing and estimated costs
+- [x] structured multimodal region analysis
+- [x] model capability probing
+- [x] configurable timeout / transient retry policy
+- [x] provider readiness and route diagnostics
+- [x] per-book provider allow/deny policy
