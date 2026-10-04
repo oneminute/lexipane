@@ -21,6 +21,7 @@ import type {
 } from "../../core/reading/ebookPreferences";
 import type { ReaderImagePreview } from "./readerImage";
 import {
+  getDomSentenceCount,
   selectDomSentenceAtPoint,
   selectDomSentenceByIndex,
 } from "./sentenceNavigation";
@@ -453,6 +454,7 @@ export function EpubDocumentView({
   );
   const wordSelectionTimerRef = useRef<number | null>(null);
   const handledSentenceNavigationRef = useRef(0);
+  const pendingSentenceDirectionRef = useRef<-1 | 1 | null>(null);
   const activeSentenceRef = useRef<{
     contents: Contents;
     index: number;
@@ -538,6 +540,48 @@ export function EpubDocumentView({
       });
     });
   }, []);
+
+  const finishPendingSentenceNavigation = useCallback(
+    (rendition: Rendition) => {
+      const direction = pendingSentenceDirectionRef.current;
+      if (direction === null) return;
+
+      const contentsList = renderedContents(rendition);
+      if (contentsList.length === 0) return;
+
+      const contents =
+        direction > 0
+          ? contentsList[0]
+          : contentsList[contentsList.length - 1];
+      const sentenceCount = getDomSentenceCount(contents.document);
+      if (sentenceCount === 0) return;
+
+      const sentenceIndex =
+        direction > 0 ? 0 : sentenceCount - 1;
+      const sentence = selectDomSentenceByIndex(
+        contents.document,
+        sentenceIndex,
+      );
+      if (!sentence) return;
+
+      pendingSentenceDirectionRef.current = null;
+      activeSentenceRef.current = {
+        contents,
+        index: sentence.index,
+        count: sentence.count,
+      };
+
+      const cfi = contents.cfiFromRange(sentence.range);
+      onSentenceSelectionRef.current?.({
+        text: sentence.text,
+        context: sentence.context,
+        cfi,
+        sentenceIndex: sentence.index,
+        sentenceCount: sentence.count,
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     autoTermsRef.current = autoTerms;
@@ -660,6 +704,7 @@ export function EpubDocumentView({
             for (const contents of renderedContents(rendition)) {
               wireReadingInteractions(contents);
             }
+            finishPendingSentenceNavigation(rendition);
           }, 0);
         },
       );
@@ -671,6 +716,7 @@ export function EpubDocumentView({
             for (const contents of renderedContents(rendition)) {
               wireReadingInteractions(contents);
             }
+            finishPendingSentenceNavigation(rendition);
           }
         }, 0);
       });
@@ -773,6 +819,7 @@ export function EpubDocumentView({
     onSelection,
     path,
     wireReadingInteractions,
+    finishPendingSentenceNavigation,
   ]);
 
   useEffect(() => {
@@ -814,29 +861,57 @@ export function EpubDocumentView({
     if (!active) return;
 
     const nextIndex = active.index + sentenceNavigation.direction;
-    if (nextIndex < 0 || nextIndex >= active.count) return;
 
-    const sentence = selectDomSentenceByIndex(
-      active.contents.document,
-      nextIndex,
-    );
-    if (!sentence) return;
+    if (nextIndex >= 0 && nextIndex < active.count) {
+      const sentence = selectDomSentenceByIndex(
+        active.contents.document,
+        nextIndex,
+      );
+      if (!sentence) return;
 
-    const cfi = active.contents.cfiFromRange(sentence.range);
-    activeSentenceRef.current = {
-      contents: active.contents,
-      index: sentence.index,
-      count: sentence.count,
-    };
+      const cfi = active.contents.cfiFromRange(sentence.range);
+      activeSentenceRef.current = {
+        contents: active.contents,
+        index: sentence.index,
+        count: sentence.count,
+      };
 
-    onSentenceSelectionRef.current?.({
-      text: sentence.text,
-      context: sentence.context,
-      cfi,
-      sentenceIndex: sentence.index,
-      sentenceCount: sentence.count,
-    });
-  }, [sentenceNavigation]);
+      onSentenceSelectionRef.current?.({
+        text: sentence.text,
+        context: sentence.context,
+        cfi,
+        sentenceIndex: sentence.index,
+        sentenceCount: sentence.count,
+      });
+      return;
+    }
+
+    const rendition = renditionRef.current;
+    if (!rendition) return;
+
+    pendingSentenceDirectionRef.current =
+      sentenceNavigation.direction;
+    activeSentenceRef.current = null;
+
+    const navigation =
+      sentenceNavigation.direction > 0
+        ? rendition.next()
+        : rendition.prev();
+
+    void Promise.resolve(navigation)
+      .then(() => {
+        window.setTimeout(() => {
+          const current = renditionRef.current;
+          if (current) {
+            finishPendingSentenceNavigation(current);
+          }
+        }, 0);
+      })
+      .catch((error) => {
+        pendingSentenceDirectionRef.current = null;
+        console.warn("Unable to move to adjacent EPUB section", error);
+      });
+  }, [finishPendingSentenceNavigation, sentenceNavigation]);
 
   useEffect(() => {
     renditionRef.current?.themes.fontSize(fontScale + "%");
