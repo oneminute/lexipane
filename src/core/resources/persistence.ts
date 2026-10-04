@@ -1,0 +1,466 @@
+import { isTauri } from "@tauri-apps/api/core";
+import { initializeDatabase } from "../db/database";
+import { BUILTIN_RESOURCE_PROVIDERS } from "./registry";
+import type {
+  ResourceFile,
+  ResourceItem,
+  ResourceProviderCapabilities,
+  ResourceProviderKind,
+  ResourceSource,
+  TransferJob,
+} from "./types";
+
+interface ResourceProviderRow {
+  id: string;
+  kind: ResourceProviderKind;
+  display_name: string;
+  enabled: number;
+  builtin: number;
+  live: number;
+  capabilities_json: string;
+  config_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ResourceItemRow {
+  id: string;
+  title: string;
+  authors_json: string;
+  description: string | null;
+  identifiers_json: string;
+  availability_json: string;
+  metadata_json: string;
+  rights_status: ResourceItem["rightsStatus"];
+  created_at: string;
+  updated_at: string;
+}
+
+interface ResourceSourceRow {
+  id: string;
+  resource_item_id: string;
+  provider_id: string;
+  source_key: string;
+  source_type: ResourceSource["sourceType"];
+  uri: string | null;
+  metadata_json: string;
+  availability_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ResourceFileRow {
+  id: string;
+  resource_item_id: string;
+  source_id: string | null;
+  name: string;
+  relative_path: string | null;
+  size_bytes: number | null;
+  mime_type: string | null;
+  extension: string | null;
+  identifiers_json: string;
+  metadata_json: string;
+  created_at: string;
+}
+
+interface TransferJobRow {
+  id: string;
+  resource_item_id: string | null;
+  source_id: string | null;
+  file_id: string | null;
+  provider_id: string;
+  transport_type: string;
+  state: TransferJob["state"];
+  progress: number;
+  bytes_total: number | null;
+  bytes_completed: number;
+  download_rate: number | null;
+  upload_rate: number | null;
+  error: string | null;
+  temporary_path: string | null;
+  destination_path: string | null;
+  resume_json: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface PersistedResourceProvider {
+  id: string;
+  kind: ResourceProviderKind;
+  displayName: string;
+  enabled: boolean;
+  builtin: boolean;
+  live: boolean;
+  capabilities: ResourceProviderCapabilities;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResourceBundle {
+  item: ResourceItem;
+  sources: ResourceSource[];
+  files: ResourceFile[];
+}
+
+function parseJson<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function nullable<T>(value: T | null): T | undefined {
+  return value === null ? undefined : value;
+}
+
+function providerFromRow(row: ResourceProviderRow): PersistedResourceProvider {
+  return {
+    id: row.id,
+    kind: row.kind,
+    displayName: row.display_name,
+    enabled: row.enabled !== 0,
+    builtin: row.builtin !== 0,
+    live: row.live !== 0,
+    capabilities: parseJson<ResourceProviderCapabilities>(
+      row.capabilities_json,
+      {},
+    ),
+    config: parseJson<Record<string, unknown>>(row.config_json, {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function itemFromRow(row: ResourceItemRow): ResourceItem {
+  return {
+    id: row.id,
+    title: row.title,
+    authors: parseJson<string[]>(row.authors_json, []),
+    description: nullable(row.description),
+    identifiers: parseJson(row.identifiers_json, {}),
+    availability: parseJson(row.availability_json, {}),
+    metadata: parseJson(row.metadata_json, {}),
+    rightsStatus: row.rights_status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function sourceFromRow(row: ResourceSourceRow): ResourceSource {
+  return {
+    id: row.id,
+    resourceItemId: row.resource_item_id,
+    providerId: row.provider_id,
+    sourceKey: row.source_key,
+    sourceType: row.source_type,
+    uri: nullable(row.uri),
+    metadata: parseJson(row.metadata_json, {}),
+    availability: parseJson(row.availability_json, {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function fileFromRow(row: ResourceFileRow): ResourceFile {
+  return {
+    id: row.id,
+    resourceItemId: row.resource_item_id,
+    sourceId: nullable(row.source_id),
+    name: row.name,
+    relativePath: nullable(row.relative_path),
+    sizeBytes: nullable(row.size_bytes),
+    mimeType: nullable(row.mime_type),
+    extension: nullable(row.extension),
+    identifiers: parseJson(row.identifiers_json, {}),
+    metadata: parseJson(row.metadata_json, {}),
+    createdAt: row.created_at,
+  };
+}
+
+function transferFromRow(row: TransferJobRow): TransferJob {
+  return {
+    id: row.id,
+    resourceItemId: nullable(row.resource_item_id),
+    sourceId: nullable(row.source_id),
+    fileId: nullable(row.file_id),
+    providerId: row.provider_id,
+    transportType: row.transport_type,
+    state: row.state,
+    progress: row.progress,
+    bytesTotal: nullable(row.bytes_total),
+    bytesCompleted: row.bytes_completed,
+    downloadRate: nullable(row.download_rate),
+    uploadRate: nullable(row.upload_rate),
+    error: nullable(row.error),
+    temporaryPath: nullable(row.temporary_path),
+    destinationPath: nullable(row.destination_path),
+    resumeData: parseJson(row.resume_json, {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    startedAt: nullable(row.started_at),
+    completedAt: nullable(row.completed_at),
+  };
+}
+
+export function createResourceRecordId(prefix: string): string {
+  const suffix =
+    globalThis.crypto?.randomUUID?.() ??
+    Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+
+  return prefix + ":" + suffix;
+}
+
+export async function syncBuiltinResourceProviders(): Promise<void> {
+  if (!isTauri()) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  const now = new Date().toISOString();
+
+  for (const provider of BUILTIN_RESOURCE_PROVIDERS) {
+    await db.execute(
+      "INSERT INTO resource_providers " +
+        "(id, kind, display_name, enabled, builtin, live, capabilities_json, config_json, created_at, updated_at) " +
+        "VALUES ($1, $2, $3, 1, 1, $4, $5, '{}', $6, $6) " +
+        "ON CONFLICT(id) DO UPDATE SET " +
+        "kind = excluded.kind, display_name = excluded.display_name, " +
+        "builtin = 1, live = excluded.live, " +
+        "capabilities_json = excluded.capabilities_json, updated_at = excluded.updated_at",
+      [
+        provider.id,
+        provider.kind,
+        provider.name,
+        provider.live ? 1 : 0,
+        JSON.stringify(provider.capabilities),
+        now,
+      ],
+    );
+  }
+}
+
+export async function listPersistedResourceProviders(): Promise<
+  PersistedResourceProvider[]
+> {
+  if (!isTauri()) return [];
+
+  const db = await initializeDatabase();
+  if (!db) return [];
+
+  const rows = await db.select<ResourceProviderRow[]>(
+    "SELECT * FROM resource_providers ORDER BY builtin DESC, display_name ASC",
+  );
+
+  return rows.map(providerFromRow);
+}
+
+export async function saveResourceBundle(
+  bundle: ResourceBundle,
+): Promise<void> {
+  if (!isTauri()) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  await db.execute("BEGIN IMMEDIATE");
+
+  try {
+    const { item } = bundle;
+
+    await db.execute(
+      "INSERT INTO resource_items " +
+        "(id, title, authors_json, description, identifiers_json, availability_json, metadata_json, rights_status, created_at, updated_at) " +
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) " +
+        "ON CONFLICT(id) DO UPDATE SET " +
+        "title=excluded.title, authors_json=excluded.authors_json, description=excluded.description, " +
+        "identifiers_json=excluded.identifiers_json, availability_json=excluded.availability_json, " +
+        "metadata_json=excluded.metadata_json, rights_status=excluded.rights_status, updated_at=excluded.updated_at",
+      [
+        item.id,
+        item.title,
+        JSON.stringify(item.authors),
+        item.description ?? null,
+        JSON.stringify(item.identifiers ?? {}),
+        JSON.stringify(item.availability ?? {}),
+        JSON.stringify(item.metadata ?? {}),
+        item.rightsStatus,
+        item.createdAt,
+        item.updatedAt,
+      ],
+    );
+
+    for (const source of bundle.sources) {
+      await db.execute(
+        "INSERT INTO resource_sources " +
+          "(id, resource_item_id, provider_id, source_key, source_type, uri, metadata_json, availability_json, created_at, updated_at) " +
+          "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) " +
+          "ON CONFLICT(id) DO UPDATE SET " +
+          "resource_item_id=excluded.resource_item_id, provider_id=excluded.provider_id, source_key=excluded.source_key, " +
+          "source_type=excluded.source_type, uri=excluded.uri, metadata_json=excluded.metadata_json, " +
+          "availability_json=excluded.availability_json, updated_at=excluded.updated_at",
+        [
+          source.id,
+          source.resourceItemId,
+          source.providerId,
+          source.sourceKey,
+          source.sourceType,
+          source.uri ?? null,
+          JSON.stringify(source.metadata ?? {}),
+          JSON.stringify(source.availability ?? {}),
+          source.createdAt,
+          source.updatedAt,
+        ],
+      );
+    }
+
+    for (const file of bundle.files) {
+      await db.execute(
+        "INSERT INTO resource_files " +
+          "(id, resource_item_id, source_id, name, relative_path, size_bytes, mime_type, extension, identifiers_json, metadata_json, created_at) " +
+          "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) " +
+          "ON CONFLICT(id) DO UPDATE SET " +
+          "resource_item_id=excluded.resource_item_id, source_id=excluded.source_id, name=excluded.name, " +
+          "relative_path=excluded.relative_path, size_bytes=excluded.size_bytes, mime_type=excluded.mime_type, " +
+          "extension=excluded.extension, identifiers_json=excluded.identifiers_json, metadata_json=excluded.metadata_json",
+        [
+          file.id,
+          file.resourceItemId,
+          file.sourceId ?? null,
+          file.name,
+          file.relativePath ?? null,
+          file.sizeBytes ?? null,
+          file.mimeType ?? null,
+          file.extension ?? null,
+          JSON.stringify(file.identifiers ?? {}),
+          JSON.stringify(file.metadata ?? {}),
+          file.createdAt,
+        ],
+      );
+    }
+
+    await db.execute("COMMIT");
+  } catch (error) {
+    await db.execute("ROLLBACK");
+    throw error;
+  }
+}
+
+export async function listResourceItems(
+  limit = 100,
+): Promise<ResourceItem[]> {
+  if (!isTauri()) return [];
+
+  const db = await initializeDatabase();
+  if (!db) return [];
+
+  const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
+  const rows = await db.select<ResourceItemRow[]>(
+    "SELECT * FROM resource_items ORDER BY updated_at DESC LIMIT $1",
+    [safeLimit],
+  );
+
+  return rows.map(itemFromRow);
+}
+
+export async function getResourceBundle(
+  resourceItemId: string,
+): Promise<ResourceBundle | null> {
+  if (!isTauri()) return null;
+
+  const db = await initializeDatabase();
+  if (!db) return null;
+
+  const [itemRows, sourceRows, fileRows] = await Promise.all([
+    db.select<ResourceItemRow[]>(
+      "SELECT * FROM resource_items WHERE id = $1 LIMIT 1",
+      [resourceItemId],
+    ),
+    db.select<ResourceSourceRow[]>(
+      "SELECT * FROM resource_sources WHERE resource_item_id = $1 ORDER BY created_at ASC",
+      [resourceItemId],
+    ),
+    db.select<ResourceFileRow[]>(
+      "SELECT * FROM resource_files WHERE resource_item_id = $1 ORDER BY name ASC",
+      [resourceItemId],
+    ),
+  ]);
+
+  const item = itemRows[0];
+  if (!item) return null;
+
+  return {
+    item: itemFromRow(item),
+    sources: sourceRows.map(sourceFromRow),
+    files: fileRows.map(fileFromRow),
+  };
+}
+
+export interface CreateTransferJobInput {
+  providerId: string;
+  transportType: string;
+  resourceItemId?: string;
+  sourceId?: string;
+  fileId?: string;
+  destinationPath?: string;
+}
+
+export async function createDraftTransferJob(
+  input: CreateTransferJobInput,
+): Promise<TransferJob | null> {
+  if (!isTauri()) return null;
+
+  const db = await initializeDatabase();
+  if (!db) return null;
+
+  const id = createResourceRecordId("transfer");
+  const now = new Date().toISOString();
+
+  await db.execute(
+    "INSERT INTO transfer_jobs " +
+      "(id, resource_item_id, source_id, file_id, provider_id, transport_type, state, progress, bytes_completed, destination_path, resume_json, created_at, updated_at) " +
+      "VALUES ($1,$2,$3,$4,$5,$6,'draft',0,0,$7,'{}',$8,$8)",
+    [
+      id,
+      input.resourceItemId ?? null,
+      input.sourceId ?? null,
+      input.fileId ?? null,
+      input.providerId,
+      input.transportType,
+      input.destinationPath ?? null,
+      now,
+    ],
+  );
+
+  return {
+    id,
+    resourceItemId: input.resourceItemId,
+    sourceId: input.sourceId,
+    fileId: input.fileId,
+    providerId: input.providerId,
+    transportType: input.transportType,
+    state: "draft",
+    progress: 0,
+    bytesCompleted: 0,
+    destinationPath: input.destinationPath,
+    resumeData: {},
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export async function listTransferJobs(): Promise<TransferJob[]> {
+  if (!isTauri()) return [];
+
+  const db = await initializeDatabase();
+  if (!db) return [];
+
+  const rows = await db.select<TransferJobRow[]>(
+    "SELECT * FROM transfer_jobs ORDER BY created_at DESC",
+  );
+
+  return rows.map(transferFromRow);
+}
