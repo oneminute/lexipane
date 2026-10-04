@@ -3003,7 +3003,7 @@ export function ReaderView({
                         ? "Selected word"
                         : "Selected text"}
                   </span>
-                  {selection.page && <small>Page {selection.page}</small>}
+                  {selection.page > 0 && <small>Page {selection.page}</small>}
                 </div>
                 <blockquote>{selection.text}</blockquote>
 
