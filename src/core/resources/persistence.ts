@@ -23,6 +23,17 @@ interface ResourceProviderRow {
   updated_at: string;
 }
 
+interface ResourceAccountRow {
+  id: string;
+  provider_id: string;
+  external_account_id: string | null;
+  display_name: string | null;
+  status: string;
+  metadata_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface ResourceItemRow {
   id: string;
   title: string;
@@ -110,6 +121,17 @@ export interface PersistedResourceProvider {
   updatedAt: string;
 }
 
+export interface ResourceAccount {
+  id: string;
+  providerId: string;
+  externalAccountId?: string;
+  displayName?: string;
+  status: "connected" | "disconnected" | "error";
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ResourceCatalog {
   id: string;
   providerId: string;
@@ -152,6 +174,22 @@ function providerFromRow(row: ResourceProviderRow): PersistedResourceProvider {
       {},
     ),
     config: parseJson<Record<string, unknown>>(row.config_json, {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function accountFromRow(row: ResourceAccountRow): ResourceAccount {
+  return {
+    id: row.id,
+    providerId: row.provider_id,
+    externalAccountId: nullable(row.external_account_id),
+    displayName: nullable(row.display_name),
+    status:
+      row.status === "connected" || row.status === "error"
+        ? row.status
+        : "disconnected",
+    metadata: parseJson(row.metadata_json, {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -276,6 +314,120 @@ export async function syncBuiltinResourceProviders(): Promise<void> {
       ],
     );
   }
+}
+
+export async function listResourceAccounts(): Promise<
+  ResourceAccount[]
+> {
+  if (!isTauri()) return [];
+
+  const db = await initializeDatabase();
+  if (!db) return [];
+
+  const rows = await db.select<ResourceAccountRow[]>(
+    "SELECT * FROM resource_accounts ORDER BY updated_at DESC",
+  );
+
+  return rows.map(accountFromRow);
+}
+
+export async function saveResourceAccount(
+  input: {
+    id?: string;
+    providerId: string;
+    displayName?: string;
+    externalAccountId?: string;
+    status?: ResourceAccount["status"];
+    metadata?: Record<string, unknown>;
+  },
+): Promise<ResourceAccount | null> {
+  if (!isTauri()) return null;
+
+  const db = await initializeDatabase();
+  if (!db) return null;
+
+  const id = input.id ?? createResourceRecordId("account");
+  const now = new Date().toISOString();
+  const existing = await db.select<ResourceAccountRow[]>(
+    "SELECT * FROM resource_accounts WHERE id = $1 LIMIT 1",
+    [id],
+  );
+
+  if (existing[0]) {
+    const current = accountFromRow(existing[0]);
+    const next: ResourceAccount = {
+      ...current,
+      providerId: input.providerId || current.providerId,
+      displayName:
+        input.displayName === undefined
+          ? current.displayName
+          : input.displayName,
+      externalAccountId:
+        input.externalAccountId === undefined
+          ? current.externalAccountId
+          : input.externalAccountId,
+      status: input.status ?? current.status,
+      metadata: input.metadata ?? current.metadata,
+      updatedAt: now,
+    };
+
+    await db.execute(
+      "UPDATE resource_accounts SET provider_id=$2, external_account_id=$3, display_name=$4, status=$5, metadata_json=$6, updated_at=$7 WHERE id=$1",
+      [
+        id,
+        next.providerId,
+        next.externalAccountId ?? null,
+        next.displayName ?? null,
+        next.status,
+        JSON.stringify(next.metadata),
+        now,
+      ],
+    );
+
+    return next;
+  }
+
+  const created: ResourceAccount = {
+    id,
+    providerId: input.providerId,
+    externalAccountId: input.externalAccountId,
+    displayName: input.displayName,
+    status: input.status ?? "connected",
+    metadata: input.metadata ?? {},
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await db.execute(
+    "INSERT INTO resource_accounts " +
+      "(id, provider_id, external_account_id, display_name, status, metadata_json, created_at, updated_at) " +
+      "VALUES ($1,$2,$3,$4,$5,$6,$7,$7)",
+    [
+      created.id,
+      created.providerId,
+      created.externalAccountId ?? null,
+      created.displayName ?? null,
+      created.status,
+      JSON.stringify(created.metadata),
+      now,
+    ],
+  );
+
+  return created;
+}
+
+export async function deleteResourceAccount(
+  accountId: string,
+): Promise<void> {
+  if (!isTauri()) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  await db.execute(
+    "DELETE FROM resource_accounts WHERE id = $1",
+    [accountId],
+  );
 }
 
 export async function listPersistedResourceProviders(): Promise<
