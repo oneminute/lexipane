@@ -645,6 +645,36 @@ export function ReaderView({
     pageCount > 0 &&
     currentPdfText.length < 80;
 
+  const readerProgress = useMemo(() => {
+    if (isPdf) {
+      if (pageCount <= 1) return pageCount === 1 ? 1 : 0;
+      return Math.max(
+        0,
+        Math.min(1, (currentPage - 1) / (pageCount - 1)),
+      );
+    }
+
+    if (isEpub) {
+      return Math.max(0, Math.min(1, epubProgress ?? 0));
+    }
+
+    if (isKindle) {
+      return Math.max(0, Math.min(1, kindleProgress ?? 0));
+    }
+
+    return 0;
+  }, [
+    currentPage,
+    epubProgress,
+    isEpub,
+    isKindle,
+    isPdf,
+    kindleProgress,
+    pageCount,
+  ]);
+
+  const displayedProgress = progressDraft ?? readerProgress;
+
   const zoomOut = useCallback(() => {
     setScale((value) => Math.max(0.5, Math.round((value - 0.1) * 10) / 10));
   }, []);
