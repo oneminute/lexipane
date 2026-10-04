@@ -836,6 +836,7 @@ export function ReaderView({
     (cfi: string, progress: number | null) => {
       setEpubCurrentCfi(cfi);
       setEpubProgress(progress);
+      setProgressDraft(null);
       if (!bookPath || peekOriginRef.current) return;
 
       void saveEpubReadingPosition(bookPath, cfi, progress).catch(
@@ -955,6 +956,7 @@ export function ReaderView({
     (chapterId: string, progress: number | null) => {
       setKindleCurrentChapterId(chapterId);
       setKindleProgress(progress);
+      setProgressDraft(null);
       if (!bookPath || peekOriginRef.current) return;
 
       void saveKindleReadingPosition(
@@ -2208,9 +2210,9 @@ export function ReaderView({
     if (progressDraft === null) return;
 
     const progress = Math.max(0, Math.min(1, progressDraft));
-    setProgressDraft(null);
 
     if (isPdf) {
+      setProgressDraft(null);
       if (pageCount < 1) return;
 
       const page =
