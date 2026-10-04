@@ -16,7 +16,9 @@ const defaults: Record<ReadingTaskType, AiExecutionPolicy> = {
   region: { ...APP_DEFAULTS.ai.execution.region },
 };
 
-const keyFor = (task: ReadingTaskType) => "ai.execution.v1." + task;
+// v2 intentionally resets legacy 15s/30s policies that were too short for
+// local models with cold-start and structured-output latency.
+const keyFor = (task: ReadingTaskType) => "ai.execution.v2." + task;
 
 export function defaultAiExecutionPolicy(
   task: ReadingTaskType,
