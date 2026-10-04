@@ -71,9 +71,9 @@ Last updated: **2026-10-04**
 
 **Resource Acquisition Platform / Resource Hub**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-**RESOURCE-002 — HTTP + OPDS vertical slice** has started. This pass is implementing the first live HTTP/HTTPS acquisition path, persistent transfer execution state, OPDS discovery/parsing, and verified Library ingestion while keeping cloud/P2P providers out of scope.
+**RESOURCE-002 — HTTP + OPDS vertical slice** implementation is present on `main`. The final validation pass is running. HTTP/HTTPS and OPDS are the only newly live resource providers; cloud OAuth, BitTorrent, and ED2K remain disabled.
 
 ## Most recently completed product work
 
@@ -102,35 +102,51 @@ Delivered:
 
 **RESOURCE-002 — HTTP + OPDS vertical slice**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Current implementation scope:
+Implementation completed in this pass:
 
-- implement the first live native HTTP/HTTPS transfer path behind the Resource Core transfer contracts;
-- add HTTP metadata probing, redirects, content length/type handling, cancellation, retry, and resumable range behavior where supported;
-- add OPDS catalog configuration, browse/search, metadata, covers, and acquisition-link normalization;
-- connect live transfers to persistent `TransferJob` state/events;
-- implement the first verified ingestion path into the existing LexiPane Library/managed-library pipeline;
-- detect duplicate acquired books through existing SHA-256 identity;
-- keep cloud OAuth, BitTorrent, and ED2K out of scope for this milestone.
+- native Rust HTTP/HTTPS transport using reqwest/rustls, independent of React component lifecycle;
+- explicit HTTP metadata probing with redirect checks, content type/length, filename, byte-range capability, and Content-Range totals;
+- HTTPS downgrade prevention and rejection of embedded credentials;
+- identity encoding for resumable binary transfers;
+- isolated per-job temporary directories, 2 GiB transfer ceiling, disk-space checks, path-safe filenames, pause/cancel/resume/retry, and temp discard;
+- restart recovery for queued/running jobs, complete partial files, and already-finalized-but-not-yet-persisted downloads;
+- streamed size limits for OPDS/text inspection;
+- PDF magic validation and EPUB container validation before Library ingestion;
+- global App-level transfer runtime with persistent job state/events, so downloads continue when leaving Resources;
+- SHA-256 duplicate detection, Resource Core content identity persistence, provenance history, and managed-Library ingestion;
+- safe restoration when a matching Library record exists but its file is missing;
+- OPDS 1 Atom and OPDS 2 JSON normalization;
+- persistent OPDS catalog list, browse, search/OpenSearch support, nested section navigation, covers, metadata, and normalized PDF/EPUB acquisition links;
+- OPDS acquisition routed through the same HTTP transfer and ingestion pipeline;
+- Resource Hub UI for Probe metadata, Download, OPDS Browse/Search, transfer progress, Pause/Resume/Retry/Cancel/Discard, and Open after completion;
+- SQLite schema v11 for persistent resource catalogs;
+- targeted OPDS, schema, Resource Core, and native HTTP validation tests.
 
-Primary risks / dependencies to address before implementation:
+Validation evidence:
 
-- native HTTP transfer lifecycle must survive React navigation and must not be owned by the Resource Hub component;
-- temp-file paths, cancellation, resume metadata, disk-space checks, and atomic final movement must obey the security baseline;
-- OPDS parsing must not blur catalog discovery with transfer execution;
-- ingestion must reuse existing Library identity/managed-storage code rather than create a second library path;
-- provider/network errors need durable transfer-job diagnostics suitable for later Download Manager hardening.
+- an earlier full RESOURCE-002 code snapshot passed `npm run typecheck`, `npm test`, `npm run build`, and `cargo check --manifest-path src-tauri/Cargo.toml` in CI run 37223461687;
+- latest HEAD contains additional restart-safety, provenance, and HTTP-hardening changes and is currently undergoing the final CI pass.
 
-Execution notes for this pass:
+Known intentional limitations:
 
-- native HTTP work may add Rust HTTP client dependencies and Tauri events;
-- live HTTP must remain limited to http/https URLs and must reject embedded credentials;
-- completed downloads must remain in isolated temp storage until ingestion validates a Reader-supported file type;
-- OPDS browse/search is discovery only and must normalize acquisition links into Resource Core records before transfer;
-- cancellation/retry/resume support should be implemented in the common transfer path rather than only in the UI.
+- RESOURCE-002 accepts live acquisitions only for validated PDF/EPUB content;
+- HTTP jobs are single-transfer native tasks; concurrency policy/scheduling/notifications remain RESOURCE-004;
+- OPDS Basic/Digest/custom authenticated catalogs are not yet implemented; account/credential work belongs to later provider milestones;
+- cloud OAuth, BitTorrent, and ED2K networking remain disabled;
+- progressive reading before completion remains RESOURCE-007.
 
-Cloud OAuth, BitTorrent, and ED2K remain explicitly out of scope.
+Acceptance criteria under verification:
+
+- acquire a legal/open PDF or EPUB from a direct HTTP URL or OPDS acquisition link;
+- pause/cancel/retry/resume;
+- preserve restart-safe job state and partial files;
+- ingest verified content into the existing managed Library;
+- open completed content in Reader;
+- detect SHA-256 duplicates without creating a second Library book.
+
+Do not mark RESOURCE-002 complete until the final frontend and Rust validation gates pass.
 ---
 
 # Product direction
@@ -742,7 +758,7 @@ Acceptance criteria:
 
 ## RESOURCE-002 — HTTP + OPDS vertical slice
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 Goal: prove discovery → preview → download → ingestion → Library with comparatively simple protocols.
 
