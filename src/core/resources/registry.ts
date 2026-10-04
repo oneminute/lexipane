@@ -94,9 +94,9 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     id: "bittorrent",
     name: "BitTorrent",
     kind: "p2p",
-    description: "Magnet and torrent metadata/transfer contract. Network engine is not enabled yet.",
+    description: "Native magnet/torrent metadata preview and selective PDF/EPUB transfer.",
     builtin: true,
-    live: false,
+    live: true,
     capabilities: {
       resolve: true,
       preview: true,
