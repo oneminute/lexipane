@@ -814,6 +814,17 @@ export function ResourceHubView({ onOpenBook }: Props) {
                     </button>
                   )}
 
+                  {canPreviewTorrent && (
+                    <button
+                      type="button"
+                      className="primary-button compact"
+                      disabled={networkBusy}
+                      onClick={() => void previewCurrentTorrent()}
+                    >
+                      {networkBusy ? "Resolving…" : "Preview torrent"}
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     className="ghost-button"
@@ -871,6 +882,71 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       onClick={() => void downloadPreparedHttp()}
                     >
                       Download and add to Library
+                    </button>
+                  </div>
+                )}
+
+                {torrentPreview && (
+                  <div className="resource-http-preview torrent-preview-card">
+                    <div>
+                      <span className="eyebrow">BitTorrent metadata</span>
+                      <strong>
+                        {torrentPreview.name || "Resolved torrent"}
+                      </strong>
+                      <small>
+                        {torrentPreview.infoHash} ·{" "}
+                        {torrentPreview.seenPeers} peer
+                        {torrentPreview.seenPeers === 1 ? "" : "s"} seen
+                      </small>
+                    </div>
+
+                    <div className="torrent-file-list">
+                      {torrentPreview.files.map((file) => (
+                        <label
+                          key={file.index}
+                          className={
+                            file.bookCandidate
+                              ? "torrent-file-row book"
+                              : "torrent-file-row"
+                          }
+                        >
+                          <input
+                            type="radio"
+                            name="torrent-book-file"
+                            value={file.index}
+                            disabled={!file.bookCandidate}
+                            checked={
+                              torrentSelectedFileIndex === file.index
+                            }
+                            onChange={() =>
+                              setTorrentSelectedFileIndex(file.index)
+                            }
+                          />
+                          <span>
+                            <strong>{file.name}</strong>
+                            <small>
+                              {formatBytes(file.length)}
+                              {file.bookCandidate
+                                ? " · Reader-compatible"
+                                : ""}
+                            </small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={
+                        networkBusy ||
+                        torrentSelectedFileIndex === null
+                      }
+                      onClick={() =>
+                        void downloadSelectedTorrentFile()
+                      }
+                    >
+                      Download selected book
                     </button>
                   </div>
                 )}
@@ -1131,8 +1207,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
               <h2>Downloads</h2>
             </div>
             <small>
-              HTTP jobs run in the native layer and remain active when you
-              navigate elsewhere in LexiPane.
+              HTTP and BitTorrent jobs run in the native layer and remain
+              active when you navigate elsewhere in LexiPane.
             </small>
           </header>
 
@@ -1140,8 +1216,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
             <div className="resource-empty">
               <strong>No transfer jobs yet.</strong>
               <p>
-                Probe a direct HTTP resource or choose a PDF/EPUB acquisition
-                from an OPDS catalog.
+                Probe HTTP, choose a PDF/EPUB from OPDS, or preview a magnet
+                and select a book file.
               </p>
             </div>
           ) : (
@@ -1189,7 +1265,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   <div className="resource-transfer-actions">
                     <strong>{Math.round(job.progress * 100)}%</strong>
 
-                    {job.state === "running" && job.providerId === "http" && (
+                    {job.state === "running" &&
+                      (job.providerId === "http" ||
+                        job.providerId === "bittorrent") && (
                       <>
                         <button
                           type="button"
@@ -1214,7 +1292,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
                     {(job.state === "paused" ||
                       job.state === "failed") &&
-                      job.providerId === "http" && (
+                      (job.providerId === "http" ||
+                        job.providerId === "bittorrent") && (
                         <>
                           <button
                             type="button"
