@@ -42,6 +42,9 @@ export const APP_DEFAULTS = {
   },
   reading: {
     level: "B2",
+    ai: {
+      sentencePrefetchCount: 3,
+    },
     ebook: {
       fontScale: 100,
       theme: "light",
