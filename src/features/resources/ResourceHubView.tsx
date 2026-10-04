@@ -1264,6 +1264,176 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <section className="resource-section">
             <header>
               <div>
+                <span className="eyebrow">Cloud storage</span>
+                <h2>Google Drive, Dropbox & OneDrive</h2>
+              </div>
+              <small>
+                Connected account tokens stay in the native secure credential
+                store. Files are normalized into the same Resource Core and
+                transfer pipeline.
+              </small>
+            </header>
+
+            {cloudAccounts.length === 0 ? (
+              <div className="resource-empty">
+                <strong>No cloud accounts connected.</strong>
+                <p>
+                  Open Accounts to connect Google Drive, Dropbox, or OneDrive.
+                </p>
+                <button
+                  type="button"
+                  className="primary-button compact"
+                  onClick={() => setTab("accounts")}
+                >
+                  Connect account
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="cloud-account-switcher">
+                  {cloudAccounts.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      className={
+                        activeCloudAccountId === account.id
+                          ? "selected"
+                          : ""
+                      }
+                      onClick={() => void openCloudRoot(account)}
+                    >
+                      <strong>
+                        {account.displayName || account.providerId}
+                      </strong>
+                      <small>{account.providerId}</small>
+                    </button>
+                  ))}
+                </div>
+
+                {activeCloudAccount() && (
+                  <div className="cloud-browser">
+                    <div className="cloud-breadcrumbs">
+                      {cloudFolderStack.map((item, index) => (
+                        <button
+                          key={index + ":" + (item.locator ?? "root")}
+                          type="button"
+                          disabled={
+                            cloudBusy ||
+                            index === cloudFolderStack.length - 1
+                          }
+                          onClick={() => void goToCloudFolder(index)}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="opds-search-row">
+                      <input
+                        value={cloudQuery}
+                        placeholder="Search this cloud account…"
+                        onChange={(event) =>
+                          setCloudQuery(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            void searchCloud();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={cloudBusy || !cloudQuery.trim()}
+                        onClick={() => void searchCloud()}
+                      >
+                        {cloudBusy ? "Working…" : "Search"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={cloudBusy}
+                        onClick={() => {
+                          const account = activeCloudAccount();
+                          if (account) void openCloudRoot(account);
+                        }}
+                      >
+                        Root
+                      </button>
+                    </div>
+
+                    {cloudEntries.length === 0 ? (
+                      <div className="resource-empty compact">
+                        <strong>
+                          {cloudBusy
+                            ? "Loading cloud files…"
+                            : "No files loaded."}
+                        </strong>
+                        {!cloudBusy && (
+                          <p>
+                            Select the account above to browse its root folder.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="cloud-entry-list">
+                        {cloudEntries.map((entry) => (
+                          <article key={entry.id}>
+                            <div className="cloud-entry-icon">
+                              {entry.isFolder ? "▣" : "▤"}
+                            </div>
+                            <div className="cloud-entry-main">
+                              <strong>{entry.name}</strong>
+                              <small>
+                                {entry.isFolder
+                                  ? "Folder"
+                                  : formatBytes(entry.size)}
+                                {entry.mimeType
+                                  ? " · " + entry.mimeType
+                                  : ""}
+                              </small>
+                            </div>
+
+                            {entry.isFolder ? (
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                disabled={cloudBusy}
+                                onClick={() =>
+                                  void openCloudFolder(entry)
+                                }
+                              >
+                                Open
+                              </button>
+                            ) : cloudEntryIsBook(entry) ? (
+                              <button
+                                type="button"
+                                className="primary-button compact"
+                                disabled={cloudBusy}
+                                onClick={() =>
+                                  void acquireCloudEntry(entry)
+                                }
+                              >
+                                Download
+                              </button>
+                            ) : (
+                              <small className="muted">
+                                Not a Reader format
+                              </small>
+                            )}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="resource-section">
+            <header>
+              <div>
                 <span className="eyebrow">OPDS catalogs</span>
                 <h2>Browse open or authorized book catalogs</h2>
               </div>
@@ -1540,7 +1710,10 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
                     {job.state === "running" &&
                       (job.providerId === "http" ||
-                        job.providerId === "bittorrent") && (
+                        job.providerId === "bittorrent" ||
+                        job.providerId === "google-drive" ||
+                        job.providerId === "dropbox" ||
+                        job.providerId === "onedrive") && (
                       <>
                         <button
                           type="button"
@@ -1566,7 +1739,10 @@ export function ResourceHubView({ onOpenBook }: Props) {
                     {(job.state === "paused" ||
                       job.state === "failed") &&
                       (job.providerId === "http" ||
-                        job.providerId === "bittorrent") && (
+                        job.providerId === "bittorrent" ||
+                        job.providerId === "google-drive" ||
+                        job.providerId === "dropbox" ||
+                        job.providerId === "onedrive") && (
                         <>
                           <button
                             type="button"
@@ -1614,18 +1790,113 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <header>
             <div>
               <span className="eyebrow">Secure provider accounts</span>
-              <h2>Accounts</h2>
+              <h2>Cloud accounts</h2>
             </div>
+            <small>
+              Paste an OAuth access token for the provider. LexiPane verifies
+              it before saving it to the operating system secure credential
+              store; SQLite stores only account metadata.
+            </small>
           </header>
 
-          <div className="resource-empty">
-            <strong>Cloud OAuth remains intentionally disabled.</strong>
-            <p>
-              Google Drive, Dropbox, and OneDrive account connection begins in
-              RESOURCE-003. Tokens will use native secure credential storage,
-              never SQLite.
-            </p>
+          <div className="cloud-connect-card">
+            <select
+              value={connectProvider}
+              disabled={cloudBusy}
+              onChange={(event) =>
+                setConnectProvider(
+                  event.target.value as CloudProviderId,
+                )
+              }
+            >
+              <option value="google-drive">Google Drive</option>
+              <option value="dropbox">Dropbox</option>
+              <option value="onedrive">OneDrive / SharePoint</option>
+            </select>
+
+            <input
+              value={connectDisplayName}
+              disabled={cloudBusy}
+              placeholder="Account label (optional)"
+              onChange={(event) =>
+                setConnectDisplayName(event.target.value)
+              }
+            />
+
+            <input
+              value={connectToken}
+              disabled={cloudBusy}
+              type="password"
+              autoComplete="off"
+              placeholder="OAuth access token"
+              onChange={(event) =>
+                setConnectToken(event.target.value)
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void connectCloud();
+                }
+              }}
+            />
+
+            <button
+              type="button"
+              className="primary-button"
+              disabled={cloudBusy || !connectToken.trim()}
+              onClick={() => void connectCloud()}
+            >
+              {cloudBusy ? "Verifying…" : "Connect"}
+            </button>
           </div>
+
+          {cloudAccounts.length === 0 ? (
+            <div className="resource-empty">
+              <strong>No connected cloud accounts.</strong>
+              <p>
+                Once connected, the account becomes available in Browse for
+                folder navigation, search, and PDF/EPUB acquisition.
+              </p>
+            </div>
+          ) : (
+            <div className="cloud-account-list">
+              {cloudAccounts.map((account) => (
+                <article key={account.id}>
+                  <div>
+                    <span className="resource-kind-badge">
+                      {account.providerId}
+                    </span>
+                    <strong>
+                      {account.displayName || account.providerId}
+                    </strong>
+                    <small>
+                      Connected · secure token stored outside SQLite
+                    </small>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={cloudBusy}
+                      onClick={() => {
+                        setTab("browse");
+                        void openCloudRoot(account);
+                      }}
+                    >
+                      Browse
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={cloudBusy}
+                      onClick={() => void disconnectCloud(account)}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>
