@@ -1,3 +1,4 @@
+pub mod cloud;
 pub mod http;
 pub mod torrent;
 
@@ -29,7 +30,7 @@ pub fn resource_runtime_capabilities() -> ResourceRuntimeCapabilities {
             http: true,
             torrent: true,
             ed2k: false,
-            cloud: false,
+            cloud: true,
         },
     }
 }
@@ -46,6 +47,6 @@ mod tests {
         assert!(capabilities.live_transports.http);
         assert!(capabilities.live_transports.torrent);
         assert!(!capabilities.live_transports.ed2k);
-        assert!(!capabilities.live_transports.cloud);
+        assert!(capabilities.live_transports.cloud);
     }
 }
