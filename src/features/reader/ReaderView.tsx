@@ -2529,8 +2529,9 @@ export function ReaderView({
                       disabled={
                         aiBusy ||
                         selection.sentenceIndex === undefined ||
-                        (selection.sentenceIndex <= 0 &&
-                          (!isPdf || selection.page <= 1))
+                        (isPdf &&
+                          selection.sentenceIndex <= 0 &&
+                          selection.page <= 1)
                       }
                       onClick={() => navigateSentence(-1)}
                     >
@@ -2550,9 +2551,10 @@ export function ReaderView({
                         aiBusy ||
                         selection.sentenceIndex === undefined ||
                         selection.sentenceCount === undefined ||
-                        (selection.sentenceIndex >=
-                          selection.sentenceCount - 1 &&
-                          (!isPdf || selection.page >= pageCount))
+                        (isPdf &&
+                          selection.sentenceIndex >=
+                            selection.sentenceCount - 1 &&
+                          selection.page >= pageCount)
                       }
                       onClick={() => navigateSentence(1)}
                     >
