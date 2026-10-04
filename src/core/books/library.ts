@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { initializeDatabase } from "../db/database";
+import { computeBookFileHash } from "./fileIdentity";
 import { getBookExtension } from "./openBook";
 
 export type BookReadingStatus = "reading" | "finished";
@@ -7,6 +8,7 @@ export type BookReadingStatus = "reading" | "finished";
 export interface LibraryBook {
   id: string;
   file_path: string;
+  file_hash: string | null;
   format: string;
   title: string | null;
   author: string | null;
@@ -25,9 +27,18 @@ function titleFromPath(path: string): string {
 }
 
 const BOOK_SELECT =
-  "SELECT b.id, b.file_path, b.format, b.title, b.author, b.cover_path, " +
+  "SELECT b.id, b.file_path, b.file_hash, b.format, b.title, b.author, b.cover_path, " +
   "b.favorite, b.reading_status, rp.progress, b.added_at, b.last_opened_at " +
   "FROM books b LEFT JOIN reading_positions rp ON rp.book_id = b.id ";
+
+async function hashBookFile(path: string): Promise<string | null> {
+  try {
+    return await computeBookFileHash(path);
+  } catch (error) {
+    console.warn("Unable to compute book content hash", error);
+    return null;
+  }
+}
 
 export async function registerBookFile(path: string): Promise<LibraryBook | null> {
   if (!isTauri()) return null;
@@ -36,26 +47,139 @@ export async function registerBookFile(path: string): Promise<LibraryBook | null
   if (!db) return null;
 
   const now = new Date().toISOString();
-  const id = crypto.randomUUID();
   const format = getBookExtension(path) || "unknown";
   const title = titleFromPath(path);
 
-  await db.execute(
-    "INSERT INTO books (id, file_path, format, title, added_at, last_opened_at) " +
-      "VALUES ($1, $2, $3, $4, $5, $6) " +
-      "ON CONFLICT(file_path) DO UPDATE SET " +
-      "format = excluded.format, " +
-      "title = COALESCE(books.title, excluded.title), " +
-      "last_opened_at = excluded.last_opened_at",
-    [id, path, format, title, now, now],
-  );
-
-  const rows = await db.select<LibraryBook[]>(
+  const existingPath = await db.select<LibraryBook[]>(
     BOOK_SELECT + "WHERE b.file_path = $1 LIMIT 1",
     [path],
   );
 
+  if (existingPath[0]) {
+    const fileHash =
+      existingPath[0].file_hash || (await hashBookFile(path));
+
+    await db.execute(
+      "UPDATE books SET format = $2, file_hash = COALESCE(file_hash, $3), " +
+        "last_opened_at = $4 WHERE id = $1",
+      [existingPath[0].id, format, fileHash, now],
+    );
+
+    const rows = await db.select<LibraryBook[]>(
+      BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
+      [existingPath[0].id],
+    );
+
+    return rows[0] ?? null;
+  }
+
+  const fileHash = await hashBookFile(path);
+
+  if (fileHash) {
+    const existingHash = await db.select<LibraryBook[]>(
+      BOOK_SELECT + "WHERE b.file_hash = $1 LIMIT 1",
+      [fileHash],
+    );
+
+    if (existingHash[0]) {
+      await db.execute(
+        "UPDATE books SET file_path = $2, format = $3, " +
+          "title = CASE WHEN title IS NULL OR TRIM(title) = '' THEN $4 ELSE title END, " +
+          "last_opened_at = $5 WHERE id = $1",
+        [existingHash[0].id, path, format, title, now],
+      );
+
+      const rows = await db.select<LibraryBook[]>(
+        BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
+        [existingHash[0].id],
+      );
+
+      return rows[0] ?? null;
+    }
+  }
+
+  const id = crypto.randomUUID();
+
+  await db.execute(
+    "INSERT INTO books " +
+      "(id, file_path, file_hash, format, title, added_at, last_opened_at) " +
+      "VALUES ($1, $2, $3, $4, $5, $6, $6)",
+    [id, path, fileHash, format, title, now],
+  );
+
+  const rows = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
+    [id],
+  );
+
   return rows[0] ?? null;
+}
+
+export async function relinkLibraryBook(
+  bookId: string,
+  path: string,
+): Promise<LibraryBook> {
+  if (!isTauri()) {
+    throw new Error("Relinking books requires the desktop application.");
+  }
+
+  const db = await initializeDatabase();
+  if (!db) {
+    throw new Error("Database is unavailable.");
+  }
+
+  const existing = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
+    [bookId],
+  );
+  const book = existing[0];
+
+  if (!book) {
+    throw new Error("The library book no longer exists.");
+  }
+
+  const fileHash = await computeBookFileHash(path);
+  if (!fileHash) {
+    throw new Error("Unable to identify the selected book file.");
+  }
+
+  if (book.file_hash && book.file_hash !== fileHash) {
+    throw new Error(
+      "The selected file has different content. Choose the moved or renamed copy of the same book.",
+    );
+  }
+
+  const conflict = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.file_path = $1 AND b.id <> $2 LIMIT 1",
+    [path, bookId],
+  );
+
+  if (conflict[0]) {
+    throw new Error("That file is already linked to another library entry.");
+  }
+
+  await db.execute(
+    "UPDATE books SET file_path = $2, file_hash = $3, format = $4, " +
+      "last_opened_at = $5 WHERE id = $1",
+    [
+      bookId,
+      path,
+      fileHash,
+      getBookExtension(path) || book.format,
+      new Date().toISOString(),
+    ],
+  );
+
+  const rows = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.id = $1 LIMIT 1",
+    [bookId],
+  );
+
+  if (!rows[0]) {
+    throw new Error("Relinked book could not be reloaded.");
+  }
+
+  return rows[0];
 }
 
 export async function listLibraryBooks(): Promise<LibraryBook[]> {
