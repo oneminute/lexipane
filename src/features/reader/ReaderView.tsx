@@ -2089,18 +2089,25 @@ export function ReaderView({
       };
     }
 
-    if (isEpub && epubCurrentCfi) {
-      return {
-        kind: "epub-cfi",
-        cfi: epubCurrentCfi,
-      };
+    if (isEpub) {
+      const cfi = epubCurrentCfi || epubInitialCfi;
+      if (cfi) {
+        return {
+          kind: "epub-cfi",
+          cfi,
+        };
+      }
     }
 
-    if (isKindle && kindleCurrentChapterId) {
-      return {
-        kind: "kindle-chapter",
-        chapterId: kindleCurrentChapterId,
-      };
+    if (isKindle) {
+      const chapterId =
+        kindleCurrentChapterId || kindleInitialChapterId;
+      if (chapterId) {
+        return {
+          kind: "kindle-chapter",
+          chapterId,
+        };
+      }
     }
 
     return null;
