@@ -7,6 +7,7 @@ import {
 } from "./schema";
 
 let database: Database | null = null;
+let databaseInitialization: Promise<Database | null> | null = null;
 
 interface MetaRow {
   value: string;
@@ -85,35 +86,53 @@ export async function initializeDatabase(): Promise<Database | null> {
     return database;
   }
 
-  database = await Database.load("sqlite:lexipane.db");
-  await database.execute("PRAGMA foreign_keys = ON");
-
-  // app_meta must exist before we can determine whether this database
-  // has already been versioned.
-  await database.execute(APP_META_STATEMENT);
-
-  const existingLibrary = await hasExistingLibrarySchema(database);
-
-  if (!existingLibrary) {
-    // A brand-new database receives the latest schema directly. Replaying
-    // historical ALTER TABLE migrations here would duplicate columns that are
-    // already present in the current CREATE TABLE definitions.
-    await createLatestSchema(database);
-    return database;
+  if (databaseInitialization) {
+    return databaseInitialization;
   }
 
-  const currentVersion = await readSchemaVersion(database);
+  databaseInitialization = (async () => {
+    const db = await Database.load("sqlite:lexipane.db");
+    await db.execute("PRAGMA foreign_keys = ON");
 
-  // CREATE IF NOT EXISTS also ensures tables introduced outside the earliest
-  // schema exist before incremental migrations are applied.
-  for (const statement of schemaStatements) {
-    await database.execute(statement);
+    // app_meta must exist before any concurrent settings read can run.
+    // Do not publish `database` until the entire schema initialization
+    // completes; callers arriving while this work is in progress all await
+    // the same initialization promise.
+    await db.execute(APP_META_STATEMENT);
+
+    const existingLibrary = await hasExistingLibrarySchema(db);
+
+    if (!existingLibrary) {
+      // A brand-new database receives the latest schema directly. Replaying
+      // historical ALTER TABLE migrations here would duplicate columns that
+      // are already present in the current CREATE TABLE definitions.
+      await createLatestSchema(db);
+    } else {
+      const currentVersion = await readSchemaVersion(db);
+
+      // CREATE IF NOT EXISTS also ensures tables introduced outside the
+      // earliest schema exist before incremental migrations are applied.
+      for (const statement of schemaStatements) {
+        await db.execute(statement);
+      }
+
+      await runMigrations(db, currentVersion);
+      await writeSchemaVersion(db, SCHEMA_VERSION);
+    }
+
+    database = db;
+    return db;
+  })();
+
+  try {
+    return await databaseInitialization;
+  } catch (error) {
+    // Allow a later call to retry cleanly after a failed initialization.
+    database = null;
+    throw error;
+  } finally {
+    databaseInitialization = null;
   }
-
-  await runMigrations(database, currentVersion);
-  await writeSchemaVersion(database, SCHEMA_VERSION);
-
-  return database;
 }
 
 export function getInitializedDatabase() {
