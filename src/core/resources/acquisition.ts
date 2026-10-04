@@ -70,11 +70,17 @@ export async function prepareHttpAcquisition(
     probe.fileName ?? probe.finalUrl,
   );
   const normalizedType = probe.contentType?.toLowerCase() ?? "";
+  const declaredType =
+    typeof metadata.acquisitionType === "string"
+      ? metadata.acquisitionType.toLowerCase()
+      : "";
   const supportedByMetadata =
     extension === "pdf" ||
     extension === "epub" ||
     normalizedType.includes("application/pdf") ||
-    normalizedType.includes("application/epub+zip");
+    normalizedType.includes("application/epub+zip") ||
+    declaredType.includes("application/pdf") ||
+    declaredType.includes("application/epub+zip");
 
   if (!supportedByMetadata) {
     throw new Error(
@@ -239,11 +245,25 @@ export async function startPreparedHttpAcquisition(
     error: null,
   });
 
-  await startHttpDownload(
-    job.id,
-    preparation.probe.finalUrl,
-    preparation.probe.fileName,
-  );
+  try {
+    await startHttpDownload(
+      job.id,
+      preparation.probe.finalUrl,
+      preparation.probe.fileName,
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to start HTTP transfer.";
+
+    await updateTransferJob(job.id, {
+      state: "failed",
+      error: message,
+      completedAt: new Date().toISOString(),
+    });
+    throw error;
+  }
 
   return (await getTransferJob(job.id)) ?? {
     ...job,
@@ -287,7 +307,20 @@ export async function resumeHttpTransfer(
       : undefined;
 
   await resetTransferJobForRetry(job.id);
-  await startHttpDownload(job.id, url, fileNameHint);
+
+  try {
+    await startHttpDownload(job.id, url, fileNameHint);
+  } catch (error) {
+    await updateTransferJob(job.id, {
+      state: "failed",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to restart HTTP transfer.",
+      completedAt: new Date().toISOString(),
+    });
+    throw error;
+  }
 }
 
 export { pauseHttpDownload, cancelHttpDownload };
