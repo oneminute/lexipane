@@ -276,12 +276,17 @@ async function recoverInterruptedTransfers(
       continue;
     }
 
-    if (job.state === "running") {
+    if (
+      job.providerId === "http" &&
+      (job.state === "running" || job.state === "queued")
+    ) {
       await updateTransferJob(job.id, {
         state: "paused",
         downloadRate: 0,
         error:
-          "LexiPane restarted while this HTTP transfer was running. Resume to continue from the partial file.",
+          job.state === "queued"
+            ? "LexiPane restarted before this HTTP transfer began. Resume to start it."
+            : "LexiPane restarted while this HTTP transfer was running. Resume to continue from the partial file.",
       });
       dispatchTransferUpdated(job.id);
     }
