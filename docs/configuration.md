@@ -24,6 +24,11 @@ Current defaults include:
 These values are fallbacks. A saved user preference takes precedence when a
 corresponding runtime setting exists.
 
+For local development, the source-controlled Ollama default is
+`http://127.0.0.1:12000`. LexiPane also probes Ollama's standard
+`http://127.0.0.1:11434` endpoint when the preferred endpoint is unavailable,
+then stores the working endpoint in `app_meta`.
+
 ## Runtime user settings
 
 Mutable application settings belong in the local SQLite database, primarily
