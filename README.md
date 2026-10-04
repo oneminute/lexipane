@@ -11,6 +11,7 @@ The current desktop build now includes PDF, EPUB, and Kindle-family reading flow
 - Tauri 2 + React + TypeScript + Rust desktop shell
 - local SQLite bookshelf
 - bookshelf favorites, finished state, search, recent filter, covers, and reading progress
+- SHA-256 book identity with moved/renamed-file recovery and relinking
 - open books through the native file picker
 - drag supported ebook files into the application
 - real PDF.js rendering with metadata, contents navigation, protected-PDF handling, lazy rendering, and quote-recoverable highlights

@@ -1,3 +1,4 @@
+mod library_files;
 mod ocr;
 mod secrets;
 
@@ -10,6 +11,8 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
+            library_files::book_file_sha256,
+            library_files::check_book_files,
             ocr::local_ocr_status,
             ocr::ocr_image,
             secrets::secret_set,

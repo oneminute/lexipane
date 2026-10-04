@@ -2769,3 +2769,40 @@ button { cursor: pointer; }
   border-radius: 8px;
 }
 .scanned-page-help button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* Library file identity and relink state */
+
+.library-message {
+  padding: 9px 12px;
+  margin: -6px 0 14px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #555b69;
+  background: #f2f3f7;
+  border: 1px solid #e3e5eb;
+  border-radius: 9px;
+}
+
+.book-card.missing {
+  border-color: #e8c9cc;
+  background: linear-gradient(180deg, rgba(255, 241, 242, 0.72), white);
+}
+
+.book-card.missing .book-card-open {
+  opacity: 0.72;
+}
+
+.book-missing-badge {
+  position: absolute;
+  z-index: 2;
+  right: 48px;
+  top: 11px;
+  padding: 4px 7px;
+  font-size: 7px;
+  font-weight: 800;
+  color: #944e56;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  background: #fae5e7;
+  border-radius: 999px;
+}

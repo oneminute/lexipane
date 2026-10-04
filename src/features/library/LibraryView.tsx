@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   listLibraryBooks,
+  relinkLibraryBook,
   setBookFavorite,
   setBookReadingStatus,
   type LibraryBook,
 } from "../../core/books/library";
+import { checkBookFiles } from "../../core/books/fileIdentity";
+import { chooseBookFile } from "../../core/books/openBook";
 
 interface Props {
   onOpenBook: () => void;
@@ -32,9 +35,24 @@ export function LibraryView({
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [query, setQuery] = useState("");
+  const [missingPaths, setMissingPaths] = useState<Set<string>>(new Set());
+  const [message, setMessage] = useState("");
+
+  async function refreshFileStatus(items: LibraryBook[]) {
+    const statuses = await checkBookFiles(items.map((book) => book.file_path));
+    setMissingPaths(
+      new Set(
+        statuses
+          .filter((status) => !status.exists)
+          .map((status) => status.path),
+      ),
+    );
+  }
 
   async function refreshBooks() {
-    setBooks(await listLibraryBooks());
+    const items = await listLibraryBooks();
+    setBooks(items);
+    await refreshFileStatus(items);
   }
 
   useEffect(() => {
@@ -42,8 +60,23 @@ export function LibraryView({
     setLoading(true);
 
     void listLibraryBooks()
-      .then((items) => {
-        if (!cancelled) setBooks(items);
+      .then(async (items) => {
+        if (cancelled) return;
+        setBooks(items);
+
+        const statuses = await checkBookFiles(
+          items.map((book) => book.file_path),
+        );
+
+        if (!cancelled) {
+          setMissingPaths(
+            new Set(
+              statuses
+                .filter((status) => !status.exists)
+                .map((status) => status.path),
+            ),
+          );
+        }
       })
       .catch((error) => {
         console.error("Unable to load LexiPane library", error);
@@ -90,6 +123,27 @@ export function LibraryView({
     await refreshBooks();
   }
 
+  async function relinkBook(book: LibraryBook) {
+    setMessage("");
+
+    const path = await chooseBookFile();
+    if (!path) return;
+
+    try {
+      await relinkLibraryBook(book.id, path);
+      await refreshBooks();
+      setMessage(
+        "Relinked “" + (book.title || "Untitled") + "” to its new location.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to relink this book.",
+      );
+    }
+  }
+
   return (
     <section className="page library-page">
       <header className="page-header">
@@ -131,6 +185,12 @@ export function LibraryView({
         />
       </div>
 
+      {message && (
+        <div className="library-message" role="status">
+          {message}
+        </div>
+      )}
+
       <button className="drop-zone" onClick={onOpenBook}>
         <span className="drop-icon">⇩</span>
         <strong>Drop a book here or choose a file</strong>
@@ -159,11 +219,28 @@ export function LibraryView({
 
       {visibleBooks.length > 0 ? (
         <div className="book-grid">
-          {visibleBooks.map((book) => (
-            <article className="book-card" key={book.id}>
+          {visibleBooks.map((book) => {
+            const missing = missingPaths.has(book.file_path);
+
+            return (
+            <article
+              className={missing ? "book-card missing" : "book-card"}
+              key={book.id}
+            >
+              {missing && (
+                <span className="book-missing-badge">File missing</span>
+              )}
               <button
                 className="book-card-open"
-                onClick={() => void onOpenStoredBook(book.file_path)}
+                onClick={() => {
+                  if (missing) {
+                    setMessage(
+                      "This book file moved or was deleted. Use the relink button to find the same file.",
+                    );
+                    return;
+                  }
+                  void onOpenStoredBook(book.file_path);
+                }}
               >
                 <div className="book-cover-placeholder">
                   {book.cover_path?.startsWith("data:image/") ? (
@@ -211,6 +288,15 @@ export function LibraryView({
               </button>
 
               <div className="book-card-actions">
+                {missing && (
+                  <button
+                    aria-label="Relink moved book"
+                    title="Relink moved book"
+                    onClick={() => void relinkBook(book)}
+                  >
+                    ↻
+                  </button>
+                )}
                 <button
                   className={book.favorite === 1 ? "active" : ""}
                   aria-label={
@@ -242,7 +328,8 @@ export function LibraryView({
                 </button>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="library-empty">

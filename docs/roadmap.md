@@ -228,12 +228,15 @@ Implemented:
 - Recent filter
 - Favorites
 - Finished status
+- SHA-256 content identity for newly opened/backfilled books
+- automatic moved/renamed-book recognition when the same content is opened at a new path
+- missing-file detection
+- explicit relink flow with content verification when a stored hash is available
 
 Next:
 
 - optional "Copy into LexiPane Library" managed-storage mode
-- content-hash identity for moved/renamed books
-- missing-file repair/relink flow
+- background hash backfill for legacy library entries
 
 ## AI provider milestones
 
