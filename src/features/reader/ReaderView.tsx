@@ -1233,13 +1233,26 @@ export function ReaderView({
     }
   }
 
-  function captureSelection() {
-    if (regionMode) return;
+  function applyReaderSelection(
+    nextSelection: ActiveReaderSelection,
+  ) {
+    setSelection(nextSelection);
+    setAiResult(null);
+    setAiError(null);
+    setQuestion("");
+    setNoteStatus("idle");
+    setHighlightStatus("idle");
+  }
+
+  function readBrowserPdfSelection(
+    kind: ActiveReaderSelection["kind"] = "manual",
+  ): ActiveReaderSelection | null {
+    if (regionMode) return null;
 
     const browserSelection = window.getSelection();
     const text = normalizedText(browserSelection?.toString());
     if (!browserSelection || browserSelection.rangeCount === 0 || !text) {
-      return;
+      return null;
     }
 
     const range = browserSelection.getRangeAt(0);
@@ -1262,24 +1275,47 @@ export function ReaderView({
         ? Array.from(range.getClientRects())
             .filter((rect) => rect.width > 0.5 && rect.height > 0.5)
             .map((rect) => ({
-              x: Math.max(0, Math.min(1, (rect.left - pageBounds.left) / pageBounds.width)),
-              y: Math.max(0, Math.min(1, (rect.top - pageBounds.top) / pageBounds.height)),
-              width: Math.max(0, Math.min(1, rect.width / pageBounds.width)),
-              height: Math.max(0, Math.min(1, rect.height / pageBounds.height)),
+              x: Math.max(
+                0,
+                Math.min(1, (rect.left - pageBounds.left) / pageBounds.width),
+              ),
+              y: Math.max(
+                0,
+                Math.min(1, (rect.top - pageBounds.top) / pageBounds.height),
+              ),
+              width: Math.max(
+                0,
+                Math.min(1, rect.width / pageBounds.width),
+              ),
+              height: Math.max(
+                0,
+                Math.min(1, rect.height / pageBounds.height),
+              ),
             }))
         : [];
 
-    setSelection({
+    return {
       text,
       context,
       page: selectedPage,
       rects,
-    });
-    setAiResult(null);
-    setAiError(null);
-    setQuestion("");
-    setNoteStatus("idle");
-    setHighlightStatus("idle");
+      kind,
+    };
+  }
+
+  function captureSelection() {
+    const nextSelection = readBrowserPdfSelection("manual");
+    if (!nextSelection) return;
+
+    applyReaderSelection(nextSelection);
+  }
+
+  function captureWordSelection() {
+    const nextSelection = readBrowserPdfSelection("word");
+    if (!nextSelection) return;
+
+    applyReaderSelection(nextSelection);
+    void runAi("explain", undefined, nextSelection);
   }
 
   function captureSentence(event: ReactMouseEvent<HTMLDivElement>) {
@@ -1301,12 +1337,6 @@ export function ReaderView({
     const targetIndex = spans.indexOf(targetSpan);
     if (targetIndex < 0) return;
 
-    const records: Array<{
-      span: HTMLSpanElement;
-      start: number;
-      end: number;
-    }> = [];
-
     let pageText = "";
     let targetOffset = 0;
 
@@ -1319,87 +1349,129 @@ export function ReaderView({
       pageText += value;
       const end = pageText.length;
 
-      records.push({ span, start, end });
       if (index === targetIndex) {
-        targetOffset = Math.min(end - 1, start + Math.floor(value.length / 2));
+        targetOffset = Math.min(
+          end - 1,
+          start + Math.floor(value.length / 2),
+        );
       }
     });
 
     if (!pageText) return;
 
-    const sentenceRegex = /[^.!?]+(?:[.!?]+["')\]]*|$)/g;
-    let match: RegExpExecArray | null;
-    let sentenceStart = 0;
-    let sentenceEnd = pageText.length;
-    let sentenceText = pageText;
-
-    while ((match = sentenceRegex.exec(pageText)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (targetOffset >= start && targetOffset <= end) {
-        sentenceStart = start;
-        sentenceEnd = end;
-        sentenceText = normalizedText(match[0]);
-        break;
-      }
-
-      if (match[0].length === 0) {
-        sentenceRegex.lastIndex += 1;
-      }
-    }
-
-    if (!sentenceText) return;
-
-    const pageBounds = pageShell.getBoundingClientRect();
-    const rects: NormalizedRect[] =
-      pageBounds.width > 0 && pageBounds.height > 0
-        ? records
-            .filter(
-              (record) =>
-                record.end >= sentenceStart && record.start <= sentenceEnd,
-            )
-            .flatMap((record) =>
-              Array.from(record.span.getClientRects()).map((rect) => ({
-                x: Math.max(
-                  0,
-                  Math.min(1, (rect.left - pageBounds.left) / pageBounds.width),
-                ),
-                y: Math.max(
-                  0,
-                  Math.min(1, (rect.top - pageBounds.top) / pageBounds.height),
-                ),
-                width: Math.max(
-                  0,
-                  Math.min(1, rect.width / pageBounds.width),
-                ),
-                height: Math.max(
-                  0,
-                  Math.min(1, rect.height / pageBounds.height),
-                ),
-              })),
-            )
-        : [];
+    const sentences = segmentSentences(pageText);
+    const sentenceIndex = sentences.findIndex(
+      (sentence) =>
+        targetOffset >= sentence.start &&
+        targetOffset < sentence.end,
+    );
+    const sentence = sentences[sentenceIndex];
+    if (!sentence) return;
 
     const pageValue = Number(pageShell.dataset.pdfPage);
     const selectedPage =
       Number.isInteger(pageValue) && pageValue > 0 ? pageValue : currentPage;
+    const rects = locatePdfTextRects(selectedPage, sentence.text);
 
     const nextSelection: ActiveReaderSelection = {
-      text: sentenceText,
+      text: sentence.text,
       context: pageText,
       page: selectedPage,
       rects,
+      kind: "sentence",
+      sentenceIndex,
+      sentenceCount: sentences.length,
     };
 
     window.getSelection()?.removeAllRanges();
-    setSelection(nextSelection);
-    setAiResult(null);
-    setAiError(null);
-    setQuestion("");
-    setNoteStatus("idle");
-    setHighlightStatus("idle");
-
+    applyReaderSelection(nextSelection);
     void runAi("grammar", undefined, nextSelection);
+  }
+
+  function navigatePdfSentence(direction: -1 | 1) {
+    if (
+      !selection ||
+      selection.kind !== "sentence" ||
+      selection.sentenceIndex === undefined
+    ) {
+      return;
+    }
+
+    const context =
+      normalizedText(selection.context) ||
+      pageTexts[selection.page] ||
+      getPdfPageText(selection.page);
+    const sentences = segmentSentences(context);
+    const nextIndex = selection.sentenceIndex + direction;
+    const sentence = sentences[nextIndex];
+
+    if (!sentence) return;
+
+    const nextSelection: ActiveReaderSelection = {
+      text: sentence.text,
+      context,
+      page: selection.page,
+      rects: locatePdfTextRects(selection.page, sentence.text),
+      kind: "sentence",
+      sentenceIndex: nextIndex,
+      sentenceCount: sentences.length,
+    };
+
+    applyReaderSelection(nextSelection);
+    void runAi("grammar", undefined, nextSelection);
+  }
+
+  function navigateSentence(direction: -1 | 1) {
+    if (!selection || selection.kind !== "sentence" || aiBusy) return;
+
+    if (isPdf) {
+      navigatePdfSentence(direction);
+      return;
+    }
+
+    sentenceNavigationTokenRef.current += 1;
+    setSentenceNavigation({
+      token: sentenceNavigationTokenRef.current,
+      direction,
+    });
+  }
+
+  function handleDocumentMouseDown(
+    event: ReactMouseEvent<HTMLDivElement>,
+  ) {
+    if (event.detail >= 3 && !regionMode) {
+      event.preventDefault();
+    }
+  }
+
+  function handleDocumentMouseUp(
+    event: ReactMouseEvent<HTMLDivElement>,
+  ) {
+    if (regionMode) return;
+
+    if (event.detail >= 3) {
+      if (wordSelectionTimerRef.current !== null) {
+        window.clearTimeout(wordSelectionTimerRef.current);
+        wordSelectionTimerRef.current = null;
+      }
+
+      captureSentence(event);
+      return;
+    }
+
+    if (event.detail === 2) {
+      if (wordSelectionTimerRef.current !== null) {
+        window.clearTimeout(wordSelectionTimerRef.current);
+      }
+
+      wordSelectionTimerRef.current = window.setTimeout(() => {
+        wordSelectionTimerRef.current = null;
+        captureWordSelection();
+      }, 320);
+      return;
+    }
+
+    captureSelection();
   }
 
   async function runAi(
@@ -1412,7 +1484,7 @@ export function ReaderView({
 
     const title =
       mode === "grammar"
-        ? "Grammar & structure"
+        ? "Sentence analysis"
         : mode === "ask"
           ? "Answer"
           : "Context explanation";
