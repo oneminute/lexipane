@@ -65,6 +65,10 @@ import {
 } from "../../core/resources/registry";
 import { classifyResourceInput } from "../../core/resources/resolver";
 import {
+  isSupportedCloudShareKind,
+  prepareCloudShareAcquisition,
+} from "../../core/resources/sharedLinks";
+import {
   federatedResourceSearch,
   type FederatedResourceResult,
 } from "../../core/resources/federatedSearch";
@@ -624,6 +628,38 @@ export function ResourceHubView({ onOpenBook }: Props) {
         error instanceof Error
           ? error.message
           : "Unable to start BitTorrent download.",
+      );
+    } finally {
+      setNetworkBusy(false);
+    }
+  }
+
+  async function probeCurrentCloudShare() {
+    if (
+      !classification ||
+      !isSupportedCloudShareKind(classification.kind)
+    ) {
+      return;
+    }
+
+    setNetworkBusy(true);
+    setMessage("");
+
+    try {
+      const preparation = await prepareCloudShareAcquisition(
+        classification.kind,
+        classification.normalizedInput,
+      );
+      setHttpPreparation(preparation);
+      setMessage(
+        "Cloud share resolved. No file has been downloaded yet.",
+      );
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to resolve the cloud share link.",
       );
     } finally {
       setNetworkBusy(false);
@@ -1311,6 +1347,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
   }
 
   const canProbeHttp = classification?.kind === "http";
+  const canProbeCloudShare =
+    classification !== null &&
+    isSupportedCloudShareKind(classification.kind);
   const canBrowseOpds = classification?.kind === "opds";
   const canPreviewTorrent =
     classification?.kind === "magnet" ||
@@ -1538,6 +1577,19 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       onClick={() => void probeCurrentHttp()}
                     >
                       {networkBusy ? "Probing…" : "Probe metadata"}
+                    </button>
+                  )}
+
+                  {canProbeCloudShare && (
+                    <button
+                      type="button"
+                      className="primary-button compact"
+                      disabled={networkBusy}
+                      onClick={() =>
+                        void probeCurrentCloudShare()
+                      }
+                    >
+                      {networkBusy ? "Resolving…" : "Resolve share"}
                     </button>
                   )}
 
