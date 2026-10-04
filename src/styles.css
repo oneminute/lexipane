@@ -2988,3 +2988,74 @@ button { cursor: pointer; }
     flex: 1 1 150px;
   }
 }
+
+
+/* EPUB / Kindle embedded image lightbox */
+
+.reader-image-lightbox {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(18, 19, 23, 0.88);
+  backdrop-filter: blur(3px);
+}
+
+.reader-image-lightbox-figure {
+  display: grid;
+  gap: 10px;
+  max-width: min(94vw, 1400px);
+  max-height: 92vh;
+  margin: 0;
+  place-items: center;
+}
+
+.reader-image-lightbox-figure img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(92vh - 44px);
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.38);
+}
+
+.reader-image-lightbox-figure figcaption {
+  max-width: min(80vw, 900px);
+  font-size: 10px;
+  line-height: 1.45;
+  color: #eceef3;
+  text-align: center;
+}
+
+.reader-image-lightbox-close {
+  position: fixed;
+  z-index: 121;
+  top: 18px;
+  right: 20px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  place-items: center;
+  font-size: 25px;
+  line-height: 1;
+  color: white;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+}
+
+@media (max-width: 760px) {
+  .reader-image-lightbox {
+    padding: 14px;
+  }
+
+  .reader-image-lightbox-close {
+    top: 10px;
+    right: 10px;
+  }
+}

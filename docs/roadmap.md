@@ -133,7 +133,6 @@ Implemented:
 - shared attachment files retained until the final referencing note is deleted
 - batch Markdown export of the current Notebook view
 - explicit book and tag filters for targeted Markdown export
-
 - explicit orphan attachment cleanup control
 
 Next:
@@ -160,15 +159,15 @@ Implemented:
 - selected-text AI assistance
 - Notebook anchors
 - automatic difficult-word/phrase assistance
-
 - saved-CFI fallback to book start when a persisted location is invalid
 - malformed saved-highlight CFI isolation so one bad anchor does not break the reader
+- click/keyboard image enlargement with a Reader lightbox
 
 Next:
 
 - broader malformed-EPUB / CFI regression fixtures
 - footnote / popup handling
-- image zoom and richer internal-resource handling
+- richer internal-resource handling
 
 ## Phase 5 — MOBI / AZW / AZW3
 
@@ -188,6 +187,7 @@ Implemented:
 - shared persisted font-size controls
 - Light / Sepia / Dark reading themes
 - cover extraction into the bookshelf
+- click/keyboard image enlargement with a Reader lightbox
 
 Next:
 

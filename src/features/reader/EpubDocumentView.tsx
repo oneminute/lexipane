@@ -18,6 +18,7 @@ import type {
   EbookTheme,
   EpubFlowMode,
 } from "../../core/reading/ebookPreferences";
+import type { ReaderImagePreview } from "./readerImage";
 
 export interface EpubMetadataSummary {
   title: string | null;
@@ -52,6 +53,7 @@ interface Props {
   onRelocated?: (cfi: string, progress: number | null) => void;
   onContextReady?: (cfi: string, context: string) => void;
   onSelection?: (selection: EpubSelection) => void;
+  onImageOpen?: (image: ReaderImagePreview) => void;
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -253,11 +255,7 @@ function syncUserHighlights(
   for (const cfi of renderedCfis) {
     if (!activeCfis.has(cfi)) {
       try {
-        try {
-      rendition.annotations.remove(cfi, "highlight");
-    } catch (error) {
-      console.warn("Unable to remove EPUB auto highlight", cfi, error);
-    }
+        rendition.annotations.remove(cfi, "highlight");
       } catch (error) {
         console.warn("Unable to remove stale EPUB highlight", cfi, error);
       }
@@ -298,9 +296,66 @@ function clearAutoHighlights(
   renderedAutoCfis: Map<string, string>,
 ) {
   for (const cfi of renderedAutoCfis.values()) {
-    rendition.annotations.remove(cfi, "highlight");
+    try {
+      rendition.annotations.remove(cfi, "highlight");
+    } catch (error) {
+      console.warn("Unable to remove EPUB auto highlight", cfi, error);
+    }
   }
   renderedAutoCfis.clear();
+}
+
+function wireImageZoom(
+  contents: Contents,
+  onImageOpen?: (image: ReaderImagePreview) => void,
+) {
+  if (!onImageOpen) return;
+
+  const images = Array.from(
+    contents.document.querySelectorAll<HTMLImageElement>("img"),
+  );
+
+  for (const image of images) {
+    image.style.cursor = "zoom-in";
+    image.title = image.title || "Click to enlarge image";
+
+    if (!image.hasAttribute("tabindex")) {
+      image.tabIndex = 0;
+    }
+
+    const openImage = () => {
+      const src = image.currentSrc || image.src;
+      if (!src) return;
+
+      onImageOpen({
+        src,
+        alt: normalizeText(image.alt) || "Book image",
+      });
+    };
+
+    image.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openImage();
+    };
+
+    image.onkeydown = (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      openImage();
+    };
+  }
+}
+
+function syncImageZoom(
+  rendition: Rendition,
+  onImageOpen?: (image: ReaderImagePreview) => void,
+) {
+  for (const contents of renderedContents(rendition)) {
+    wireImageZoom(contents, onImageOpen);
+  }
 }
 
 function syncAutoHighlights(
@@ -362,6 +417,7 @@ export function EpubDocumentView({
   onRelocated,
   onContextReady,
   onSelection,
+  onImageOpen,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const renditionRef = useRef<Rendition | null>(null);
@@ -491,9 +547,18 @@ export function EpubDocumentView({
               autoTermsRef.current,
               renderedAutoCfisRef.current,
             );
+            syncImageZoom(rendition, onImageOpen);
           }, 0);
         },
       );
+
+      rendition.on("rendered", () => {
+        window.setTimeout(() => {
+          if (!cancelled && rendition) {
+            syncImageZoom(rendition, onImageOpen);
+          }
+        }, 0);
+      });
 
       rendition.on(
         "selected",
@@ -544,6 +609,7 @@ export function EpubDocumentView({
         autoTermsRef.current,
         renderedAutoCfisRef.current,
       );
+      syncImageZoom(rendition, onImageOpen);
 
       const context = currentContext(rendition);
       const location = rendition.location?.start?.cfi;
@@ -584,6 +650,7 @@ export function EpubDocumentView({
     onCoverReady,
     onMetadataReady,
     onOutlineReady,
+    onImageOpen,
     onRelocated,
     onSelection,
     path,

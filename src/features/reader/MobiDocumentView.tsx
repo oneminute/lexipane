@@ -19,6 +19,7 @@ import type { KindleTextAnnotation } from "../../core/annotations/kindleAnnotati
 import { getBookExtension } from "../../core/books/openBook";
 import { normalizeTerm } from "../../core/reading/knownTerms";
 import type { EbookTheme } from "../../core/reading/ebookPreferences";
+import type { ReaderImagePreview } from "./readerImage";
 
 type KindleParser = Mobi | Kf8;
 type KindleTocItem = MobiTocItem | Kf8TocItem;
@@ -74,6 +75,7 @@ interface Props {
     context: string,
   ) => void;
   onSelection?: (selection: KindleSelection) => void;
+  onImageOpen?: (image: ReaderImagePreview) => void;
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -343,6 +345,7 @@ export function MobiDocumentView({
   onRelocated,
   onContextReady,
   onSelection,
+  onImageOpen,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const parserRef = useRef<KindleParser | null>(null);
@@ -540,9 +543,43 @@ export function MobiDocumentView({
       });
     };
 
-    const handleLink = (event: MouseEvent) => {
+    const images = Array.from(
+      document.querySelectorAll<HTMLImageElement>("img"),
+    );
+
+    const openImage = (image: HTMLImageElement) => {
+      if (!onImageOpen) return;
+
+      const src = image.currentSrc || image.src;
+      if (!src) return;
+
+      onImageOpen({
+        src,
+        alt: normalizeText(image.alt) || "Book image",
+      });
+    };
+
+    for (const image of images) {
+      image.style.cursor = onImageOpen ? "zoom-in" : "";
+      image.title = image.title || "Click to enlarge image";
+
+      if (onImageOpen && !image.hasAttribute("tabindex")) {
+        image.tabIndex = 0;
+      }
+    }
+
+    const handleDocumentClick = (event: MouseEvent) => {
       const target =
         event.target instanceof Element ? event.target : null;
+      const image = target?.closest<HTMLImageElement>("img");
+
+      if (image && onImageOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        openImage(image);
+        return;
+      }
+
       const anchor = target?.closest<HTMLAnchorElement>("a[href]");
       if (!anchor) return;
 
@@ -557,20 +594,37 @@ export function MobiDocumentView({
       setChapterId(resolved.id);
     };
 
+    const handleImageKeyDown = (event: KeyboardEvent) => {
+      if (!onImageOpen) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+
+      const target =
+        event.target instanceof Element ? event.target : null;
+      const image = target?.closest<HTMLImageElement>("img");
+      if (!image) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      openImage(image);
+    };
+
     document.addEventListener("mouseup", reportSelection);
     document.addEventListener("keyup", reportSelection);
-    document.addEventListener("click", handleLink);
+    document.addEventListener("click", handleDocumentClick);
+    document.addEventListener("keydown", handleImageKeyDown);
 
     return () => {
       document.removeEventListener("mouseup", reportSelection);
       document.removeEventListener("keyup", reportSelection);
-      document.removeEventListener("click", handleLink);
+      document.removeEventListener("click", handleDocumentClick);
+      document.removeEventListener("keydown", handleImageKeyDown);
     };
   }, [
     applyCurrentMarks,
     chapterId,
     fontScale,
     onContextReady,
+    onImageOpen,
     onSelection,
     parser,
   ]);

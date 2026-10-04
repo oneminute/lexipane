@@ -113,6 +113,7 @@ import {
 } from "./MobiDocumentView";
 import { PdfDocumentView } from "./PdfDocumentView";
 import { BookProviderPolicyControl } from "./BookProviderPolicyControl";
+import type { ReaderImagePreview } from "./readerImage";
 import { StructuredAnalysisView } from "./StructuredAnalysisView";
 import { getPdfPageText, locatePdfTextRects } from "./pdfTextDom";
 import {
@@ -227,6 +228,8 @@ export function ReaderView({
   const [regionMode, setRegionMode] = useState(false);
   const [regionDrag, setRegionDrag] = useState<RegionDragState | null>(null);
   const [regionCapture, setRegionCapture] = useState<PdfRegionCapture | null>(null);
+  const [imagePreview, setImagePreview] =
+    useState<ReaderImagePreview | null>(null);
   const [ocrStatus, setOcrStatus] = useState<LocalOcrStatus | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [epubInitialCfi, setEpubInitialCfi] = useState<string | null>(null);
@@ -331,6 +334,7 @@ export function ReaderView({
     setRegionMode(false);
     setRegionDrag(null);
     setRegionCapture(null);
+    setImagePreview(null);
     setEpubInitialCfi(null);
     setEpubProgress(null);
     setEpubMetadata({ title: null, author: null });
@@ -1928,6 +1932,28 @@ export function ReaderView({
     }
   }
 
+  const handleReaderImageOpen = useCallback(
+    (image: ReaderImagePreview) => {
+      setImagePreview(image);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!imagePreview) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setImagePreview(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [imagePreview]);
+
   function submitQuestion(event: FormEvent) {
     event.preventDefault();
     const trimmed = question.trim();
@@ -2252,6 +2278,7 @@ export function ReaderView({
                 onRelocated={handleEpubRelocated}
                 onContextReady={handleEpubContextReady}
                 onSelection={handleEpubSelection}
+                onImageOpen={handleReaderImageOpen}
               />
             )}
 
@@ -2270,6 +2297,7 @@ export function ReaderView({
                 onRelocated={handleKindleRelocated}
                 onContextReady={handleKindleContextReady}
                 onSelection={handleKindleSelection}
+                onImageOpen={handleReaderImageOpen}
               />
             )}
 
@@ -2745,6 +2773,40 @@ export function ReaderView({
           </form>
         </aside>
       </div>
+
+      {imagePreview && (
+        <div
+          className="reader-image-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Enlarged book image"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setImagePreview(null);
+            }
+          }}
+        >
+          <button
+            className="reader-image-lightbox-close"
+            type="button"
+            aria-label="Close enlarged image"
+            onClick={() => setImagePreview(null)}
+          >
+            ×
+          </button>
+
+          <figure className="reader-image-lightbox-figure">
+            <img
+              src={imagePreview.src}
+              alt={imagePreview.alt}
+            />
+            {imagePreview.alt &&
+              imagePreview.alt !== "Book image" && (
+                <figcaption>{imagePreview.alt}</figcaption>
+              )}
+          </figure>
+        </div>
+      )}
     </section>
   );
 }
