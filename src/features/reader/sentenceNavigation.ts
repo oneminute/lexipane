@@ -363,6 +363,67 @@ export function getDomSentenceCount(
   return segmentDomText(model.text).length;
 }
 
+const ACTIVE_SENTENCE_HIGHLIGHT = "lexipane-active-sentence";
+
+interface HighlightRegistryLike {
+  set(name: string, highlight: unknown): void;
+  delete(name: string): boolean;
+}
+
+interface HighlightWindow extends Window {
+  Highlight?: new (...ranges: Range[]) => unknown;
+  CSS: typeof CSS & {
+    highlights?: HighlightRegistryLike;
+  };
+}
+
+function ensureActiveSentenceHighlightStyle(document: Document) {
+  if (
+    document.head?.querySelector(
+      'style[data-lexipane-active-sentence-style="true"]',
+    )
+  ) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.dataset.lexipaneActiveSentenceStyle = "true";
+  style.textContent =
+    "::highlight(" +
+    ACTIVE_SENTENCE_HIGHLIGHT +
+    ") {" +
+    " background: rgba(101, 88, 219, 0.24);" +
+    " text-decoration: underline rgba(101, 88, 219, 0.42) 1px;" +
+    " }";
+  document.head?.appendChild(style);
+}
+
+export function clearDomSentenceHighlight(document: Document) {
+  const view = document.defaultView as HighlightWindow | null;
+  view?.CSS?.highlights?.delete(ACTIVE_SENTENCE_HIGHLIGHT);
+}
+
+export function setDomSentenceHighlight(
+  document: Document,
+  range: Range,
+): boolean {
+  const view = document.defaultView as HighlightWindow | null;
+  const registry = view?.CSS?.highlights;
+  const Highlight = view?.Highlight;
+
+  if (!registry || !Highlight) {
+    return false;
+  }
+
+  ensureActiveSentenceHighlightStyle(document);
+  registry.delete(ACTIVE_SENTENCE_HIGHLIGHT);
+  registry.set(
+    ACTIVE_SENTENCE_HIGHLIGHT,
+    new Highlight(range.cloneRange()),
+  );
+  return true;
+}
+
 export function selectDomSentenceAtPoint(
   document: Document,
   x: number,
