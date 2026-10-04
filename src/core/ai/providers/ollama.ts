@@ -55,7 +55,7 @@ export class OllamaProvider implements AIProvider {
 
   private readonly baseUrl: string;
 
-  constructor(baseUrl = DEFAULT_OLLAMA_BASE_URL) {
+  constructor(baseUrl: string = DEFAULT_OLLAMA_BASE_URL) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
