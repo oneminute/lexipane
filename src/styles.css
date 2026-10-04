@@ -3136,3 +3136,52 @@ button { cursor: pointer; }
   background: #fff0f2;
   border-color: #efcfd3;
 }
+
+
+/* Active sentence reading mode */
+.pdf-highlight.active-sentence {
+  background: rgba(101, 88, 219, 0.24);
+  border: 1px solid rgba(101, 88, 219, 0.34);
+  border-radius: 3px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.sentence-navigation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 4px;
+}
+
+.sentence-navigation button {
+  min-height: 36px;
+}
+
+.sentence-navigation button:first-child {
+  justify-self: stretch;
+}
+
+.sentence-navigation button:last-child {
+  justify-self: stretch;
+}
+
+.sentence-navigation span {
+  min-width: 54px;
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--muted, #77758a);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1050px) {
+  .sentence-navigation {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sentence-navigation span {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+}
