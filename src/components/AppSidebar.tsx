@@ -1,4 +1,9 @@
-export type AppView = "library" | "reader" | "notebook" | "ai";
+export type AppView =
+  | "library"
+  | "reader"
+  | "notebook"
+  | "resources"
+  | "ai";
 
 interface Props {
   activeView: AppView;
@@ -10,6 +15,7 @@ const navItems: Array<{ id: AppView; label: string; icon: string }> = [
   { id: "library", label: "Library", icon: "▦" },
   { id: "reader", label: "Reader", icon: "◫" },
   { id: "notebook", label: "Notebook", icon: "✎" },
+  { id: "resources", label: "Resources", icon: "⌁" },
   { id: "ai", label: "AI & Models", icon: "✦" },
 ];
 
