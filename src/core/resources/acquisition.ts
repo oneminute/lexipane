@@ -1,6 +1,7 @@
 import { getBookExtension } from "../books/openBook";
 import {
   cancelHttpDownload,
+  cleanupHttpTransferTemp,
   pauseHttpDownload,
   probeHttpResource,
   startHttpDownload,
@@ -321,6 +322,22 @@ export async function resumeHttpTransfer(
     });
     throw error;
   }
+}
+
+export async function discardHttpTransfer(
+  job: TransferJob,
+): Promise<void> {
+  await cleanupHttpTransferTemp(job.id).catch((error) => {
+    console.warn("Unable to clean transfer temp files", error);
+  });
+
+  await updateTransferJob(job.id, {
+    state: "canceled",
+    downloadRate: 0,
+    temporaryPath: null,
+    error: null,
+    completedAt: new Date().toISOString(),
+  });
 }
 
 export { pauseHttpDownload, cancelHttpDownload };
