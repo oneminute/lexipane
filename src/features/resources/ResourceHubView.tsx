@@ -685,6 +685,217 @@ export function ResourceHubView({ onOpenBook }: Props) {
     await refreshResourceCore();
   }
 
+  function activeCloudAccount(): ConnectedCloudAccount | null {
+    return (
+      cloudAccounts.find(
+        (account) => account.id === activeCloudAccountId,
+      ) ?? null
+    );
+  }
+
+  async function connectCloud() {
+    if (!connectToken.trim()) return;
+
+    setCloudBusy(true);
+    setMessage("");
+
+    try {
+      const account = await connectCloudAccount(
+        connectProvider,
+        connectDisplayName,
+        connectToken,
+      );
+      setConnectToken("");
+      setConnectDisplayName("");
+      await refreshResourceCore();
+      setActiveCloudAccountId(account.id);
+
+      const result = await browseCloudAccount(account);
+      setCloudEntries(result.entries);
+      setCloudFolder(undefined);
+      setCloudFolderStack([{ label: "Root" }]);
+      setCloudQuery("");
+      setTab("browse");
+      setMessage(
+        account.displayName +
+          " connected. Access token is stored in the native secure credential store.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to connect the cloud account.",
+      );
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
+  async function disconnectCloud(account: ConnectedCloudAccount) {
+    setCloudBusy(true);
+    setMessage("");
+
+    try {
+      await disconnectCloudAccount(account);
+      if (activeCloudAccountId === account.id) {
+        setActiveCloudAccountId(null);
+        setCloudEntries([]);
+        setCloudFolder(undefined);
+        setCloudFolderStack([{ label: "Root" }]);
+      }
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to disconnect the cloud account.",
+      );
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
+  async function openCloudRoot(
+    account: ConnectedCloudAccount,
+  ) {
+    setCloudBusy(true);
+    setMessage("");
+
+    try {
+      const result = await browseCloudAccount(account);
+      setActiveCloudAccountId(account.id);
+      setCloudEntries(result.entries);
+      setCloudFolder(undefined);
+      setCloudFolderStack([{ label: "Root" }]);
+      setCloudQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to browse the cloud account.",
+      );
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
+  async function openCloudFolder(entry: CloudEntry) {
+    const account = activeCloudAccount();
+    if (!account || !entry.isFolder) return;
+
+    const locator = cloudFolderLocator(
+      account.providerId,
+      entry,
+    );
+
+    setCloudBusy(true);
+    setMessage("");
+
+    try {
+      const result = await browseCloudAccount(
+        account,
+        locator,
+      );
+      setCloudEntries(result.entries);
+      setCloudFolder(locator);
+      setCloudFolderStack((current) => [
+        ...current,
+        { label: entry.name, locator },
+      ]);
+      setCloudQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to open the cloud folder.",
+      );
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
+  async function goToCloudFolder(index: number) {
+    const account = activeCloudAccount();
+    if (!account) return;
+
+    const target = cloudFolderStack[index];
+    if (!target) return;
+
+    setCloudBusy(true);
+    setMessage("");
+
+    try {
+      const result = await browseCloudAccount(
+        account,
+        target.locator,
+      );
+      setCloudEntries(result.entries);
+      setCloudFolder(target.locator);
+      setCloudFolderStack((current) =>
+        current.slice(0, index + 1),
+      );
+      setCloudQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to return to the cloud folder.",
+      );
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
+  async function searchCloud() {
+    const account = activeCloudAccount();
+    if (!account || !cloudQuery.trim()) return;
+
+    setCloudBusy(true);
+    setMessage("");
+
+    try {
+      const result = await searchCloudAccount(
+        account,
+        cloudQuery,
+        cloudFolder,
+      );
+      setCloudEntries(result.entries);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to search cloud storage.",
+      );
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
+  async function acquireCloudEntry(entry: CloudEntry) {
+    const account = activeCloudAccount();
+    if (!account || !cloudEntryIsBook(entry)) return;
+
+    setCloudBusy(true);
+    setMessage("");
+
+    try {
+      await startCloudEntryAcquisition(account, entry);
+      setMessage(
+        "Cloud download started. It continues if you leave Resources.",
+      );
+      setTab("downloads");
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to download the cloud file.",
+      );
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
   async function handleTransferAction(
     job: TransferJob,
     action: "pause" | "resume" | "cancel" | "discard",
@@ -693,28 +904,40 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
     try {
       const torrent = job.providerId === "bittorrent";
+      const cloud =
+        job.providerId === "google-drive" ||
+        job.providerId === "dropbox" ||
+        job.providerId === "onedrive";
 
       if (action === "pause") {
         if (torrent) {
           await pauseTorrentDownload(job.id);
+        } else if (cloud) {
+          await pauseCloudDownload(job.id);
         } else {
           await pauseHttpDownload(job.id);
         }
       } else if (action === "cancel") {
         if (torrent) {
           await cancelTorrentDownload(job.id);
+        } else if (cloud) {
+          await cancelCloudDownload(job.id);
         } else {
           await cancelHttpDownload(job.id);
         }
       } else if (action === "discard") {
         if (torrent) {
           await discardTorrentTransfer(job);
+        } else if (cloud) {
+          await discardCloudTransfer(job);
         } else {
           await discardHttpTransfer(job);
         }
         await refreshResourceCore();
       } else if (torrent) {
         await resumeTorrentTransfer(job);
+      } else if (cloud) {
+        await resumeCloudTransfer(job);
       } else {
         await resumeHttpTransfer(job);
       }
