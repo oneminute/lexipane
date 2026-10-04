@@ -33,8 +33,17 @@ const BOOK_MEDIA_TYPES = new Set([
 ]);
 
 function resolveUrl(href: string, baseUrl: string): string {
+  const leftBrace = "__LEXIPANE_LEFT_BRACE__";
+  const rightBrace = "__LEXIPANE_RIGHT_BRACE__";
+  const protectedHref = href
+    .replaceAll("{", leftBrace)
+    .replaceAll("}", rightBrace);
+
   try {
-    return new URL(href, baseUrl).toString();
+    return new URL(protectedHref, baseUrl)
+      .toString()
+      .replaceAll(leftBrace, "{")
+      .replaceAll(rightBrace, "}");
   } catch {
     return href;
   }
