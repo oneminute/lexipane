@@ -13,6 +13,7 @@ import { NotebookView } from "./features/notebook/NotebookView";
 import { ReaderErrorBoundary } from "./features/reader/ReaderErrorBoundary";
 import { ReaderView } from "./features/reader/ReaderView";
 import { ResourceHubView } from "./features/resources/ResourceHubView";
+import { initializeResourceTransferRuntime } from "./core/resources/runtime";
 import { AiSettingsView } from "./features/settings/AiSettingsView";
 
 export default function App() {
@@ -26,6 +27,22 @@ export default function App() {
     void initializeDatabase().catch((error) => {
       console.error("LexiPane database initialization failed", error);
     });
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    void initializeResourceTransferRuntime({
+      onLibraryChanged: () => {
+        setLibraryRevision((revision) => revision + 1);
+      },
+    }).then((dispose) => {
+      unlisten = dispose;
+    });
+
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   const openBookPath = useCallback(
@@ -120,7 +137,9 @@ export default function App() {
         {view === "notebook" && (
           <NotebookView onOpenBook={openBookPath} />
         )}
-        {view === "resources" && <ResourceHubView />}
+        {view === "resources" && (
+          <ResourceHubView onOpenBook={openBookPath} />
+        )}
         {view === "ai" && <AiSettingsView />}
       </main>
     </div>
