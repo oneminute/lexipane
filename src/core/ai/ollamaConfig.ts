@@ -2,7 +2,7 @@ import { APP_DEFAULTS } from "../../config/appDefaults";
 import type { ModelInfo } from "./types";
 import { getAppMeta, setAppMeta } from "../settings/appMeta";
 
-export const DEFAULT_OLLAMA_BASE_URL =
+export const DEFAULT_OLLAMA_BASE_URL: string =
   APP_DEFAULTS.ai.ollama.baseUrl;
 
 export const OLLAMA_DISCOVERY_BASE_URLS =
