@@ -2806,3 +2806,76 @@ button { cursor: pointer; }
   background: #fae5e7;
   border-radius: 999px;
 }
+
+
+/* Reflowable reader display preferences */
+
+.reader-display-control {
+  display: grid;
+  gap: 3px;
+  min-width: 92px;
+}
+
+.reader-display-control > span {
+  font-size: 7px;
+  font-weight: 800;
+  color: #9498a5;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.reader-display-control select {
+  min-height: 31px;
+  padding: 5px 8px;
+  font-size: 9px;
+  color: #535968;
+  background: #f7f8fa;
+  border: 1px solid #dfe1e7;
+  border-radius: 8px;
+  outline: none;
+}
+
+.epub-reader-shell.ebook-theme-sepia,
+.kindle-reader-shell.ebook-theme-sepia {
+  background: #f4ecd8;
+}
+
+.epub-reader-shell.ebook-theme-dark,
+.kindle-reader-shell.ebook-theme-dark {
+  background: #1f2024;
+  border-color: #34363d;
+}
+
+.epub-page-controls {
+  position: absolute;
+  z-index: 4;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 7px;
+}
+
+.epub-page-controls button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  font-size: 15px;
+  color: #555b69;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #dfe1e7;
+  border-radius: 999px;
+  box-shadow: 0 5px 16px rgba(24, 28, 38, 0.12);
+}
+
+.ebook-theme-dark .epub-page-controls button {
+  color: #e7e5df;
+  background: rgba(45, 47, 53, 0.94);
+  border-color: #4c4f58;
+}
+
+@media (max-width: 760px) {
+  .reader-display-control {
+    min-width: 82px;
+  }
+}

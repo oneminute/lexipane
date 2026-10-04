@@ -18,6 +18,7 @@ import type { DifficultTerm } from "../../core/ai/difficultyService";
 import type { KindleTextAnnotation } from "../../core/annotations/kindleAnnotations";
 import { getBookExtension } from "../../core/books/openBook";
 import { normalizeTerm } from "../../core/reading/knownTerms";
+import type { EbookTheme } from "../../core/reading/ebookPreferences";
 
 type KindleParser = Mobi | Kf8;
 type KindleTocItem = MobiTocItem | Kf8TocItem;
@@ -56,6 +57,7 @@ export interface KindleSelection {
 interface Props {
   path: string;
   fontScale?: number;
+  theme?: EbookTheme;
   initialChapterId?: string | null;
   navigationChapterId?: string | null;
   annotations?: KindleTextAnnotation[];
@@ -135,6 +137,7 @@ function flattenToc(
 
 function chapterDocument(
   chapter: KindleProcessedChapter,
+  theme: EbookTheme,
 ): string {
   const cssLinks = chapter.css
     .map(
@@ -145,6 +148,25 @@ function chapterDocument(
     )
     .join("");
 
+  const palette =
+    theme === "dark"
+      ? {
+          background: "#1f2024",
+          text: "#e7e5df",
+          link: "#b8afff",
+        }
+      : theme === "sepia"
+        ? {
+            background: "#f4ecd8",
+            text: "#443b2c",
+            link: "#6c5897",
+          }
+        : {
+            background: "#fffefa",
+            text: "#282725",
+            link: "#5549a6",
+          };
+
   return [
     "<!doctype html>",
     '<html><head><meta charset="utf-8">',
@@ -154,11 +176,15 @@ function chapterDocument(
     'font-src blob: data:;">',
     cssLinks,
     "<style>",
-    "html{background:#fffefa;color:#282725;}",
+    "html{background:" + palette.background + ";color:" + palette.text + ";}",
     "body{margin:0;padding:42px 48px;font-family:Georgia,'Times New Roman',serif;",
-    "line-height:1.75;overflow-wrap:anywhere;}",
+    "line-height:1.75;overflow-wrap:anywhere;background:" +
+      palette.background +
+      ";color:" +
+      palette.text +
+      ";}",
     "img,svg,video{max-width:100%;height:auto;}",
-    "a{color:#5549a6;}",
+    "a{color:" + palette.link + ";}",
     "::selection{background:rgba(101,88,219,.25);}",
     "mark.lexipane-kindle-user{background:rgba(111,161,235,.32);color:inherit;}",
     "mark.lexipane-kindle-auto-word{background:rgba(255,224,92,.34);color:inherit;}",
@@ -283,6 +309,7 @@ function applyMarks(
 export function MobiDocumentView({
   path,
   fontScale = 100,
+  theme = "light",
   initialChapterId,
   navigationChapterId,
   annotations = [],
@@ -398,7 +425,7 @@ export function MobiDocumentView({
       return;
     }
 
-    setChapterHtml(chapterDocument(chapter));
+    setChapterHtml(chapterDocument(chapter, theme));
 
     const index = spine.findIndex((item) => item.id === chapterId);
     const progress =
@@ -407,7 +434,7 @@ export function MobiDocumentView({
         : index / (spine.length - 1);
 
     onRelocated?.(chapterId, progress);
-  }, [chapterId, onRelocated, parser, spine]);
+  }, [chapterId, onRelocated, parser, spine, theme]);
 
   useEffect(() => {
     if (!navigationChapterId || !parser) return;
@@ -547,7 +574,7 @@ export function MobiDocumentView({
   }
 
   return (
-    <div className="kindle-reader-shell">
+    <div className={"kindle-reader-shell ebook-theme-" + theme}>
       <div className="kindle-chapter-toolbar">
         <button
           disabled={chapterIndex <= 0}

@@ -145,7 +145,10 @@ Implemented:
 - metadata
 - table of contents
 - reflowable reading
-- typography controls
+- persisted font-size controls
+- Light / Sepia / Dark reading themes
+- Scrolled / Paginated reading modes
+- EPUB cover extraction into the bookshelf
 - CFI reading-position persistence
 - CFI highlights
 - selected-text AI assistance
@@ -154,9 +157,9 @@ Implemented:
 
 Next:
 
-- more typography themes
-- pagination mode in addition to scrolled flow
 - stronger CFI recovery tests across malformed EPUBs
+- footnote / popup handling
+- image zoom and richer internal-resource handling
 
 ## Phase 5 — MOBI / AZW / AZW3
 
@@ -172,12 +175,15 @@ Implemented:
 - Notebook anchors
 - selected-text AI assistance
 - automatic difficult-word/phrase assistance
+- internal-link navigation
+- shared persisted font-size controls
+- Light / Sepia / Dark reading themes
 
 Next:
 
 - wider KF8/AZW3 compatibility testing
-- better internal-link and resource handling for unusual books
-- cover extraction and typography parity with EPUB
+- better resource handling for unusual books
+- cover extraction
 
 ## Phase 6 — Mobile
 

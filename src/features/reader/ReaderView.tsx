@@ -79,6 +79,14 @@ import {
   type ReadingLevel,
 } from "../../core/reading/preferences";
 import {
+  loadEbookReadingPreferences,
+  saveEbookFontScale,
+  saveEbookTheme,
+  saveEpubFlow,
+  type EbookTheme,
+  type EpubFlowMode,
+} from "../../core/reading/ebookPreferences";
+import {
   loadEpubReadingPosition,
   saveEpubReadingPosition,
 } from "../../core/books/epubPosition";
@@ -180,6 +188,9 @@ export function ReaderView({
 }: Props) {
   const [scale, setScale] = useState(1.1);
   const [epubFontScale, setEpubFontScale] = useState(100);
+  const [ebookTheme, setEbookTheme] = useState<EbookTheme>("light");
+  const [epubFlowMode, setEpubFlowMode] =
+    useState<EpubFlowMode>("scrolled");
   const [pageCount, setPageCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [initialPage, setInitialPage] = useState<number | null>(null);
@@ -286,6 +297,14 @@ export function ReaderView({
           message: "Local OCR status could not be determined.",
         }),
       );
+
+    void loadEbookReadingPreferences()
+      .then((preferences) => {
+        setEpubFontScale(preferences.fontScale);
+        setEbookTheme(preferences.theme);
+        setEpubFlowMode(preferences.epubFlow);
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -737,12 +756,30 @@ export function ReaderView({
   }, []);
 
   const epubFontDown = useCallback(() => {
-    setEpubFontScale((value) => Math.max(70, value - 10));
+    setEpubFontScale((value) => {
+      const next = Math.max(70, value - 10);
+      void saveEbookFontScale(next);
+      return next;
+    });
   }, []);
 
   const epubFontUp = useCallback(() => {
-    setEpubFontScale((value) => Math.min(180, value + 10));
+    setEpubFontScale((value) => {
+      const next = Math.min(180, value + 10);
+      void saveEbookFontScale(next);
+      return next;
+    });
   }, []);
+
+  async function changeEbookTheme(theme: EbookTheme) {
+    setEbookTheme(theme);
+    await saveEbookTheme(theme);
+  }
+
+  async function changeEpubFlowMode(flowMode: EpubFlowMode) {
+    setEpubFlowMode(flowMode);
+    await saveEpubFlow(flowMode);
+  }
 
   const handleDocumentLoaded = useCallback((count: number) => {
     setPageCount(count);
@@ -829,6 +866,16 @@ export function ReaderView({
       if (!bookPath) return;
       void updateBookCover(bookPath, coverDataUrl).catch((error) => {
         console.error("Unable to persist PDF cover", error);
+      });
+    },
+    [bookPath],
+  );
+
+  const handleEpubCoverReady = useCallback(
+    (coverDataUrl: string) => {
+      if (!bookPath) return;
+      void updateBookCover(bookPath, coverDataUrl).catch((error) => {
+        console.error("Unable to persist EPUB cover", error);
       });
     },
     [bookPath],
@@ -1901,6 +1948,40 @@ export function ReaderView({
               </button>
             </div>
           )}
+
+          {(isEpub || isKindle) && (
+            <label className="reader-display-control">
+              <span>Theme</span>
+              <select
+                value={ebookTheme}
+                onChange={(event) =>
+                  void changeEbookTheme(event.target.value as EbookTheme)
+                }
+              >
+                <option value="light">Light</option>
+                <option value="sepia">Sepia</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+          )}
+
+          {isEpub && (
+            <label className="reader-display-control">
+              <span>Flow</span>
+              <select
+                value={epubFlowMode}
+                onChange={(event) =>
+                  void changeEpubFlowMode(
+                    event.target.value as EpubFlowMode,
+                  )
+                }
+              >
+                <option value="scrolled">Scrolled</option>
+                <option value="paginated">Paginated</option>
+              </select>
+            </label>
+          )}
+
           {((isPdf && outline.length > 0) ||
             (isEpub && epubOutline.length > 0) ||
             (isKindle && kindleOutline.length > 0)) && (
@@ -2107,12 +2188,15 @@ export function ReaderView({
               <EpubDocumentView
                 path={bookPath}
                 fontScale={epubFontScale}
+                theme={ebookTheme}
+                flowMode={epubFlowMode}
                 initialCfi={epubInitialCfi}
                 navigationTarget={epubNavigationTarget}
                 annotations={epubAnnotations}
                 autoTerms={epubAutoTerms}
                 onMetadataReady={handleEpubMetadataReady}
                 onOutlineReady={handleEpubOutlineReady}
+                onCoverReady={handleEpubCoverReady}
                 onRelocated={handleEpubRelocated}
                 onContextReady={handleEpubContextReady}
                 onSelection={handleEpubSelection}
@@ -2123,6 +2207,7 @@ export function ReaderView({
               <MobiDocumentView
                 path={bookPath}
                 fontScale={epubFontScale}
+                theme={ebookTheme}
                 initialChapterId={kindleInitialChapterId}
                 navigationChapterId={kindleNavigationChapterId}
                 annotations={kindleAnnotations}
@@ -2172,7 +2257,13 @@ export function ReaderView({
             </span>
             <span>{isEpub || isKindle ? epubFontLabel : zoomLabel}</span>
             <span>
-              {isEpub ? "EPUB CFI" : isKindle ? "Chapter" : "Continuous"}
+              {isEpub
+                ? epubFlowMode === "paginated"
+                  ? "Paginated"
+                  : "Scrolled"
+                : isKindle
+                  ? "Chapter"
+                  : "Continuous"}
             </span>
             <span>{selection ? "Selection ready" : "Select text for AI"}</span>
           </footer>

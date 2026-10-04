@@ -14,6 +14,10 @@ import {
 import type { EpubTextAnnotation } from "../../core/annotations/epubAnnotations";
 import type { DifficultTerm } from "../../core/ai/difficultyService";
 import { normalizeTerm } from "../../core/reading/knownTerms";
+import type {
+  EbookTheme,
+  EpubFlowMode,
+} from "../../core/reading/ebookPreferences";
 
 export interface EpubMetadataSummary {
   title: string | null;
@@ -36,12 +40,15 @@ export interface EpubSelection {
 interface Props {
   path: string;
   fontScale?: number;
+  theme?: EbookTheme;
+  flowMode?: EpubFlowMode;
   initialCfi?: string | null;
   navigationTarget?: string | null;
   annotations?: EpubTextAnnotation[];
   autoTerms?: DifficultTerm[];
   onMetadataReady?: (metadata: EpubMetadataSummary) => void;
   onOutlineReady?: (outline: EpubOutlineEntry[]) => void;
+  onCoverReady?: (coverDataUrl: string) => void;
   onRelocated?: (cfi: string, progress: number | null) => void;
   onContextReady?: (cfi: string, context: string) => void;
   onSelection?: (selection: EpubSelection) => void;
@@ -85,6 +92,105 @@ function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return copy.buffer;
+}
+
+function themeRules(theme: EbookTheme) {
+  if (theme === "dark") {
+    return {
+      body: {
+        "font-family":
+          "Georgia, 'Times New Roman', serif !important",
+        "line-height": "1.75 !important",
+        color: "#e7e5df !important",
+        background: "#1f2024 !important",
+        padding: "24px 32px !important",
+      },
+      "p, li": {
+        "line-height": "1.75 !important",
+      },
+      "a": {
+        color: "#b8afff !important",
+      },
+      "::selection": {
+        background: "rgba(156, 143, 255, 0.34)",
+      },
+    };
+  }
+
+  if (theme === "sepia") {
+    return {
+      body: {
+        "font-family":
+          "Georgia, 'Times New Roman', serif !important",
+        "line-height": "1.75 !important",
+        color: "#443b2c !important",
+        background: "#f4ecd8 !important",
+        padding: "24px 32px !important",
+      },
+      "p, li": {
+        "line-height": "1.75 !important",
+      },
+      "a": {
+        color: "#6c5897 !important",
+      },
+      "::selection": {
+        background: "rgba(101, 88, 219, 0.22)",
+      },
+    };
+  }
+
+  return {
+    body: {
+      "font-family":
+        "Georgia, 'Times New Roman', serif !important",
+      "line-height": "1.75 !important",
+      color: "#282725 !important",
+      background: "#fffefa !important",
+      padding: "24px 32px !important",
+    },
+    "p, li": {
+      "line-height": "1.75 !important",
+    },
+    "a": {
+      color: "#5549a6 !important",
+    },
+    "::selection": {
+      background: "rgba(101, 88, 219, 0.25)",
+    },
+  };
+}
+
+async function coverUrlToDataUrl(url: string): Promise<string | null> {
+  if (!url) return null;
+  if (url.startsWith("data:image/")) return url;
+
+  const response = await fetch(url);
+  if (!response.ok) return null;
+
+  const blob = await response.blob();
+
+  return new Promise<string | null>((resolve) => {
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = () =>
+      resolve(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function readEpubCover(book: Book): Promise<string | null> {
+  const candidate = book as Book & {
+    coverUrl?: () => Promise<string | null>;
+  };
+
+  if (!candidate.coverUrl) return null;
+
+  try {
+    const url = await candidate.coverUrl();
+    return url ? coverUrlToDataUrl(url) : null;
+  } catch {
+    return null;
+  }
 }
 
 function renderedContents(rendition: Rendition): Contents[] {
@@ -228,12 +334,15 @@ function syncAutoHighlights(
 export function EpubDocumentView({
   path,
   fontScale = 100,
+  theme = "light",
+  flowMode = "scrolled",
   initialCfi,
   navigationTarget,
   annotations = [],
   autoTerms = [],
   onMetadataReady,
   onOutlineReady,
+  onCoverReady,
   onRelocated,
   onContextReady,
   onSelection,
@@ -242,6 +351,8 @@ export function EpubDocumentView({
   const renditionRef = useRef<Rendition | null>(null);
   const bookRef = useRef<Book | null>(null);
   const renderedHighlightCfisRef = useRef<Set<string>>(new Set());
+  const lastCfiRef = useRef<string | null>(null);
+  const lastPathRef = useRef<string | null>(null);
   const renderedAutoCfisRef = useRef<Map<string, string>>(new Map());
   const autoTermsRef = useRef<DifficultTerm[]>(autoTerms);
   const [loading, setLoading] = useState(true);
@@ -274,6 +385,11 @@ export function EpubDocumentView({
       const host = hostRef.current;
       if (!host) return;
 
+      if (lastPathRef.current !== path) {
+        lastPathRef.current = path;
+        lastCfiRef.current = initialCfi ?? null;
+      }
+
       host.replaceChildren();
 
       const bytes = await readFile(path);
@@ -285,10 +401,22 @@ export function EpubDocumentView({
       await book.ready;
       if (cancelled) return;
 
-      const [metadata, navigation] = await Promise.all([
-        book.loaded.metadata,
-        book.loaded.navigation,
-      ]);
+      const [metadataResult, navigationResult, coverResult] =
+        await Promise.allSettled([
+          book.loaded.metadata,
+          book.loaded.navigation,
+          readEpubCover(book),
+        ]);
+
+      if (
+        metadataResult.status !== "fulfilled" ||
+        navigationResult.status !== "fulfilled"
+      ) {
+        throw new Error("EPUB metadata or navigation could not be loaded.");
+      }
+
+      const metadata = metadataResult.value;
+      const navigation = navigationResult.value;
 
       if (cancelled) return;
 
@@ -300,30 +428,23 @@ export function EpubDocumentView({
         flattenNavigation(navigation.toc ?? []),
       );
 
+      if (
+        coverResult.status === "fulfilled" &&
+        coverResult.value
+      ) {
+        onCoverReady?.(coverResult.value);
+      }
+
       rendition = book.renderTo(host, {
         width: "100%",
         height: "100%",
-        manager: "continuous",
-        flow: "scrolled-doc",
+        manager: flowMode === "paginated" ? "default" : "continuous",
+        flow: flowMode === "paginated" ? "paginated" : "scrolled-doc",
         spread: "none",
       });
       renditionRef.current = rendition;
 
-      rendition.themes.default({
-        body: {
-          "font-family":
-            "Georgia, 'Times New Roman', serif !important",
-          "line-height": "1.75 !important",
-          color: "#282725 !important",
-          padding: "24px 32px !important",
-        },
-        "p, li": {
-          "line-height": "1.75 !important",
-        },
-        "::selection": {
-          background: "rgba(101, 88, 219, 0.25)",
-        },
-      });
+      rendition.themes.default(themeRules(theme));
 
       rendition.themes.fontSize(fontScale + "%");
 
@@ -338,6 +459,7 @@ export function EpubDocumentView({
               ? location.start.percentage
               : null;
 
+          lastCfiRef.current = cfi;
           onRelocated?.(cfi, percentage);
 
           window.setTimeout(() => {
@@ -377,7 +499,9 @@ export function EpubDocumentView({
         },
       );
 
-      await rendition.display(initialCfi || undefined);
+      await rendition.display(
+        lastCfiRef.current || initialCfi || undefined,
+      );
       if (cancelled) return;
 
       syncUserHighlights(
@@ -426,6 +550,8 @@ export function EpubDocumentView({
   }, [
     initialCfi,
     onContextReady,
+    flowMode,
+    onCoverReady,
     onMetadataReady,
     onOutlineReady,
     onRelocated,
@@ -453,8 +579,18 @@ export function EpubDocumentView({
     renditionRef.current?.themes.fontSize(fontScale + "%");
   }, [fontScale]);
 
+  useEffect(() => {
+    renditionRef.current?.themes.default(themeRules(theme));
+  }, [theme]);
+
   return (
-    <div className="epub-reader-shell">
+    <div
+      className={
+        "epub-reader-shell ebook-theme-" +
+        theme +
+        (flowMode === "paginated" ? " paginated" : "")
+      }
+    >
       {loading && (
         <div className="pdf-state-card epub-loading-card">
           <span className="pdf-spinner" />
@@ -478,6 +614,23 @@ export function EpubDocumentView({
             : "epub-rendition"
         }
       />
+
+      {flowMode === "paginated" && !loading && !error && (
+        <div className="epub-page-controls">
+          <button
+            aria-label="Previous EPUB page"
+            onClick={() => void renditionRef.current?.prev()}
+          >
+            ←
+          </button>
+          <button
+            aria-label="Next EPUB page"
+            onClick={() => void renditionRef.current?.next()}
+          >
+            →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
