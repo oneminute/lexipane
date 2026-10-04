@@ -10,21 +10,21 @@ export const APP_DEFAULTS = {
     },
     privacyMode: "prefer-local",
     healthCheck: {
-      timeoutMs: 120_000,
+      timeoutMs: 180_000,
     },
     execution: {
       explain: {
-        timeoutMs: 60_000,
+        timeoutMs: 120_000,
         retries: 1,
         retryDelayMs: 700,
       },
       grammar: {
-        timeoutMs: 75_000,
+        timeoutMs: 180_000,
         retries: 1,
         retryDelayMs: 700,
       },
       ask: {
-        timeoutMs: 75_000,
+        timeoutMs: 180_000,
         retries: 1,
         retryDelayMs: 700,
       },
@@ -34,7 +34,7 @@ export const APP_DEFAULTS = {
         retryDelayMs: 500,
       },
       region: {
-        timeoutMs: 90_000,
+        timeoutMs: 180_000,
         retries: 0,
         retryDelayMs: 800,
       },
