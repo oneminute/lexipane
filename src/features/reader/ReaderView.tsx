@@ -941,6 +941,8 @@ export function ReaderView({
 
   const handleEpubSentenceSelection = useCallback(
     (selected: EpubSentenceSelection) => {
+      const sentenceContainer =
+        "context:" + stableHash(selected.context || selected.text);
       const nextSentence: ActiveSentenceState = {
         text: selected.text,
         context: selected.context,
@@ -949,6 +951,14 @@ export function ReaderView({
         kind: "sentence",
         sentenceIndex: selected.sentenceIndex,
         sentenceCount: selected.sentenceCount,
+        sentenceFormat: "epub",
+        sentenceContainer,
+        historyKey: createSentenceAnalysisKey({
+          format: "epub",
+          container: sentenceContainer,
+          sentenceIndex: selected.sentenceIndex,
+          text: selected.text,
+        }),
         epubCfi: selected.cfi,
       };
 
@@ -1065,6 +1075,8 @@ export function ReaderView({
 
   const handleKindleSentenceSelection = useCallback(
     (selected: KindleSentenceSelection) => {
+      const sentenceContainer =
+        "chapter:" + selected.chapterId;
       const nextSentence: ActiveSentenceState = {
         text: selected.text,
         context: selected.context,
@@ -1073,6 +1085,14 @@ export function ReaderView({
         kind: "sentence",
         sentenceIndex: selected.sentenceIndex,
         sentenceCount: selected.sentenceCount,
+        sentenceFormat: "kindle",
+        sentenceContainer,
+        historyKey: createSentenceAnalysisKey({
+          format: "kindle",
+          container: sentenceContainer,
+          sentenceIndex: selected.sentenceIndex,
+          text: selected.text,
+        }),
         kindleChapterId: selected.chapterId,
       };
 
@@ -1615,6 +1635,7 @@ export function ReaderView({
       Number.isInteger(pageValue) && pageValue > 0 ? pageValue : currentPage;
     const rects = locatePdfTextRects(selectedPage, sentence.text);
 
+    const sentenceContainer = "page:" + selectedPage;
     const nextSentence: ActiveSentenceState = {
       text: sentence.text,
       context: pageText,
@@ -1623,6 +1644,14 @@ export function ReaderView({
       kind: "sentence",
       sentenceIndex,
       sentenceCount: sentences.length,
+      sentenceFormat: "pdf",
+      sentenceContainer,
+      historyKey: createSentenceAnalysisKey({
+        format: "pdf",
+        container: sentenceContainer,
+        sentenceIndex,
+        text: sentence.text,
+      }),
     };
 
     window.getSelection()?.removeAllRanges();
@@ -1650,6 +1679,7 @@ export function ReaderView({
     const sentence = sentences[sentenceIndex];
     if (!sentence) return false;
 
+    const sentenceContainer = "page:" + page;
     const nextSentence: ActiveSentenceState = {
       text: sentence.text,
       context,
@@ -1658,6 +1688,14 @@ export function ReaderView({
       kind: "sentence",
       sentenceIndex,
       sentenceCount: sentences.length,
+      sentenceFormat: "pdf",
+      sentenceContainer,
+      historyKey: createSentenceAnalysisKey({
+        format: "pdf",
+        container: sentenceContainer,
+        sentenceIndex,
+        text: sentence.text,
+      }),
     };
 
     setCurrentPage(page);
