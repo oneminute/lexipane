@@ -136,6 +136,16 @@ See:
 
 ## Development
 
+### Required development workflow
+
+Before making any code, schema, build, native, test, or user-facing change, read
+`docs/development-plan.md` and update its **Current Development Status** to
+`IN_PROGRESS` for the selected task. After implementation, update the status
+again with validation evidence and the next selected task.
+
+Repository-level instructions in `AGENTS.md` enforce this workflow for
+development agents.
+
 Prerequisites:
 
 - Node.js 22+
