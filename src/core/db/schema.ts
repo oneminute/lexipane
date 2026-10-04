@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const schemaStatements = [
   "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -36,6 +36,8 @@ export const schemaStatements = [
   "CREATE INDEX IF NOT EXISTS idx_transfer_files_job ON transfer_files(transfer_job_id)",
   "CREATE TABLE IF NOT EXISTS resource_history (id TEXT PRIMARY KEY, resource_item_id TEXT, provider_id TEXT, action TEXT NOT NULL, details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, FOREIGN KEY(resource_item_id) REFERENCES resource_items(id) ON DELETE SET NULL, FOREIGN KEY(provider_id) REFERENCES resource_providers(id) ON DELETE SET NULL)",
   "CREATE INDEX IF NOT EXISTS idx_resource_history_created ON resource_history(created_at)",
+  "CREATE TABLE IF NOT EXISTS resource_catalogs (id TEXT PRIMARY KEY, provider_id TEXT NOT NULL DEFAULT 'opds', name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL DEFAULT 1, metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(provider_id) REFERENCES resource_providers(id) ON DELETE RESTRICT)",
+  "CREATE INDEX IF NOT EXISTS idx_resource_catalogs_provider ON resource_catalogs(provider_id)",
 ];
 
 export interface SchemaMigration {
@@ -110,6 +112,13 @@ export const schemaMigrations: SchemaMigration[] = [
     "CREATE INDEX IF NOT EXISTS idx_transfer_files_job ON transfer_files(transfer_job_id)",
     "CREATE TABLE IF NOT EXISTS resource_history (id TEXT PRIMARY KEY, resource_item_id TEXT, provider_id TEXT, action TEXT NOT NULL, details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, FOREIGN KEY(resource_item_id) REFERENCES resource_items(id) ON DELETE SET NULL, FOREIGN KEY(provider_id) REFERENCES resource_providers(id) ON DELETE SET NULL)",
     "CREATE INDEX IF NOT EXISTS idx_resource_history_created ON resource_history(created_at)",
+    ],
+  },
+  {
+    version: 11,
+    statements: [
+      "CREATE TABLE IF NOT EXISTS resource_catalogs (id TEXT PRIMARY KEY, provider_id TEXT NOT NULL DEFAULT 'opds', name TEXT NOT NULL, url TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL DEFAULT 1, metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(provider_id) REFERENCES resource_providers(id) ON DELETE RESTRICT)",
+      "CREATE INDEX IF NOT EXISTS idx_resource_catalogs_provider ON resource_catalogs(provider_id)",
     ],
   },
 ];
