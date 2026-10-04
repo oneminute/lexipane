@@ -73,6 +73,7 @@ struct Ed2kRuntimeJob {
     size: Option<u64>,
     hash: Option<String>,
     incoming_path: Option<PathBuf>,
+    paused: bool,
 }
 
 #[derive(Clone, Default)]
@@ -98,6 +99,15 @@ impl Ed2kManager {
         self.jobs.lock().await.get(job_id).cloned()
     }
 
+    async fn set_paused(&self, job_id: &str, paused: bool) -> bool {
+        let mut jobs = self.jobs.lock().await;
+        let Some(job) = jobs.get_mut(job_id) else {
+            return false;
+        };
+        job.paused = paused;
+        true
+    }
+
     async fn remove(&self, job_id: &str) {
         self.jobs.lock().await.remove(job_id);
     }
@@ -115,13 +125,13 @@ fn executable(config: &Ed2kConnectionConfig) -> String {
 
 fn validate_config(config: &Ed2kConnectionConfig) -> Result<(), String> {
     if let Some(host) = config.host.as_deref() {
-        if host.contains(['\n', '\r']) {
+        if host.contains('\n') || host.contains('\r') {
             return Err("Invalid aMule host.".to_string());
         }
     }
 
     if let Some(path) = config.executable.as_deref() {
-        if path.contains(['\n', '\r']) {
+        if path.contains('\n') || path.contains('\r') {
             return Err("Invalid amulecmd executable path.".to_string());
         }
     }
@@ -134,7 +144,7 @@ fn clean_query(query: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("ED2K search query is empty.".to_string());
     }
-    if trimmed.contains(['\n', '\r']) {
+    if trimmed.contains('\n') || trimmed.contains('\r') {
         return Err("ED2K search query contains invalid characters.".to_string());
     }
     Ok(trimmed.to_string())
@@ -379,6 +389,14 @@ async fn monitor_job(
             return;
         };
 
+        if job.paused {
+            let mut event = transfer_event(&job_id, "paused", job.size, 0);
+            event.file_name = Some(job.name.clone());
+            emit_event(&app, event);
+            sleep(Duration::from_secs(1)).await;
+            continue;
+        }
+
         if let Some(path) = job.incoming_path.as_ref() {
             if let Ok(metadata) = fs_metadata(path).await {
                 let complete = job
@@ -563,6 +581,7 @@ pub async fn resource_ed2k_add_link(
                 size: Some(metadata.size),
                 hash: Some(metadata.hash.clone()),
                 incoming_path: incoming_path(&config, &metadata.name),
+                paused: false,
             },
         )
         .await?;
@@ -612,6 +631,7 @@ pub async fn resource_ed2k_download_result(
                 size,
                 hash: None,
                 incoming_path: incoming_path(&config, &name),
+                paused: false,
             },
         )
         .await?;
@@ -633,15 +653,75 @@ pub async fn resource_ed2k_download_result(
 }
 
 #[tauri::command]
+pub async fn resource_ed2k_attach(
+    app: AppHandle,
+    manager: State<'_, Ed2kManager>,
+    job_id: String,
+    config: Ed2kConnectionConfig,
+    name: String,
+    size: Option<u64>,
+    hash: Option<String>,
+    paused: Option<bool>,
+) -> Result<bool, String> {
+    let manager = manager.inner().clone();
+
+    if manager.get(&job_id).await.is_some() {
+        return Ok(true);
+    }
+
+    // Verify the sidecar queue still contains the file before attaching.
+    let queue = run_amulecmd(&config, "Show DL").await?;
+    let lower_queue = queue.to_ascii_lowercase();
+    let hash_present = hash
+        .as_deref()
+        .map(|value| lower_queue.contains(&value.to_ascii_lowercase()))
+        .unwrap_or(false);
+    let name_present = lower_queue.contains(&name.to_ascii_lowercase());
+
+    if !hash_present && !name_present {
+        return Ok(false);
+    }
+
+    manager
+        .insert(
+            job_id.clone(),
+            Ed2kRuntimeJob {
+                config: config.clone(),
+                name: name.clone(),
+                size,
+                hash,
+                incoming_path: incoming_path(&config, &name),
+                paused: paused.unwrap_or(false),
+            },
+        )
+        .await?;
+
+    let spawned_manager = manager.clone();
+    let spawned_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        monitor_job(spawned_app, spawned_manager, job_id).await;
+    });
+
+    Ok(true)
+}
+
+#[tauri::command]
 pub async fn resource_ed2k_pause(
+    app: AppHandle,
     manager: State<'_, Ed2kManager>,
     job_id: String,
 ) -> Result<bool, String> {
+    let manager = manager.inner().clone();
     let Some(job) = manager.get(&job_id).await else {
         return Ok(false);
     };
     let selector = command_selector(&job).await?;
     run_amulecmd(&job.config, &format!("Pause {selector}")).await?;
+    manager.set_paused(&job_id, true).await;
+
+    let mut event = transfer_event(&job_id, "paused", job.size, 0);
+    event.file_name = Some(job.name);
+    emit_event(&app, event);
     Ok(true)
 }
 
@@ -657,14 +737,11 @@ pub async fn resource_ed2k_resume(
     };
     let selector = command_selector(&job).await?;
     run_amulecmd(&job.config, &format!("Resume {selector}")).await?;
+    manager.set_paused(&job_id, false).await;
 
-    let spawned_manager = manager.clone();
-    let spawned_app = app.clone();
-    let spawned_job = job_id.clone();
-    tauri::async_runtime::spawn(async move {
-        monitor_job(spawned_app, spawned_manager, spawned_job).await;
-    });
-
+    let mut event = transfer_event(&job_id, "running", job.size, 0);
+    event.file_name = Some(job.name);
+    emit_event(&app, event);
     Ok(true)
 }
 
