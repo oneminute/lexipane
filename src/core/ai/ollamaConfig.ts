@@ -10,6 +10,8 @@ export const OLLAMA_DISCOVERY_BASE_URLS =
 
 const OLLAMA_MODEL_KEY = "ai.ollama.model";
 const OLLAMA_BASE_URL_KEY = "ai.ollama.base-url";
+const OLLAMA_BASE_URL_SOURCE_KEY = "ai.ollama.base-url-source";
+const USER_BASE_URL_SOURCE = "user";
 
 export interface OllamaConfig {
   baseUrl: string;
@@ -50,21 +52,39 @@ export function getOllamaBaseUrlCandidates(
   return normalized;
 }
 
+export function resolvePreferredOllamaBaseUrl(
+  storedBaseUrl: string | null,
+  source: string | null,
+): string {
+  if (source !== USER_BASE_URL_SOURCE) {
+    return DEFAULT_OLLAMA_BASE_URL;
+  }
+
+  return normalizeOllamaBaseUrl(storedBaseUrl);
+}
+
 export async function loadOllamaConfig(): Promise<OllamaConfig> {
-  const [storedBaseUrl, model] = await Promise.all([
+  const [storedBaseUrl, baseUrlSource, model] = await Promise.all([
     getAppMeta(OLLAMA_BASE_URL_KEY),
+    getAppMeta(OLLAMA_BASE_URL_SOURCE_KEY),
     getAppMeta(OLLAMA_MODEL_KEY),
   ]);
 
   return {
-    baseUrl: normalizeOllamaBaseUrl(storedBaseUrl),
+    baseUrl: resolvePreferredOllamaBaseUrl(
+      storedBaseUrl,
+      baseUrlSource,
+    ),
     model,
   };
 }
 
 export async function saveOllamaBaseUrl(baseUrl: string): Promise<string> {
   const normalized = normalizeOllamaBaseUrl(baseUrl);
-  await setAppMeta(OLLAMA_BASE_URL_KEY, normalized);
+  await Promise.all([
+    setAppMeta(OLLAMA_BASE_URL_KEY, normalized),
+    setAppMeta(OLLAMA_BASE_URL_SOURCE_KEY, USER_BASE_URL_SOURCE),
+  ]);
   return normalized;
 }
 
