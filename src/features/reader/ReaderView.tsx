@@ -61,6 +61,11 @@ import {
   saveBookPrivacyMode,
 } from "../../core/books/bookPrivacy";
 import { createReaderNote } from "../../core/notes/notes";
+import {
+  getLocalOcrStatus,
+  recognizeImageDataUrl,
+  type LocalOcrStatus,
+} from "../../core/ocr/localOcr";
 import type {
   PdfMetadataSummary,
   PdfOutlineEntry,
@@ -210,6 +215,8 @@ export function ReaderView({
   const [regionMode, setRegionMode] = useState(false);
   const [regionDrag, setRegionDrag] = useState<RegionDragState | null>(null);
   const [regionCapture, setRegionCapture] = useState<PdfRegionCapture | null>(null);
+  const [ocrStatus, setOcrStatus] = useState<LocalOcrStatus | null>(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
   const [epubInitialCfi, setEpubInitialCfi] = useState<string | null>(null);
   const [epubProgress, setEpubProgress] = useState<number | null>(null);
   const [epubMetadata, setEpubMetadata] = useState<EpubMetadataSummary>({
@@ -268,6 +275,17 @@ export function ReaderView({
     void loadReadingLevel()
       .then(setReadingLevel)
       .catch(() => setReadingLevel("B2"));
+
+    void getLocalOcrStatus()
+      .then(setOcrStatus)
+      .catch(() =>
+        setOcrStatus({
+          available: false,
+          engine: "Tesseract OCR",
+          executable: null,
+          message: "Local OCR status could not be determined.",
+        }),
+      );
   }, []);
 
   useEffect(() => {
@@ -701,6 +719,15 @@ export function ReaderView({
       ? kindleAutoTerms
       : autoTermsByPage[currentPage] ?? [];
 
+  const currentPdfText = isPdf
+    ? pageTexts[currentPage] || getPdfPageText(currentPage)
+    : "";
+  const currentPdfNeedsOcr =
+    isPdf &&
+    positionLoaded &&
+    pageCount > 0 &&
+    currentPdfText.length < 80;
+
   const zoomOut = useCallback(() => {
     setScale((value) => Math.max(0.5, Math.round((value - 0.1) * 10) / 10));
   }, []);
@@ -1118,6 +1145,107 @@ export function ReaderView({
     void runAi("explain", undefined, nextSelection);
   }
 
+  async function performLocalOcr(
+    capture: PdfRegionCapture,
+    useAsPageText = false,
+  ): Promise<string> {
+    if (!capture.imageDataUrl) {
+      throw new Error("No captured image is available for OCR.");
+    }
+
+    setOcrBusy(true);
+    setAiError(null);
+
+    try {
+      const result = await recognizeImageDataUrl(capture.imageDataUrl, "eng");
+      const text = normalizedText(result.text);
+
+      if (!text) {
+        throw new Error(
+          "Local OCR completed, but no readable English text was detected.",
+        );
+      }
+
+      setRegionCapture((current) =>
+        current &&
+        current.page === capture.page &&
+        current.rect.x === capture.rect.x &&
+        current.rect.y === capture.rect.y
+          ? { ...current, text }
+          : current,
+      );
+
+      if (useAsPageText) {
+        setPageTexts((current) => ({
+          ...current,
+          [capture.page]: text,
+        }));
+        setAutoTermsByPage((current) => {
+          const next = { ...current };
+          delete next[capture.page];
+          return next;
+        });
+      }
+
+      setAiResult({
+        title: useAsPageText ? "Local OCR · scanned page" : "Local OCR",
+        text,
+        model: result.engine,
+        source: result.engine + " · local",
+      });
+
+      return text;
+    } finally {
+      setOcrBusy(false);
+    }
+  }
+
+  async function ocrCapturedRegion() {
+    if (!regionCapture?.imageDataUrl || ocrBusy) return;
+
+    try {
+      await performLocalOcr(regionCapture);
+    } catch (error) {
+      setAiResult(null);
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : "Local OCR failed.",
+      );
+    }
+  }
+
+  async function ocrCurrentPdfPage() {
+    if (!isPdf || ocrBusy) return;
+
+    const capture = capturePdfRegion(currentPage, {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
+
+    if (!capture?.imageDataUrl) {
+      setAiError(
+        "The current PDF page is not rendered yet. Scroll the page into view and try OCR again.",
+      );
+      return;
+    }
+
+    setRegionCapture(capture);
+
+    try {
+      await performLocalOcr(capture, true);
+    } catch (error) {
+      setAiResult(null);
+      setAiError(
+        error instanceof Error
+          ? error.message
+          : "Local page OCR failed.",
+      );
+    }
+  }
+
   async function analyzeCapturedRegionImage() {
     if (!regionCapture?.imageDataUrl || aiBusy) return;
 
@@ -1143,12 +1271,29 @@ export function ReaderView({
         attemptedSources: result.attemptedSources,
       });
     } catch (error) {
-      setAiResult(null);
-      setAiError(
+      const visionMessage =
         error instanceof Error
           ? error.message
-          : "Region image analysis failed.",
-      );
+          : "Region image analysis failed.";
+
+      if (!regionCapture.text && regionCapture.imageDataUrl) {
+        try {
+          await performLocalOcr(regionCapture);
+          return;
+        } catch (ocrError) {
+          setAiResult(null);
+          setAiError(
+            visionMessage +
+              " Local OCR fallback also failed: " +
+              (ocrError instanceof Error
+                ? ocrError.message
+                : "Unknown OCR error."),
+          );
+        }
+      } else {
+        setAiResult(null);
+        setAiError(visionMessage);
+      }
     } finally {
       setAiBusy(false);
     }
@@ -2064,8 +2209,9 @@ export function ReaderView({
                   <blockquote>{regionCapture.text}</blockquote>
                 ) : (
                   <p className="muted">
-                    No selectable text was found in this region. The image is
-                    captured and ready for a future OCR/vision route.
+                    No selectable text was found in this region. Use local OCR
+                    to extract text without uploading the image, or use a
+                    vision-capable model for visual understanding.
                   </p>
                 )}
                 <div className="assist-actions">
@@ -2078,12 +2224,20 @@ export function ReaderView({
                     </button>
                   )}
                   {regionCapture.imageDataUrl && (
-                    <button
-                      disabled={aiBusy}
-                      onClick={() => void analyzeCapturedRegionImage()}
-                    >
-                      Analyze image
-                    </button>
+                    <>
+                      <button
+                        disabled={aiBusy || ocrBusy}
+                        onClick={() => void ocrCapturedRegion()}
+                      >
+                        {ocrBusy ? "OCR…" : "OCR locally"}
+                      </button>
+                      <button
+                        disabled={aiBusy || ocrBusy}
+                        onClick={() => void analyzeCapturedRegionImage()}
+                      >
+                        Analyze image
+                      </button>
+                    </>
                   )}
                   <button
                     disabled={aiBusy}
@@ -2109,6 +2263,28 @@ export function ReaderView({
                 </div>
                 <small>{readingLevel}</small>
               </div>
+
+              {currentPdfNeedsOcr && (
+                <div className="scanned-page-help">
+                  <strong>This page looks scanned.</strong>
+                  <span>
+                    {ocrStatus?.available
+                      ? "Run local OCR so reading assistance can use the page text without sending the page image to a cloud service."
+                      : "Local OCR is not installed. Tesseract can be installed locally, or you can use Region select with a vision-capable model."}
+                  </span>
+                  <button
+                    disabled={ocrBusy || !ocrStatus?.available}
+                    onClick={() => void ocrCurrentPdfPage()}
+                  >
+                    {ocrBusy ? "Running OCR…" : "OCR this page locally"}
+                  </button>
+                  {!ocrStatus?.available && (
+                    <small>
+                      Windows: winget install UB-Mannheim.TesseractOCR
+                    </small>
+                  )}
+                </div>
+              )}
 
               {(isEpub
                 ? epubDifficultyBusy
@@ -2146,6 +2322,7 @@ export function ReaderView({
                   ? !kindleDifficultyBusy
                   : difficultyBusyPage !== currentPage) &&
                 currentAutoTerms.length === 0 &&
+                !currentPdfNeedsOcr &&
                 !(isEpub
                   ? epubDifficultyError
                   : isKindle

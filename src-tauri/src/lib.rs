@@ -1,3 +1,4 @@
+mod ocr;
 mod secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -9,6 +10,8 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
+            ocr::local_ocr_status,
+            ocr::ocr_image,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_has,

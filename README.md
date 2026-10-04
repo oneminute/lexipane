@@ -169,11 +169,16 @@ Optional modes:
 
 # Skip npm dependency synchronization
 .\start-lexipane.cmd -SkipInstall
+
+# Install optional local Tesseract OCR on Windows, then start
+.\start-lexipane.cmd -Ocr
 ~~~
 
 `-Bootstrap` uses Windows Package Manager to install the official Rustup package, then configures the stable Rust toolchain. It is explicit rather than automatic so the normal launcher never installs system-level developer tooling without being asked.
 
 If Rust was installed separately but the current terminal still says `cargo` is missing, open a new PowerShell window. Cargo normally lives in `%USERPROFILE%\\.cargo\\bin`.
+
+The optional `-Ocr` switch installs a local Tesseract OCR engine through Windows Package Manager. Normal startup only detects OCR and never installs it silently.
 
 Breaking major dependency upgrades remain deliberate project changes rather than happening silently at startup.
 

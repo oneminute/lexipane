@@ -2,7 +2,8 @@ param(
     [switch]$Update,
     [switch]$Web,
     [switch]$SkipInstall,
-    [switch]$Bootstrap
+    [switch]$Bootstrap,
+    [switch]$Ocr
 )
 
 $ErrorActionPreference = "Stop"
@@ -116,6 +117,69 @@ Cargo is normally installed under:
     }
 }
 
+
+function Get-TesseractExecutable {
+    $Command = Get-Command tesseract -ErrorAction SilentlyContinue
+    if ($Command) {
+        return $Command.Source
+    }
+
+    $Candidates = @(
+        "C:\Program Files\Tesseract-OCR\tesseract.exe",
+        "C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
+    )
+
+    foreach ($Candidate in $Candidates) {
+        if (Test-Path $Candidate) {
+            return $Candidate
+        }
+    }
+
+    return $null
+}
+
+function Ensure-LocalOcr {
+    $Executable = Get-TesseractExecutable
+
+    if ($Executable) {
+        Write-Host "OCR : $Executable"
+        return
+    }
+
+    if (-not $Ocr) {
+        Write-Host "OCR : optional Tesseract not installed (use -Ocr to install)" -ForegroundColor DarkGray
+        return
+    }
+
+    $Winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $Winget) {
+        Fail "Local OCR was requested, but winget is unavailable. Install Tesseract OCR manually, then restart LexiPane."
+    }
+
+    Write-Step "Installing optional local Tesseract OCR"
+
+    $OcrWingetArgs = @(
+        "install",
+        "--id", "UB-Mannheim.TesseractOCR",
+        "-e",
+        "--source", "winget",
+        "--accept-source-agreements",
+        "--accept-package-agreements"
+    )
+
+    & winget @OcrWingetArgs
+
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Tesseract OCR installation failed with exit code $LASTEXITCODE."
+    }
+
+    $Executable = Get-TesseractExecutable
+    if (-not $Executable) {
+        Fail "Tesseract installation finished, but the executable was not found. Open a new PowerShell window and run the launcher again."
+    }
+
+    Write-Host "OCR : $Executable"
+}
 
 function Ensure-TauriIcons {
     $IconDir = Join-Path $ProjectRoot "src-tauri\icons"
@@ -232,6 +296,7 @@ else {
 }
 
 if (-not $Web) {
+    Ensure-LocalOcr
     Ensure-TauriIcons
 }
 

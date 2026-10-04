@@ -57,7 +57,7 @@ Remaining PDF hardening:
 
 - broader testing against damaged/encrypted/scanned PDFs
 - performance profiling on very large image-heavy documents
-- optional dedicated OCR engine for scanned pages when no vision model is configured
+- broader OCR accuracy testing and optional bundled OCR distribution
 
 ## Phase 2 — Contextual AI reading
 
@@ -126,11 +126,12 @@ Implemented:
 - rectangular PDF region selection
 - text-layer extraction
 - local/cloud multimodal analysis for images, charts, formulas, and scanned text
+- local Tesseract OCR fallback for selected regions and scanned PDF pages
+- automatic OCR fallback when region vision analysis is unavailable
 
 Next:
 
 - batch/tag-filtered Markdown export
-- dedicated OCR fallback when no suitable vision model exists
 - image/region attachments stored as durable Notebook assets instead of transient captures
 
 ## Phase 4 — EPUB
