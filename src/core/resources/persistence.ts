@@ -605,6 +605,7 @@ export async function saveResourceCatalog(
   name: string,
   url: string,
   metadata: Record<string, unknown> = {},
+  providerId = "opds",
 ): Promise<ResourceCatalog | null> {
   if (!isTauri()) return null;
 
@@ -625,9 +626,10 @@ export async function saveResourceCatalog(
 
   if (existing[0]) {
     await db.execute(
-      "UPDATE resource_catalogs SET name = $2, enabled = 1, metadata_json = $3, updated_at = $4 WHERE id = $1",
+      "UPDATE resource_catalogs SET provider_id = $2, name = $3, enabled = 1, metadata_json = $4, updated_at = $5 WHERE id = $1",
       [
         existing[0].id,
+        providerId,
         normalizedName,
         JSON.stringify(metadata),
         now,
@@ -648,13 +650,20 @@ export async function saveResourceCatalog(
   await db.execute(
     "INSERT INTO resource_catalogs " +
       "(id, provider_id, name, url, enabled, metadata_json, created_at, updated_at) " +
-      "VALUES ($1, 'opds', $2, $3, 1, $4, $5, $5)",
-    [id, normalizedName, normalizedUrl, JSON.stringify(metadata), now],
+      "VALUES ($1, $2, $3, $4, 1, $5, $6, $6)",
+    [
+      id,
+      providerId,
+      normalizedName,
+      normalizedUrl,
+      JSON.stringify(metadata),
+      now,
+    ],
   );
 
   return {
     id,
-    providerId: "opds",
+    providerId,
     name: normalizedName,
     url: normalizedUrl,
     enabled: true,
