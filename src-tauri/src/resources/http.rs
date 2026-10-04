@@ -135,6 +135,27 @@ fn validate_http_url(value: &str) -> Result<Url, String> {
     Ok(url)
 }
 
+fn validate_redirect_target(
+    original: &Url,
+    final_url: &Url,
+) -> Result<(), String> {
+    if original.scheme() == "https" && final_url.scheme() != "https" {
+        return Err(
+            "Refusing to downgrade an HTTPS resource to an insecure redirect."
+                .to_string(),
+        );
+    }
+
+    if !final_url.username().is_empty() || final_url.password().is_some() {
+        return Err(
+            "Redirected URLs with embedded credentials are not allowed."
+                .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
 fn sanitize_file_name(value: &str) -> String {
     let cleaned: String = value
         .chars()
@@ -232,6 +253,7 @@ async fn probe_with_client(client: &Client, url: Url) -> Result<HttpProbeResult,
     }
 
     let final_url = response.url().clone();
+    validate_redirect_target(&url, &final_url)?;
     let headers = response.headers();
 
     let content_type = headers
@@ -287,6 +309,7 @@ pub async fn resource_http_fetch_text(
     max_bytes: Option<usize>,
 ) -> Result<HttpTextResponse, String> {
     let url = validate_http_url(&url)?;
+    let original_url = url.clone();
     let client = build_client()?;
     let response = client
         .get(url)
@@ -301,6 +324,7 @@ pub async fn resource_http_fetch_text(
         ));
     }
 
+    validate_redirect_target(&original_url, response.url())?;
     let final_url = response.url().to_string();
     let content_type = response
         .headers()
@@ -802,6 +826,10 @@ mod tests {
         assert!(validate_http_url("ftp://example.com/book.epub").is_err());
         assert!(validate_http_url("https://user:pass@example.com/book.epub").is_err());
         assert!(validate_http_url("https://example.com/book.epub").is_ok());
+
+        let secure = Url::parse("https://example.com/book.epub").unwrap();
+        let downgraded = Url::parse("http://cdn.example.com/book.epub").unwrap();
+        assert!(validate_redirect_target(&secure, &downgraded).is_err());
     }
 
     #[test]
