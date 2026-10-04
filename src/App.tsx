@@ -96,12 +96,12 @@ export default function App() {
           />
         )}
         <div
-          className={
-            view === "reader"
-              ? "reader-view-keepalive active"
-              : "reader-view-keepalive"
-          }
+          className="reader-view-keepalive"
           aria-hidden={view !== "reader"}
+          style={{
+            display: view === "reader" ? "block" : "none",
+            height: "100%",
+          }}
         >
           <ReaderErrorBoundary
             onBackToLibrary={() => setView("library")}
