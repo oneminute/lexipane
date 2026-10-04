@@ -480,6 +480,25 @@ export function ResourceHubView({ onOpenBook }: Props) {
     }
   }
 
+  async function openOpdsSection(link: OpdsLink) {
+    setOpdsBusy(true);
+    setMessage("");
+
+    try {
+      const feed = await fetchOpdsCatalog(link.href);
+      setOpdsFeed(feed);
+      setOpdsQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to open the OPDS section.",
+      );
+    } finally {
+      setOpdsBusy(false);
+    }
+  }
+
   async function acquireOpdsEntry(
     entry: OpdsEntry,
     link: OpdsLink,
@@ -904,8 +923,22 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         )}
                         {entry.summary && <p>{entry.summary}</p>}
 
-                        {entry.acquisitions.length > 0 ? (
+                        {(entry.acquisitions.length > 0 ||
+                          entry.navigation.length > 0) ? (
                           <div className="opds-acquisition-actions">
+                            {entry.navigation.map((link) => (
+                              <button
+                                key={"nav-" + link.href + link.rel}
+                                type="button"
+                                className="ghost-button"
+                                disabled={opdsBusy}
+                                onClick={() =>
+                                  void openOpdsSection(link)
+                                }
+                              >
+                                {link.title || "Open section"} →
+                              </button>
+                            ))}
                             {entry.acquisitions.map((link) => (
                               <button
                                 key={link.href + link.rel}
@@ -921,7 +954,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                             ))}
                           </div>
                         ) : (
-                          <small>No direct PDF/EPUB acquisition link.</small>
+                          <small>No catalog or PDF/EPUB link.</small>
                         )}
                       </div>
                     </article>
