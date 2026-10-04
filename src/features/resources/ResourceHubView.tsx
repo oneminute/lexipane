@@ -1066,8 +1066,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <span className="eyebrow">Resource acquisition platform</span>
           <h1>Find it. Inspect it. Bring it into your library.</h1>
           <p>
-            HTTP acquisition is now live. OPDS discovery uses the same
-            persistent transfer and verified Library-ingestion pipeline.
+            Search, inspect, download, and import reading resources from web,
+            OPDS, cloud storage, and BitTorrent through one persistent pipeline.
           </p>
         </div>
 
@@ -1078,7 +1078,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
               {loading ? "Starting Resource Hub…" : "Resource Hub ready"}
             </strong>
             <small>
-              RESOURCE-002 · {liveTransportCount} live transport(s)
+              LONGRUN-001 · {liveTransportCount} live transport(s)
             </small>
           </div>
         </div>
@@ -1103,7 +1103,116 @@ export function ResourceHubView({ onOpenBook }: Props) {
       {message && <div className="resource-message">{message}</div>}
 
       {tab === "search" && (
-        <div className="resource-hub-grid">
+        <>
+          <section className="resource-section federated-search-section">
+            <header>
+              <div>
+                <span className="eyebrow">Federated search</span>
+                <h2>Search all connected reading sources</h2>
+              </div>
+              <small>
+                Searches saved OPDS catalogs, connected cloud accounts, and
+                local Resource history in one pass.
+              </small>
+            </header>
+
+            <div className="federated-search-row">
+              <input
+                value={resourceQuery}
+                placeholder="Search title, author, or keyword…"
+                onChange={(event) =>
+                  setResourceQuery(event.target.value)
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void runFederatedSearch();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="primary-button"
+                disabled={
+                  resourceSearchBusy || !resourceQuery.trim()
+                }
+                onClick={() => void runFederatedSearch()}
+              >
+                {resourceSearchBusy ? "Searching…" : "Search all"}
+              </button>
+            </div>
+
+            {(resourceSearchResults.length > 0 ||
+              resourceSearchErrors.length > 0) && (
+              <div className="federated-results">
+                <div className="federated-results-heading">
+                  <strong>
+                    {resourceSearchResults.length} result
+                    {resourceSearchResults.length === 1 ? "" : "s"}
+                  </strong>
+                  <small>
+                    {resourceSearchSourceCount} source
+                    {resourceSearchSourceCount === 1 ? "" : "s"} queried
+                  </small>
+                </div>
+
+                {resourceSearchResults.map((result) => (
+                  <article key={result.key}>
+                    <div>
+                      <span className="resource-kind-badge">
+                        {result.providerId}
+                      </span>
+                      <strong>{result.title}</strong>
+                      <small>
+                        {result.authors.length
+                          ? result.authors.join(", ") + " · "
+                          : ""}
+                        {result.sourceLabel}
+                        {result.size
+                          ? " · " + formatBytes(result.size)
+                          : ""}
+                      </small>
+                      {result.description && (
+                        <p>{result.description}</p>
+                      )}
+                    </div>
+
+                    {result.kind === "local" ? (
+                      <span className="federated-local-badge">
+                        Indexed
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="primary-button compact"
+                        disabled={networkBusy || cloudBusy}
+                        onClick={() =>
+                          void acquireFederatedResult(result)
+                        }
+                      >
+                        Get
+                      </button>
+                    )}
+                  </article>
+                ))}
+
+                {resourceSearchErrors.length > 0 && (
+                  <details className="federated-search-errors">
+                    <summary>
+                      {resourceSearchErrors.length} source error
+                      {resourceSearchErrors.length === 1 ? "" : "s"}
+                    </summary>
+                    <ul>
+                      {resourceSearchErrors.map((error, index) => (
+                        <li key={index}>{error}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+          </section>
+
+          <div className="resource-hub-grid">
           <section className="resource-main-card">
             <span className="eyebrow">Universal resource input</span>
             <h2>Paste a resource address</h2>
@@ -1360,6 +1469,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
             </div>
           </aside>
         </div>
+        </>
       )}
 
       {tab === "browse" && (
