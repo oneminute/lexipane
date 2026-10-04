@@ -105,12 +105,14 @@ import {
   type EpubMetadataSummary,
   type EpubOutlineEntry,
   type EpubSelection,
+  type EpubSentenceSelection,
 } from "./EpubDocumentView";
 import {
   MobiDocumentView,
   type KindleMetadataSummary,
   type KindleOutlineEntry,
   type KindleSelection,
+  type KindleSentenceSelection,
 } from "./MobiDocumentView";
 import { PdfDocumentView } from "./PdfDocumentView";
 import { BookProviderPolicyControl } from "./BookProviderPolicyControl";
@@ -121,6 +123,7 @@ import {
   capturePdfRegion,
   type PdfRegionCapture,
 } from "./pdfRegion";
+import { segmentSentences } from "./sentenceNavigation";
 
 interface Props {
   bookPath: string | null;
@@ -142,6 +145,14 @@ interface AiResultState {
 interface ActiveReaderSelection extends ReadingSelection {
   page: number;
   rects: NormalizedRect[];
+  kind?: "manual" | "word" | "sentence";
+  sentenceIndex?: number;
+  sentenceCount?: number;
+}
+
+interface SentenceNavigationRequest {
+  token: number;
+  direction: -1 | 1;
 }
 
 interface RegionDragState {
@@ -204,6 +215,10 @@ export function ReaderView({
   const [positionLoaded, setPositionLoaded] = useState(false);
   const [selection, setSelection] =
     useState<ActiveReaderSelection | null>(null);
+  const [sentenceNavigation, setSentenceNavigation] =
+    useState<SentenceNavigationRequest | null>(null);
+  const sentenceNavigationTokenRef = useRef(0);
+  const wordSelectionTimerRef = useRef<number | null>(null);
   const [aiResult, setAiResult] = useState<AiResultState | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
@@ -326,6 +341,7 @@ export function ReaderView({
     setInitialPage(null);
     setPositionLoaded(false);
     setSelection(null);
+    setSentenceNavigation(null);
     setAiResult(null);
     setAiError(null);
     setQuestion("");
