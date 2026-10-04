@@ -34,6 +34,7 @@ export interface GrammarAnalysis {
   meaning: string;
   structure: ReadingStructurePart[];
   grammarPoints: ReadingGrammarPoint[];
+  features: string[];
   difficultExpressions: ReadingExpression[];
 }
 
@@ -159,8 +160,8 @@ export function structuredOutputInstruction(
     return [
       "Return ONLY valid JSON. Do not wrap it in Markdown.",
       "Use this exact object shape:",
-      '{"kind":"grammar","naturalChinese":"自然中文翻译","meaning":"句子整体含义","structure":[{"part":"原文片段","role":"主句/从句/短语等","explanation":"这部分在句子中的作用"}],"grammarPoints":[{"name":"语法点","explanation":"结合原句解释"}],"difficultExpressions":[{"text":"原文表达","meaning":"中文含义","note":"为什么这样理解"}]}',
-      "Keep arrays selective. Do not invent grammar points that do not help comprehension.",
+      '{"kind":"grammar","naturalChinese":"自然中文翻译","meaning":"句子整体含义","structure":[{"part":"原文片段","role":"主句/从句/短语等","explanation":"这部分在句子中的作用"}],"grammarPoints":[{"name":"语法点","explanation":"结合原句解释"}],"features":["这句话值得注意的表达特点、语气、信息组织或写法"],"difficultExpressions":[{"text":"原文中的词或表达","meaning":"这个词或表达在本句中的中文含义","note":"为什么在这里这样理解；必要时说明与常见词义的区别"}]}',
+      "Keep arrays selective. Explain only features, words, expressions, and grammar that materially help comprehension. Do not give dictionary dumps.",
     ].join(" ");
   }
 
@@ -232,6 +233,7 @@ export function parseStructuredReadingAnalysis(
       meaning,
       structure: structureParts(record.structure),
       grammarPoints: grammarPoints(record.grammarPoints),
+      features: stringArray(record.features),
       difficultExpressions: expressions(record.difficultExpressions),
     };
   }
@@ -314,10 +316,18 @@ export function formatStructuredReadingAnalysis(
       );
     }
 
+    if (analysis.features.length > 0) {
+      lines.push(
+        "",
+        "Sentence features:",
+        ...analysis.features.map((item) => "- " + item),
+      );
+    }
+
     if (analysis.difficultExpressions.length > 0) {
       lines.push(
         "",
-        "Expressions:",
+        "Words & expressions in context:",
         ...analysis.difficultExpressions.map(
           (item) =>
             "- " +
