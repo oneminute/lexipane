@@ -5,6 +5,7 @@ import {
 } from "../../core/books/navigation";
 import { exportNotesAsMarkdown } from "../../core/notes/exportMarkdown";
 import {
+  cleanupNoteAssetStorage,
   listNoteAssets,
   loadNoteAssetDataUrl,
   type NoteAsset,
@@ -241,6 +242,7 @@ export function NotebookView({ onOpenBook }: Props) {
   const [bookFilter, setBookFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [cleaningAssets, setCleaningAssets] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
 
   useEffect(() => {
@@ -350,6 +352,36 @@ export function NotebookView({ onOpenBook }: Props) {
     }
   }
 
+  async function cleanAttachmentStorage() {
+    if (cleaningAssets) return;
+
+    setCleaningAssets(true);
+    setExportMessage("");
+
+    try {
+      const result = await cleanupNoteAssetStorage();
+      const megabytes = result.bytesRemoved / (1024 * 1024);
+
+      setExportMessage(
+        result.filesRemoved === 0
+          ? "Notebook attachment storage is already clean."
+          : "Removed " +
+              result.filesRemoved +
+              " orphan attachment file(s), freeing " +
+              megabytes.toFixed(megabytes >= 10 ? 0 : 1) +
+              " MB.",
+      );
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to clean Notebook attachments.",
+      );
+    } finally {
+      setCleaningAssets(false);
+    }
+  }
+
   return (
     <section className="page notebook-page">
       <header className="page-header notebook-header">
@@ -395,6 +427,16 @@ export function NotebookView({ onOpenBook }: Props) {
               </option>
             ))}
           </select>
+
+          {assets.length > 0 && (
+            <button
+              className="ghost-button"
+              disabled={cleaningAssets}
+              onClick={() => void cleanAttachmentStorage()}
+            >
+              {cleaningAssets ? "Cleaning…" : "Clean attachments"}
+            </button>
+          )}
 
           <button
             className="primary-button"

@@ -19,6 +19,7 @@ pub fn run() {
             library_files::cleanup_managed_library,
             note_assets::save_note_asset,
             note_assets::delete_note_asset,
+            note_assets::cleanup_note_assets,
             ocr::local_ocr_status,
             ocr::ocr_image,
             secrets::secret_set,

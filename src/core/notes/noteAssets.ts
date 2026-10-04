@@ -154,3 +154,31 @@ export async function deleteUnreferencedNoteAssetFiles(
     });
   }
 }
+
+
+export interface NoteAssetCleanupResult {
+  filesRemoved: number;
+  bytesRemoved: number;
+}
+
+export async function cleanupNoteAssetStorage(): Promise<NoteAssetCleanupResult> {
+  if (!isTauri()) {
+    return {
+      filesRemoved: 0,
+      bytesRemoved: 0,
+    };
+  }
+
+  const db = await initializeDatabase();
+  if (!db) {
+    throw new Error("Database is unavailable.");
+  }
+
+  const rows = await db.select<Array<{ file_path: string }>>(
+    "SELECT DISTINCT file_path FROM note_assets",
+  );
+
+  return invoke<NoteAssetCleanupResult>("cleanup_note_assets", {
+    keepPaths: rows.map((row) => row.file_path),
+  });
+}

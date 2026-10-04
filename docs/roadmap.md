@@ -134,9 +134,11 @@ Implemented:
 - batch Markdown export of the current Notebook view
 - explicit book and tag filters for targeted Markdown export
 
+- explicit orphan attachment cleanup control
+
 Next:
 
-- Notebook asset cleanup/diagnostic tooling
+- richer Notebook attachment diagnostics if real-world recovery cases require them
 
 ## Phase 4 — EPUB
 
@@ -158,8 +160,6 @@ Implemented:
 - selected-text AI assistance
 - Notebook anchors
 - automatic difficult-word/phrase assistance
-
-Next:
 
 - saved-CFI fallback to book start when a persisted location is invalid
 - malformed saved-highlight CFI isolation so one bad anchor does not break the reader

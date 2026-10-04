@@ -1,6 +1,7 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashSet,
     fmt::Write as FmtWrite,
     fs,
     path::{Path, PathBuf},
@@ -13,6 +14,13 @@ pub struct StoredNoteAsset {
     path: String,
     file_hash: String,
     mime_type: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteAssetCleanupResult {
+    files_removed: u64,
+    bytes_removed: u64,
 }
 
 fn asset_hash(bytes: &[u8]) -> Result<String, String> {
@@ -111,4 +119,57 @@ pub fn delete_note_asset(
         .map_err(|error| format!("Unable to delete notebook image: {error}"))?;
 
     Ok(true)
+}
+
+
+#[tauri::command]
+pub fn cleanup_note_assets(
+    app: tauri::AppHandle,
+    keep_paths: Vec<String>,
+) -> Result<NoteAssetCleanupResult, String> {
+    let asset_dir = note_asset_dir(&app)?;
+
+    if !asset_dir.exists() {
+        return Ok(NoteAssetCleanupResult {
+            files_removed: 0,
+            bytes_removed: 0,
+        });
+    }
+
+    let canonical_dir = fs::canonicalize(&asset_dir)
+        .map_err(|error| format!("Notebook asset storage is unavailable: {error}"))?;
+
+    let keep: HashSet<PathBuf> = keep_paths
+        .iter()
+        .filter_map(|path| fs::canonicalize(path).ok())
+        .filter(|path| path.parent() == Some(canonical_dir.as_path()))
+        .collect();
+
+    let mut files_removed = 0_u64;
+    let mut bytes_removed = 0_u64;
+
+    for entry in fs::read_dir(&canonical_dir)
+        .map_err(|error| format!("Unable to inspect notebook asset storage: {error}"))?
+    {
+        let entry = entry
+            .map_err(|error| format!("Unable to inspect notebook asset entry: {error}"))?;
+        let path = entry.path();
+
+        if !path.is_file() || keep.contains(&path) {
+            continue;
+        }
+
+        let size = entry.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+
+        fs::remove_file(&path)
+            .map_err(|error| format!("Unable to remove orphan notebook asset: {error}"))?;
+
+        files_removed += 1;
+        bytes_removed += size;
+    }
+
+    Ok(NoteAssetCleanupResult {
+        files_removed,
+        bytes_removed,
+    })
 }
