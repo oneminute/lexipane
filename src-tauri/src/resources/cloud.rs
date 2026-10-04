@@ -2,13 +2,13 @@ use crate::resources::http::{validate_downloaded_book, ResourceTransferEvent};
 use futures_util::StreamExt;
 use reqwest::{
     header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, RANGE},
-    Client, Method, Response, StatusCode, Url,
+    Client, StatusCode, Url,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         atomic::{AtomicU8, Ordering},
         Arc,
@@ -190,7 +190,7 @@ async fn google_list(
     let q = if let Some(query) = query.filter(|item| !item.trim().is_empty()) {
         format!(
             "name contains '{}' and trashed = false",
-            query.replace(''', "\\'")
+            query.replace('\'', "\\'")
         )
     } else {
         format!(
@@ -390,7 +390,7 @@ async fn onedrive_list(
     let path = if let Some(query) = query.filter(|item| !item.trim().is_empty()) {
         format!(
             "/v1.0/me/drive/root/search(q='{}')",
-            query.replace(''', "''")
+            query.replace('\'', "''")
         )
     } else if let Some(folder) = folder.filter(|item| !item.is_empty()) {
         format!("/v1.0/me/drive/items/{folder}/children")
