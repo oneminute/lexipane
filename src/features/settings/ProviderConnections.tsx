@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   deleteProviderConfig,
   listProviderConfigModels,
+  inspectProviderConfigHealth,
   listProviderConfigs,
   probeProviderConfigModel,
   saveProviderConfig,
@@ -466,6 +467,7 @@ export function ProviderConnections({ onChanged }: Props) {
           ) : (
             configs.map((config) => {
               const probe = capabilities[config.id];
+              const health = inspectProviderConfigHealth(config);
 
               return (
                 <article className="configured-provider-card" key={config.id}>
@@ -484,6 +486,15 @@ export function ProviderConnections({ onChanged }: Props) {
                   <div className="configured-provider-meta">
                     <span
                       className={
+                        health.ready
+                          ? "status-chip ready"
+                          : "status-chip"
+                      }
+                    >
+                      {health.ready ? "ready" : "needs setup"}
+                    </span>
+                    <span
+                      className={
                         config.hasApiKey
                           ? "key-badge"
                           : "key-badge missing"
@@ -495,6 +506,22 @@ export function ProviderConnections({ onChanged }: Props) {
                       <code>{config.settings.model}</code>
                     )}
                   </div>
+
+                  {(health.issues.length > 0 ||
+                    health.warnings.length > 0) && (
+                    <div className="provider-health-list">
+                      {health.issues.map((issue) => (
+                        <small key={"issue:" + issue} className="issue">
+                          {issue}
+                        </small>
+                      ))}
+                      {health.warnings.map((warning) => (
+                        <small key={"warning:" + warning}>
+                          {warning}
+                        </small>
+                      ))}
+                    </div>
+                  )}
 
                   {(config.settings.inputCostPerMillion !== undefined ||
                     config.settings.outputCostPerMillion !== undefined) && (

@@ -339,3 +339,63 @@ export async function probeProviderConfigModel(
     source: discovered.capabilitySource ?? "provider",
   };
 }
+
+
+export interface ProviderConfigHealth {
+  ready: boolean;
+  issues: string[];
+  warnings: string[];
+}
+
+export function inspectProviderConfigHealth(
+  config: ProviderConfig,
+): ProviderConfigHealth {
+  const issues: string[] = [];
+  const warnings: string[] = [];
+  const descriptor = providerCatalog.find(
+    (provider) => provider.id === config.providerId,
+  );
+
+  if (!config.enabled) {
+    issues.push("Provider is disabled.");
+  }
+
+  if (!config.baseUrl.trim()) {
+    issues.push("Base URL is missing.");
+  }
+
+  if (!config.settings.model?.trim()) {
+    issues.push("Model is not selected.");
+  }
+
+  if (
+    descriptor &&
+    (descriptor.adapter === "anthropic-native" ||
+      descriptor.adapter === "gemini-native") &&
+    !config.hasApiKey
+  ) {
+    issues.push("API key is missing.");
+  } else if (
+    descriptor?.region !== "local" &&
+    !config.hasApiKey
+  ) {
+    warnings.push(
+      "No API key is stored. This is valid only if the endpoint does not require authentication.",
+    );
+  }
+
+  if (
+    (config.settings.inputCostPerMillion === undefined) !==
+    (config.settings.outputCostPerMillion === undefined)
+  ) {
+    warnings.push(
+      "Only one side of token pricing is configured; cost estimates may be incomplete.",
+    );
+  }
+
+  return {
+    ready: issues.length === 0,
+    issues,
+    warnings,
+  };
+}

@@ -120,6 +120,7 @@ interface AiResultState {
   analysis?: StructuredReadingAnalysis;
   source?: string;
   fallbackUsed?: boolean;
+  attemptedSources?: string[];
 }
 
 interface ActiveReaderSelection extends ReadingSelection {
@@ -1139,6 +1140,7 @@ export function ReaderView({
         analysis: result.analysis,
         source: result.source,
         fallbackUsed: result.fallbackUsed,
+        attemptedSources: result.attemptedSources,
       });
     } catch (error) {
       setAiResult(null);
@@ -1369,6 +1371,7 @@ export function ReaderView({
         analysis: result.analysis,
         source: result.source,
         fallbackUsed: result.fallbackUsed,
+        attemptedSources: result.attemptedSources,
       });
     } catch (error) {
       setAiResult(null);
@@ -2313,6 +2316,18 @@ export function ReaderView({
                 ) : (
                   <div className="ai-answer-text">{aiResult.text}</div>
                 )}
+
+                {aiResult.attemptedSources &&
+                  aiResult.attemptedSources.length > 0 && (
+                    <details className="route-diagnostics">
+                      <summary>Route details</summary>
+                      <ol>
+                        {aiResult.attemptedSources.map((source, index) => (
+                          <li key={index}>{source}</li>
+                        ))}
+                      </ol>
+                    </details>
+                  )}
               </section>
             )}
 

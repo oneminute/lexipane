@@ -2689,3 +2689,49 @@ button { cursor: pointer; }
     width: auto;
   }
 }
+
+
+/* AI route diagnostics and provider readiness */
+
+.provider-health-list {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  background: #faf8f3;
+  border: 1px solid #eee6d8;
+  border-radius: 8px;
+}
+
+.provider-health-list small {
+  color: #8c765d;
+  line-height: 1.4;
+}
+
+.provider-health-list small.issue {
+  color: #94515a;
+}
+
+.route-diagnostics {
+  margin-top: 12px;
+  padding-top: 9px;
+  border-top: 1px solid #eceef2;
+}
+
+.route-diagnostics summary {
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 800;
+  color: #777d8b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.route-diagnostics ol {
+  display: grid;
+  gap: 5px;
+  padding-left: 18px;
+  margin: 8px 0 0;
+  font-size: 9px;
+  line-height: 1.45;
+  color: #767b89;
+}

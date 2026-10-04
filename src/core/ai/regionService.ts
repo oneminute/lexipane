@@ -21,6 +21,7 @@ export interface RegionAnalysisResult {
   cached: boolean;
   source?: string;
   fallbackUsed?: boolean;
+  attemptedSources?: string[];
 }
 
 function errorMessage(error: unknown): string {
@@ -66,12 +67,15 @@ export async function analyzeRegionImage(
     .join("\n\n");
 
   const errors: string[] = [];
+  const attemptedSources: string[] = [];
 
   for (let index = 0; index < runtimes.length; index += 1) {
     const runtime = runtimes[index];
 
     if (!runtime.provider.generateVision) {
-      errors.push(runtime.label + " — no vision implementation");
+      const detail = runtime.label + " — no vision implementation";
+      errors.push(detail);
+      attemptedSources.push(detail);
       continue;
     }
 
@@ -81,7 +85,10 @@ export async function analyzeRegionImage(
           await runtime.provider.getModelCapabilities(runtime.model);
 
         if (capabilities.vision === false) {
-          errors.push(runtime.label + " — model is not vision-capable");
+          const detail =
+            runtime.label + " — model is not vision-capable";
+          errors.push(detail);
+          attemptedSources.push(detail);
           continue;
         }
       } catch {
@@ -108,8 +115,11 @@ export async function analyzeRegionImage(
         cached: true,
         source: runtime.label,
         fallbackUsed: index > 0,
+        attemptedSources: [...attemptedSources, runtime.label],
       };
     }
+
+    attemptedSources.push(runtime.label);
 
     try {
       const started = Date.now();
@@ -164,9 +174,12 @@ export async function analyzeRegionImage(
         cached: false,
         source: runtime.label,
         fallbackUsed: index > 0,
+        attemptedSources,
       };
     } catch (error) {
-      errors.push(runtime.label + " — " + errorMessage(error));
+      const detail = runtime.label + " — " + errorMessage(error);
+      errors.push(detail);
+      attemptedSources[attemptedSources.length - 1] = detail;
     }
   }
 
