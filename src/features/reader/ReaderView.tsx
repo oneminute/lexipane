@@ -2634,7 +2634,7 @@ export function ReaderView({
             </aside>
           )}
 
-          {selection?.kind === "sentence" && (
+          {activeSentence && (
             <div
               className="sentence-nav-floating"
               role="group"
@@ -2644,10 +2644,9 @@ export function ReaderView({
                 type="button"
                 disabled={
                   aiBusy ||
-                  selection.sentenceIndex === undefined ||
                   (isPdf &&
-                    selection.sentenceIndex <= 0 &&
-                    selection.page <= 1)
+                    activeSentence.sentenceIndex <= 0 &&
+                    activeSentence.page <= 1)
                 }
                 onClick={() => navigateSentence(-1)}
               >
@@ -2656,11 +2655,10 @@ export function ReaderView({
               <span>
                 <strong>Current sentence</strong>
                 <small>
-                  {selection.sentenceIndex !== undefined &&
-                  selection.sentenceCount
-                    ? selection.sentenceIndex + 1 +
+                  {activeSentence.sentenceCount
+                    ? activeSentence.sentenceIndex + 1 +
                       " / " +
-                      selection.sentenceCount
+                      activeSentence.sentenceCount
                     : "Selected"}
                 </small>
               </span>
@@ -2668,12 +2666,10 @@ export function ReaderView({
                 type="button"
                 disabled={
                   aiBusy ||
-                  selection.sentenceIndex === undefined ||
-                  selection.sentenceCount === undefined ||
                   (isPdf &&
-                    selection.sentenceIndex >=
-                      selection.sentenceCount - 1 &&
-                    selection.page >= pageCount)
+                    activeSentence.sentenceIndex >=
+                      activeSentence.sentenceCount - 1 &&
+                    activeSentence.page >= pageCount)
                 }
                 onClick={() => navigateSentence(1)}
               >
@@ -2733,10 +2729,10 @@ export function ReaderView({
                 initialPage={initialPage}
                 annotations={annotations}
                 activeSentence={
-                  selection?.kind === "sentence" && selection.page > 0
+                  activeSentence && activeSentence.page > 0
                     ? {
-                        page: selection.page,
-                        rects: selection.rects,
+                        page: activeSentence.page,
+                        rects: activeSentence.rects,
                       }
                     : null
                 }
@@ -2758,6 +2754,15 @@ export function ReaderView({
                 initialCfi={epubInitialCfi}
                 navigationTarget={epubNavigationTarget}
                 annotations={epubAnnotations}
+                activeSentence={
+                  activeSentence?.epubCfi
+                    ? {
+                        cfi: activeSentence.epubCfi,
+                        text: activeSentence.text,
+                        sentenceIndex: activeSentence.sentenceIndex,
+                      }
+                    : null
+                }
                 sentenceNavigation={sentenceNavigation}
                 progressNavigation={progressNavigation}
                 onMetadataReady={handleEpubMetadataReady}
@@ -2779,6 +2784,15 @@ export function ReaderView({
                 initialChapterId={kindleInitialChapterId}
                 navigationChapterId={kindleNavigationChapterId}
                 annotations={kindleAnnotations}
+                activeSentence={
+                  activeSentence?.kindleChapterId
+                    ? {
+                        chapterId: activeSentence.kindleChapterId,
+                        text: activeSentence.text,
+                        sentenceIndex: activeSentence.sentenceIndex,
+                      }
+                    : null
+                }
                 sentenceNavigation={sentenceNavigation}
                 progressNavigation={progressNavigation}
                 onMetadataReady={handleKindleMetadataReady}
@@ -3042,6 +3056,7 @@ export function ReaderView({
                     disabled={aiBusy}
                     onClick={() => {
                       setSelection(null);
+                      setActiveSentence(null);
                       setAiResult(null);
                       setAiError(null);
                       setNoteStatus("idle");
