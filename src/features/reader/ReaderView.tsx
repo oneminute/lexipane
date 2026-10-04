@@ -965,7 +965,7 @@ export function ReaderView({
       setEpubSelectionCfi(selected.cfi);
       setActiveSentence(nextSentence);
       applyReaderSelection(nextSentence);
-      void runAiRef.current?.("grammar", undefined, nextSentence);
+      void runSentenceAiRef.current?.(nextSentence);
     },
     [],
   );
@@ -1099,7 +1099,7 @@ export function ReaderView({
       setKindleSelectionChapterId(selected.chapterId);
       setActiveSentence(nextSentence);
       applyReaderSelection(nextSentence);
-      void runAiRef.current?.("grammar", undefined, nextSentence);
+      void runSentenceAiRef.current?.(nextSentence);
     },
     [],
   );
@@ -1657,7 +1657,7 @@ export function ReaderView({
     window.getSelection()?.removeAllRanges();
     setActiveSentence(nextSentence);
     applyReaderSelection(nextSentence);
-    void runAi("grammar", undefined, nextSentence);
+    void runSentenceAi(nextSentence);
   }
 
   function activatePdfSentence(
@@ -1701,7 +1701,7 @@ export function ReaderView({
     setCurrentPage(page);
     setActiveSentence(nextSentence);
     applyReaderSelection(nextSentence);
-    void runAi("grammar", undefined, nextSentence);
+    void runSentenceAi(nextSentence);
     return true;
   }
 
