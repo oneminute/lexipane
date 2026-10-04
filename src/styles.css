@@ -3481,3 +3481,78 @@ button { cursor: pointer; }
   line-height: 1.65;
   color: var(--text, #29283a);
 }
+
+
+/* AI prompt / raw response diagnostics */
+
+.ai-debug-panel {
+  min-width: 0;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #eceef2;
+}
+
+.ai-debug-panel summary {
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 800;
+  color: #777d8b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ai-debug-note {
+  margin: 8px 0 0;
+  font-size: 9px;
+  line-height: 1.45;
+  color: #777d8b;
+}
+
+.ai-debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.ai-debug-actions button {
+  padding: 6px 8px;
+  font-size: 9px;
+  border: 1px solid #e1e4eb;
+  border-radius: 7px;
+  background: #f7f8fb;
+  color: #555b69;
+  cursor: pointer;
+}
+
+.ai-debug-section {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.ai-debug-section > span {
+  font-size: 8px;
+  font-weight: 800;
+  color: #777d8b;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.ai-debug-section pre {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  max-height: 280px;
+  margin: 0;
+  padding: 9px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 9px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #3d4250;
+  background: #f7f8fb;
+  border: 1px solid #e6e8ee;
+  border-radius: 8px;
+}
