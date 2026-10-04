@@ -7,6 +7,7 @@ import ePub, {
   type Rendition,
 } from "epubjs";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
