@@ -456,6 +456,74 @@ async fn transfer_dir(app: &AppHandle, job_id: &str) -> Result<PathBuf, String> 
     Ok(dir)
 }
 
+async fn find_finalized_download(
+    dir: &Path,
+) -> Result<Option<(PathBuf, String, String, u64)>, String> {
+    let mut entries = match fs::read_dir(dir).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(None);
+        }
+        Err(error) => {
+            return Err(format!(
+                "Unable to inspect transfer directory: {error}"
+            ));
+        }
+    };
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|error| {
+            format!("Unable to inspect transfer directory entry: {error}")
+        })?
+    {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        if path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case("part"))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        let size = entry
+            .metadata()
+            .await
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        let validation_path = path.clone();
+
+        let validation =
+            tauri::async_runtime::spawn_blocking(move || {
+                validate_downloaded_book(&validation_path)
+            })
+            .await
+            .map_err(|error| {
+                format!("Unable to validate recovered download: {error}")
+            })?;
+
+        let Ok(format) = validation else {
+            continue;
+        };
+
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("download")
+            .to_string();
+
+        return Ok(Some((path, file_name, format, size)));
+    }
+
+    Ok(None)
+}
+
 async fn finalize_downloaded_part(
     dir: &Path,
     part_path: &Path,
@@ -557,6 +625,26 @@ async fn run_http_download(
     };
 
     let part_path = dir.join(format!("{name}.part"));
+
+    if let Some((final_path, final_name, detected_format, size)) =
+        find_finalized_download(&dir).await?
+    {
+        let total = probe.content_length.or(Some(size));
+        let mut event =
+            transfer_event(&job_id, "downloaded", total, size);
+        event.progress = 1.0;
+        event.temp_path =
+            Some(final_path.to_string_lossy().to_string());
+        event.file_name = Some(final_name);
+        event.content_type = probe.content_type;
+        event.final_url = Some(probe.final_url);
+        event.detected_format = Some(detected_format);
+        emit_event(&app, event);
+
+        manager.remove(&job_id).await;
+        return Ok(());
+    }
+
     let mut existing = fs::metadata(&part_path)
         .await
         .map(|metadata| metadata.len())
