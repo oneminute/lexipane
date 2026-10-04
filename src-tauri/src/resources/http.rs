@@ -236,7 +236,7 @@ async fn probe_with_client(client: &Client, url: Url) -> Result<HttpProbeResult,
         || response.status() == StatusCode::NOT_IMPLEMENTED
     {
         response = client
-            .get(url)
+            .get(url.clone())
             .header(RANGE, "bytes=0-0")
             .send()
             .await
