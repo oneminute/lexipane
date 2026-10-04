@@ -61,11 +61,6 @@ const taskRoutes: Array<{
   description: string;
 }> = [
   {
-    id: "difficulty",
-    label: "Automatic reading help",
-    description: "Difficult words and phrases",
-  },
-  {
     id: "explain",
     label: "Context explanation",
     description: "Selected words and phrases",
