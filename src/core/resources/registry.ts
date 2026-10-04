@@ -34,6 +34,25 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     },
   },
   {
+    id: "torrent-catalog",
+    name: "Torrent Catalog",
+    kind: "catalog",
+    description:
+      "User-configured Torznab, RSS, or JSON torrent index/search catalogs.",
+    builtin: true,
+    live: true,
+    capabilities: {
+      search: true,
+      browse: false,
+      resolve: true,
+      preview: true,
+      previewLevels: [0, 1],
+      fileList: true,
+      download: false,
+      authentication: true,
+    },
+  },
+  {
     id: "google-drive",
     name: "Google Drive",
     kind: "storage",
