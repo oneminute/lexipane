@@ -3185,3 +3185,135 @@ button { cursor: pointer; }
     grid-row: 1;
   }
 }
+
+
+/* Reader bookmarks and reversible progress scrubbing */
+.bookmark-panel {
+  position: absolute;
+  z-index: 12;
+  top: 14px;
+  right: 16px;
+  width: min(390px, calc(100% - 32px));
+  max-height: min(520px, calc(100% - 28px));
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid rgba(83, 76, 128, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 18px 48px rgba(32, 28, 58, 0.14);
+  backdrop-filter: blur(12px);
+}
+
+.bookmark-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.bookmark-panel > header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.bookmark-panel > header > button,
+.bookmark-remove {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+
+.bookmark-list {
+  display: grid;
+  gap: 8px;
+}
+
+.bookmark-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 6px;
+  border: 1px solid rgba(83, 76, 128, 0.12);
+  border-radius: 12px;
+  background: rgba(248, 247, 255, 0.72);
+}
+
+.bookmark-jump {
+  display: grid;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bookmark-jump small {
+  color: var(--muted, #77758a);
+}
+
+.bookmark-remove {
+  min-width: 38px;
+  font-size: 1.1rem;
+}
+
+.reader-peek-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(101, 88, 219, 0.18);
+  background: rgba(242, 239, 255, 0.96);
+}
+
+.reader-peek-banner > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.reader-peek-banner > div:first-child span {
+  font-size: 0.78rem;
+  color: var(--muted, #77758a);
+}
+
+.reader-peek-banner > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reader-progress-scrubber {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: min(360px, 42vw);
+  flex: 1 1 320px;
+}
+
+.reader-progress-scrubber input[type="range"] {
+  width: 100%;
+  min-width: 120px;
+  accent-color: #6558db;
+  cursor: pointer;
+}
+
+.reader-progress-label {
+  min-width: 40px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .reader-peek-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reader-progress-scrubber {
+    min-width: 100%;
+    flex-basis: 100%;
+  }
+}
