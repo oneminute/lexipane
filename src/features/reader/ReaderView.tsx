@@ -1405,7 +1405,8 @@ export function ReaderView({
     if (targetIndex < 0) return;
 
     let pageText = "";
-    let targetOffset = 0;
+    let targetStart = 0;
+    let targetEnd = 0;
 
     spans.forEach((span, index) => {
       const value = normalizedText(span.textContent);
@@ -1417,14 +1418,53 @@ export function ReaderView({
       const end = pageText.length;
 
       if (index === targetIndex) {
-        targetOffset = Math.min(
-          end - 1,
-          start + Math.floor(value.length / 2),
-        );
+        targetStart = start;
+        targetEnd = end;
       }
     });
 
-    if (!pageText) return;
+    if (!pageText || targetEnd <= targetStart) return;
+
+    let targetOffset = Math.min(
+      targetEnd - 1,
+      targetStart + Math.floor((targetEnd - targetStart) / 2),
+    );
+
+    const pointDocument = window.document as Document & {
+      caretRangeFromPoint?: (
+        x: number,
+        y: number,
+      ) => Range | null;
+    };
+    const caretRange = pointDocument.caretRangeFromPoint?.(
+      event.clientX,
+      event.clientY,
+    );
+
+    if (
+      caretRange &&
+      targetSpan.contains(caretRange.startContainer)
+    ) {
+      try {
+        const prefixRange = window.document.createRange();
+        prefixRange.selectNodeContents(targetSpan);
+        prefixRange.setEnd(
+          caretRange.startContainer,
+          caretRange.startOffset,
+        );
+
+        const prefixLength = normalizedText(
+          prefixRange.toString(),
+        ).length;
+
+        targetOffset = Math.min(
+          targetEnd - 1,
+          targetStart + prefixLength,
+        );
+      } catch {
+        // Fall back to the midpoint of the clicked PDF text span.
+      }
+    }
 
     const sentences = segmentSentences(pageText);
     const sentenceIndex = sentences.findIndex(
