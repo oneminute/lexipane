@@ -71,9 +71,9 @@ Last updated: **2026-10-04**
 
 **Resource Acquisition Platform / Resource Hub**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-**RESOURCE-001 — Resource Core** has started. This development pass is establishing the shared domain/persistence/UI/native contracts before any live network provider implementation.
+**RESOURCE-001 — Resource Core** implementation is present on `main`. Frontend validation has passed; Rust validation is still running. No live resource transport has been enabled.
 
 ## Most recently completed product work
 
@@ -99,9 +99,9 @@ Reader interaction hardening is live on `main`, including:
 
 **RESOURCE-001 — Resource Core**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Current implementation scope:
+Implementation completed in this pass:
 
 - establish provider/resource/transfer domain types;
 - add versioned SQLite persistence for resource providers, items, sources, files, and transfer jobs;
@@ -116,6 +116,33 @@ Current risks / dependencies:
 - Native/Tauri contracts must not start network activity in RESOURCE-001.
 - Resource identifiers and source provenance must remain provider-neutral so later cloud/P2P providers do not force schema rewrites.
 - The Resource Hub shell must fit the existing desktop layout without destabilizing Reader keep-alive behavior.
+
+Implementation summary:
+
+- added provider-neutral TypeScript domain types for providers, resources, sources, files, identities, preview capabilities, and transfer jobs;
+- added builtin provider capability registry with all live transports disabled;
+- added non-networking resource-input classification for HTTP/HTTPS, OPDS hints, cloud share links, magnet, torrent metadata, ED2K, WebDAV, S3, and SFTP;
+- added provider-neutral content identity normalization/matching;
+- upgraded SQLite schema to v10 with Resource Core provider/account/item/source/file/job/history tables and migration;
+- added Resource Core persistence services, builtin-provider synchronization, bundle persistence/readback, and inert draft transfer jobs;
+- added native Rust/Tauri Resource Core capability boundary with all live transports explicitly false;
+- added Resources main-navigation entry and Search / Browse / Downloads / Accounts shell;
+- added targeted resolver, identity, provider-registry, and schema migration tests.
+
+Validation evidence so far:
+
+- `npm run typecheck`: PASS
+- `npm test`: PASS
+- `npm run build`: PASS
+- `cargo check --manifest-path src-tauri/Cargo.toml`: RUNNING
+
+Known limitations are intentional for RESOURCE-001:
+
+- no HTTP transfer engine;
+- no OPDS network fetch;
+- no cloud OAuth;
+- no BitTorrent or ED2K socket/sidecar activity;
+- draft jobs are persisted but never executed.
 
 Do **not** begin BitTorrent, ED2K, Google Drive, Dropbox, or OneDrive protocol implementation before RESOURCE-001 establishes these shared contracts.
 
@@ -701,7 +728,7 @@ Planned native event categories:
 
 ## RESOURCE-001 — Resource Core
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 Goal: establish shared contracts before implementing any provider protocol.
 
