@@ -21,9 +21,11 @@ import type {
 } from "../../core/reading/ebookPreferences";
 import type { ReaderImagePreview } from "./readerImage";
 import {
+  clearDomSentenceHighlight,
   getDomSentenceCount,
   selectDomSentenceAtPoint,
   selectDomSentenceByIndex,
+  setDomSentenceHighlight,
 } from "./sentenceNavigation";
 
 export interface EpubMetadataSummary {
@@ -532,7 +534,15 @@ export function EpubDocumentView({
       );
       if (!sentence) return;
 
+      const previous = activeSentenceRef.current;
+      if (previous && previous.contents.document !== document) {
+        clearDomSentenceHighlight(previous.contents.document);
+      }
+
       const cfi = contents.cfiFromRange(sentence.range);
+      setDomSentenceHighlight(document, sentence.range);
+      contents.window.getSelection()?.removeAllRanges();
+
       activeSentenceRef.current = {
         contents,
         index: sentence.index,
@@ -572,14 +582,25 @@ export function EpubDocumentView({
       );
       if (!sentence) return;
 
+      const previous = activeSentenceRef.current;
+      if (
+        previous &&
+        previous.contents.document !== contents.document
+      ) {
+        clearDomSentenceHighlight(previous.contents.document);
+      }
+
       pendingSentenceDirectionRef.current = null;
+      const cfi = contents.cfiFromRange(sentence.range);
+      setDomSentenceHighlight(contents.document, sentence.range);
+      contents.window.getSelection()?.removeAllRanges();
+
       activeSentenceRef.current = {
         contents,
         index: sentence.index,
         count: sentence.count,
       };
 
-      const cfi = contents.cfiFromRange(sentence.range);
       onSentenceSelectionRef.current?.({
         text: sentence.text,
         context: sentence.context,
@@ -878,6 +899,12 @@ export function EpubDocumentView({
       if (!sentence) return;
 
       const cfi = active.contents.cfiFromRange(sentence.range);
+      setDomSentenceHighlight(
+        active.contents.document,
+        sentence.range,
+      );
+      active.contents.window.getSelection()?.removeAllRanges();
+
       activeSentenceRef.current = {
         contents: active.contents,
         index: sentence.index,
