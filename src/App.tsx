@@ -10,6 +10,7 @@ import {
 import { initializeDatabase } from "./core/db/database";
 import { LibraryView } from "./features/library/LibraryView";
 import { NotebookView } from "./features/notebook/NotebookView";
+import { ReaderErrorBoundary } from "./features/reader/ReaderErrorBoundary";
 import { ReaderView } from "./features/reader/ReaderView";
 import { AiSettingsView } from "./features/settings/AiSettingsView";
 
@@ -85,12 +86,16 @@ export default function App() {
           />
         )}
         {view === "reader" && (
-          <ReaderView
-            bookPath={activeBookPath}
-            navigationTarget={activeNavigationTarget}
-            onOpenBook={openBook}
+          <ReaderErrorBoundary
             onBackToLibrary={() => setView("library")}
-          />
+          >
+            <ReaderView
+              bookPath={activeBookPath}
+              navigationTarget={activeNavigationTarget}
+              onOpenBook={openBook}
+              onBackToLibrary={() => setView("library")}
+            />
+          </ReaderErrorBoundary>
         )}
         {view === "notebook" && (
           <NotebookView onOpenBook={openBookPath} />

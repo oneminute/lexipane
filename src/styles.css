@@ -3059,3 +3059,42 @@ button { cursor: pointer; }
     right: 10px;
   }
 }
+
+
+/* Reader runtime crash isolation */
+
+.reader-crash-card {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  padding: 28px;
+  margin: 40px auto;
+  color: #424754;
+  background: #fff;
+  border: 1px solid #e2e4e9;
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(30, 34, 44, 0.09);
+}
+
+.reader-crash-card h1,
+.reader-crash-card p {
+  margin: 0;
+}
+
+.reader-crash-card p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6c7280;
+}
+
+.reader-crash-card pre {
+  overflow: auto;
+  padding: 12px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: #8f3f4a;
+  background: #fff2f3;
+  border-radius: 9px;
+}

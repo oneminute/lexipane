@@ -1,3 +1,4 @@
+import { APP_DEFAULTS } from "../../config/appDefaults";
 import {
   useCallback,
   useEffect,
@@ -189,7 +190,7 @@ export function ReaderView({
   onBackToLibrary,
 }: Props) {
   const [scale, setScale] = useState(1.1);
-  const [epubFontScale, setEpubFontScale] = useState(
+  const [epubFontScale, setEpubFontScale] = useState<number>(
     APP_DEFAULTS.reading.ebook.fontScale,
   );
   const [ebookTheme, setEbookTheme] = useState<EbookTheme>(
