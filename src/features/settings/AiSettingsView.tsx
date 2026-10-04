@@ -11,6 +11,7 @@ import { testTextModel } from "../../core/ai/modelHealth";
 import {
   choosePreferredOllamaModel,
   loadOllamaConfig,
+  saveOllamaBaseUrl,
   saveOllamaModel,
 } from "../../core/ai/ollamaConfig";
 import {
@@ -170,6 +171,7 @@ export function AiSettingsView() {
   const [ollamaMessage, setOllamaMessage] = useState(
     "Checking local Ollama…",
   );
+  const [serverUrl, setServerUrl] = useState("");
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [ollamaCapabilityLabels, setOllamaCapabilityLabels] =
@@ -255,11 +257,17 @@ export function AiSettingsView() {
 
     try {
       const config = await loadOllamaConfig();
-      const provider = new OllamaProvider(config.baseUrl);
+      const baseUrl = serverUrl.trim()
+        ? await saveOllamaBaseUrl(serverUrl)
+        : config.baseUrl;
+      setServerUrl(baseUrl);
+
+      const provider = new OllamaProvider(baseUrl);
       const connection = await provider.testConnection();
 
       if (!connection.ok) {
         setModels([]);
+        setSelectedModel("");
         setOllamaStatus("offline");
         setOllamaMessage(connection.message);
         return;
@@ -302,6 +310,7 @@ export function AiSettingsView() {
       );
     } catch (error) {
       setModels([]);
+      setSelectedModel("");
       setOllamaStatus("offline");
       setOllamaMessage(
         error instanceof Error
@@ -340,17 +349,65 @@ export function AiSettingsView() {
   }
 
   async function testSelectedLlm() {
-    if (!selectedModel || llmTestStatus === "testing") return;
+    if (llmTestStatus === "testing") return;
 
     setLlmTestStatus("testing");
-    setLlmTestMessage(
-      'Sending a real inference request to "' + selectedModel + '"…',
-    );
+    setLlmTestMessage("Checking Ollama and preparing a real inference request…");
 
     try {
       const config = await loadOllamaConfig();
-      const provider = new OllamaProvider(config.baseUrl);
-      const result = await testTextModel(provider, selectedModel);
+      const baseUrl = serverUrl.trim()
+        ? await saveOllamaBaseUrl(serverUrl)
+        : config.baseUrl;
+      setServerUrl(baseUrl);
+
+      const provider = new OllamaProvider(baseUrl);
+      const connection = await provider.testConnection();
+
+      if (!connection.ok) {
+        setModels([]);
+        setSelectedModel("");
+        setOllamaStatus("offline");
+        setOllamaMessage(connection.message);
+        setLlmTestStatus("failure");
+        setLlmTestMessage(
+          "Ollama connection failed at " +
+            baseUrl +
+            ". " +
+            connection.message,
+        );
+        return;
+      }
+
+      setOllamaStatus("connected");
+
+      let model: string | null = selectedModel || null;
+
+      if (!model) {
+        const discovered = await provider.listModels();
+        setModels(discovered);
+        model = choosePreferredOllamaModel(discovered, config.model);
+        setSelectedModel(model ?? "");
+
+        if (!model) {
+          setOllamaMessage("Connected, but no local models are installed.");
+          setLlmTestStatus("failure");
+          setLlmTestMessage(
+            "Ollama is reachable at " +
+              baseUrl +
+              ", but it reported no installed models.",
+          );
+          return;
+        }
+
+        await saveOllamaModel(model);
+      }
+
+      setLlmTestMessage(
+        'Sending a real inference request to "' + model + '"…',
+      );
+
+      const result = await testTextModel(provider, model);
 
       setLlmTestStatus(result.ok ? "success" : "failure");
       setLlmTestMessage(
@@ -528,7 +585,16 @@ export function AiSettingsView() {
         <div className="ollama-controls">
           <label>
             <span>Server</span>
-            <input value="http://127.0.0.1:11434" readOnly />
+            <input
+              value={serverUrl}
+              disabled={refreshing || llmTestStatus === "testing"}
+              placeholder="http://127.0.0.1:11434"
+              onChange={(event) => {
+                setServerUrl(event.target.value);
+                setLlmTestStatus("idle");
+                setLlmTestMessage("");
+              }}
+            />
           </label>
 
           <label>
@@ -561,7 +627,6 @@ export function AiSettingsView() {
             className="primary-button compact"
             disabled={
               refreshing ||
-              !selectedModel ||
               llmTestStatus === "testing"
             }
             onClick={() => void testSelectedLlm()}
@@ -602,9 +667,11 @@ export function AiSettingsView() {
         )}
 
         <small className="ollama-hint">
-          Refresh models checks the Ollama service and model list. Test LLM
-          sends a real text-generation request to the selected model, so a
-          green result confirms that inference is actually working.
+          The Server field is saved locally when you refresh or test. Refresh
+          models checks the Ollama service and model list. Test LLM also
+          discovers a model when necessary, then sends a real text-generation
+          request, so a green result confirms that inference is actually
+          working.
         </small>
       </section>
 
