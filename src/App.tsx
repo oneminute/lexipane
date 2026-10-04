@@ -100,7 +100,9 @@ export default function App() {
           aria-hidden={view !== "reader"}
           style={{
             display: view === "reader" ? "block" : "none",
+            width: "100%",
             height: "100%",
+            minHeight: 0,
           }}
         >
           <ReaderErrorBoundary
