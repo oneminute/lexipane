@@ -51,6 +51,8 @@ export interface TextGenerationRequest {
   messages: AIMessage[];
   temperature?: number;
   responseFormat?: "text" | "json";
+  /** Disable reasoning/thinking for tasks that require direct structured output. */
+  thinking?: boolean;
   signal?: AbortSignal;
 }
 
