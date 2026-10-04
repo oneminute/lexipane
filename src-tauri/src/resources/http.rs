@@ -1,6 +1,9 @@
 use futures_util::StreamExt;
 use reqwest::{
-    header::{ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, RANGE},
+    header::{
+        ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE,
+        CONTENT_TYPE, RANGE,
+    },
     Client, StatusCode, Url,
 };
 use serde::Serialize;
@@ -237,9 +240,16 @@ async fn probe_with_client(client: &Client, url: Url) -> Result<HttpProbeResult,
         .map(|value| value.split(';').next().unwrap_or(value).trim().to_string());
 
     let content_length = headers
-        .get(CONTENT_LENGTH)
+        .get(CONTENT_RANGE)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok());
+        .and_then(|value| value.rsplit('/').next())
+        .and_then(|value| value.parse::<u64>().ok())
+        .or_else(|| {
+            headers
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<u64>().ok())
+        });
 
     let accept_ranges = headers
         .get(ACCEPT_RANGES)
