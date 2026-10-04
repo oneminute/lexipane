@@ -55,6 +55,10 @@ export type ReadingStreamCallback = (
   delta: string,
 ) => void;
 
+export interface ReadingExecutionOptions {
+  bypassCache?: boolean;
+}
+
 function trimContext(context: string | undefined): string {
   if (!context) return "";
   const normalized = context.replace(/\s+/g, " ").trim();
@@ -224,6 +228,7 @@ async function executeReadingRequest(
   question: string | undefined,
   stream: boolean,
   onStream?: ReadingStreamCallback,
+  options: ReadingExecutionOptions = {},
 ): Promise<ReadingAnalysisResult> {
   const prepared = prepareReadingRequest(selection, mode, question);
   const runtimes = await resolveTextTaskRuntimes(
@@ -240,23 +245,25 @@ async function executeReadingRequest(
       prepared.input,
     );
 
-    const cached = await getCachedAiValue<{
-      text: string;
-      analysis: StructuredReadingAnalysis;
-    }>(cacheKey);
+    if (!options.bypassCache) {
+      const cached = await getCachedAiValue<{
+        text: string;
+        analysis: StructuredReadingAnalysis;
+      }>(cacheKey);
 
-    if (cached?.text && cached.analysis) {
-      onStream?.(cached.text, cached.text);
-      return {
-        text: cached.text,
-        analysis: cached.analysis,
-        model: runtime.model,
-        cached: true,
-        source: runtime.label,
-        fallbackUsed: index > 0,
-        attemptedSources,
-        requestDebug: prepared.debug,
-      };
+      if (cached?.text && cached.analysis) {
+        onStream?.(cached.text, cached.text);
+        return {
+          text: cached.text,
+          analysis: cached.analysis,
+          model: runtime.model,
+          cached: true,
+          source: runtime.label,
+          fallbackUsed: index > 0,
+          attemptedSources,
+          requestDebug: prepared.debug,
+        };
+      }
     }
 
     attemptedSources.push(runtime.label);
@@ -384,12 +391,15 @@ export async function analyzeReadingSelection(
   selection: ReadingSelection,
   mode: ReadingAnalysisMode,
   question?: string,
+  options: ReadingExecutionOptions = {},
 ): Promise<ReadingAnalysisResult> {
   return executeReadingRequest(
     selection,
     mode,
     question,
     false,
+    undefined,
+    options,
   );
 }
 
@@ -398,6 +408,7 @@ export async function streamReadingSelection(
   mode: ReadingAnalysisMode,
   question: string | undefined,
   onStream: ReadingStreamCallback,
+  options: ReadingExecutionOptions = {},
 ): Promise<ReadingAnalysisResult> {
   return executeReadingRequest(
     selection,
@@ -405,5 +416,6 @@ export async function streamReadingSelection(
     question,
     true,
     onStream,
+    options,
   );
 }
