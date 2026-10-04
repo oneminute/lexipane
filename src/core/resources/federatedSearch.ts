@@ -9,6 +9,10 @@ import {
 } from "./ed2kAdapter";
 import type { Ed2kSearchResult } from "./ed2kTransport";
 import {
+  searchTorrentCatalog,
+  type TorrentCatalogResult,
+} from "./torrentCatalog";
+import {
   searchOpdsCatalog,
   type OpdsEntry,
   type OpdsLink,
@@ -23,7 +27,8 @@ export type FederatedResourceKind =
   | "local"
   | "opds"
   | "cloud"
-  | "ed2k";
+  | "ed2k"
+  | "torrent";
 
 export interface FederatedResourceResult {
   key: string;
@@ -50,6 +55,10 @@ export interface FederatedResourceResult {
     accountId: string;
     query: string;
     result: Ed2kSearchResult;
+  };
+  torrent?: {
+    catalogId: string;
+    result: TorrentCatalogResult;
   };
 }
 
@@ -151,6 +160,29 @@ function cloudResults(
     }));
 }
 
+function torrentResults(
+  catalog: ResourceCatalog,
+  entries: TorrentCatalogResult[],
+): FederatedResourceResult[] {
+  return entries.map((entry) => ({
+    key:
+      "torrent:" +
+      catalog.id +
+      ":" +
+      entry.id,
+    kind: "torrent" as const,
+    providerId: "torrent-catalog",
+    sourceLabel: catalog.name,
+    title: entry.title,
+    authors: [],
+    size: entry.size,
+    torrent: {
+      catalogId: catalog.id,
+      result: entry,
+    },
+  }));
+}
+
 function ed2kResults(
   account: Ed2kEngineAccount,
   query: string,
@@ -222,21 +254,42 @@ export async function federatedResourceSearch(
   const tasks: Array<Promise<void>> = [];
 
   for (const catalog of catalogs) {
-    tasks.push(
-      searchOpdsCatalog(catalog.url, normalizedQuery)
-        .then((feed) => {
-          results.push(...opdsResults(catalog, feed.entries));
-        })
-        .catch((error) => {
-          errors.push(
-            catalog.name +
-              ": " +
-              (error instanceof Error
-                ? error.message
-                : String(error)),
-          );
-        }),
-    );
+    if (catalog.providerId === "torrent-catalog") {
+      tasks.push(
+        searchTorrentCatalog(catalog, normalizedQuery)
+          .then((entries) => {
+            results.push(...torrentResults(catalog, entries));
+          })
+          .catch((error) => {
+            errors.push(
+              catalog.name +
+                ": " +
+                (error instanceof Error
+                  ? error.message
+                  : String(error)),
+            );
+          }),
+      );
+      continue;
+    }
+
+    if (catalog.providerId === "opds") {
+      tasks.push(
+        searchOpdsCatalog(catalog.url, normalizedQuery)
+          .then((feed) => {
+            results.push(...opdsResults(catalog, feed.entries));
+          })
+          .catch((error) => {
+            errors.push(
+              catalog.name +
+                ": " +
+                (error instanceof Error
+                  ? error.message
+                  : String(error)),
+            );
+          }),
+      );
+    }
   }
 
   for (const account of cloudAccounts) {
@@ -297,6 +350,7 @@ export async function federatedResourceSearch(
       cloud: 1,
       opds: 2,
       ed2k: 3,
+      torrent: 4,
     };
 
     return kindRank[left.kind] - kindRank[right.kind];
