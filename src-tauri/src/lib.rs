@@ -7,6 +7,7 @@ mod secrets;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(resources::http::HttpTransferManager::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
@@ -24,6 +25,12 @@ pub fn run() {
             ocr::local_ocr_status,
             ocr::ocr_image,
             resources::resource_runtime_capabilities,
+            resources::http::resource_http_probe,
+            resources::http::resource_http_fetch_text,
+            resources::http::resource_http_start_download,
+            resources::http::resource_http_pause,
+            resources::http::resource_http_cancel,
+            resources::http::resource_http_cleanup_temp,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_has,
