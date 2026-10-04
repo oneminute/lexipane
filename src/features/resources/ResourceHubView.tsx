@@ -71,6 +71,23 @@ import {
 import {
   RESOURCE_TRANSFER_UPDATED_EVENT,
 } from "../../core/resources/runtime";
+import {
+  cancelEd2kTransfer,
+  connectEd2kEngine,
+  disconnectEd2kEngine,
+  listEd2kEngines,
+  parseEd2kLink,
+  pauseEd2kTransfer,
+  resumeEd2kTransfer,
+  searchEd2kEngine,
+  startEd2kLinkAcquisition,
+  startEd2kSearchResultAcquisition,
+  type Ed2kEngineAccount,
+} from "../../core/resources/ed2kAdapter";
+import type {
+  Ed2kLinkMetadata,
+  Ed2kSearchResult,
+} from "../../core/resources/ed2kTransport";
 import type {
   ResourceInputClassification,
   ResourceItem,
@@ -275,6 +292,23 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<CloudProviderId>("google-drive");
   const [connectDisplayName, setConnectDisplayName] = useState("");
   const [connectToken, setConnectToken] = useState("");
+  const [ed2kEngines, setEd2kEngines] =
+    useState<Ed2kEngineAccount[]>([]);
+  const [activeEd2kEngineId, setActiveEd2kEngineId] =
+    useState<string | null>(null);
+  const [ed2kExecutable, setEd2kExecutable] = useState("");
+  const [ed2kHost, setEd2kHost] = useState("127.0.0.1");
+  const [ed2kPort, setEd2kPort] = useState("4712");
+  const [ed2kPassword, setEd2kPassword] = useState("");
+  const [ed2kIncomingDir, setEd2kIncomingDir] = useState("");
+  const [ed2kBusy, setEd2kBusy] = useState(false);
+  const [ed2kQuery, setEd2kQuery] = useState("");
+  const [ed2kSearchType, setEd2kSearchType] =
+    useState<"global" | "kad" | "local">("global");
+  const [ed2kResults, setEd2kResults] =
+    useState<Ed2kSearchResult[]>([]);
+  const [ed2kLinkMetadata, setEd2kLinkMetadata] =
+    useState<Ed2kLinkMetadata | null>(null);
 
   const liveTransportCount = useMemo(() => {
     if (!nativeCapabilities) return 0;
@@ -290,6 +324,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       items,
       savedCatalogs,
       connectedCloudAccounts,
+      connectedEd2kEngines,
     ] = await Promise.all([
       getResourceNativeCapabilities(),
       listPersistedResourceProviders(),
@@ -297,6 +332,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       listResourceItems(),
       listResourceCatalogs(),
       listConnectedCloudAccounts(),
+      listEd2kEngines(),
     ]);
 
     setNativeCapabilities(native);
@@ -309,6 +345,13 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setResources(items);
     setCatalogs(savedCatalogs);
     setCloudAccounts(connectedCloudAccounts);
+    setEd2kEngines(connectedEd2kEngines);
+    setActiveEd2kEngineId((current) =>
+      current &&
+      connectedEd2kEngines.some((engine) => engine.id === current)
+        ? current
+        : connectedEd2kEngines[0]?.id ?? null,
+    );
     setActiveCloudAccountId((current) =>
       current &&
       connectedCloudAccounts.some((account) => account.id === current)
@@ -461,6 +504,17 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setClassification(next);
     setHttpPreparation(null);
     setTorrentPreview(null);
+    setEd2kLinkMetadata(
+      next.kind === "ed2k"
+        ? (() => {
+            try {
+              return parseEd2kLink(next.normalizedInput);
+            } catch {
+              return null;
+            }
+          })()
+        : null,
+    );
     setTorrentSelectedFileIndex(null);
     setMessage(
       "Classification only — no network request was sent.",
