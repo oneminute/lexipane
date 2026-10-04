@@ -65,6 +65,10 @@ import {
 } from "../../core/resources/registry";
 import { classifyResourceInput } from "../../core/resources/resolver";
 import {
+  federatedResourceSearch,
+  type FederatedResourceResult,
+} from "../../core/resources/federatedSearch";
+import {
   RESOURCE_TRANSFER_UPDATED_EVENT,
 } from "../../core/resources/runtime";
 import type {
@@ -238,6 +242,14 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [savingDraft, setSavingDraft] = useState(false);
+  const [resourceQuery, setResourceQuery] = useState("");
+  const [resourceSearchBusy, setResourceSearchBusy] = useState(false);
+  const [resourceSearchResults, setResourceSearchResults] =
+    useState<FederatedResourceResult[]>([]);
+  const [resourceSearchErrors, setResourceSearchErrors] =
+    useState<string[]>([]);
+  const [resourceSearchSourceCount, setResourceSearchSourceCount] =
+    useState(0);
 
   const [catalogName, setCatalogName] = useState("");
   const [catalogUrl, setCatalogUrl] = useState("");
@@ -352,6 +364,97 @@ export function ResourceHubView({ onOpenBook }: Props) {
       );
     };
   }, []);
+
+  async function runFederatedSearch() {
+    if (!resourceQuery.trim()) return;
+
+    setResourceSearchBusy(true);
+    setResourceSearchErrors([]);
+    setMessage("");
+
+    try {
+      const response = await federatedResourceSearch(
+        resourceQuery,
+        catalogs,
+        cloudAccounts,
+      );
+      setResourceSearchResults(response.results);
+      setResourceSearchErrors(response.errors);
+      setResourceSearchSourceCount(response.searchedSources);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Federated resource search failed.",
+      );
+    } finally {
+      setResourceSearchBusy(false);
+    }
+  }
+
+  async function acquireFederatedResult(
+    result: FederatedResourceResult,
+  ) {
+    if (result.opds) {
+      setNetworkBusy(true);
+      setMessage("");
+
+      try {
+        await startHttpAcquisition(
+          result.opds.acquisition.href,
+          {
+            title: result.opds.entry.title,
+            authors: result.opds.entry.authors,
+            opdsCatalogUrl: result.opds.catalogUrl,
+            opdsEntryId: result.opds.entry.id,
+            acquisitionType:
+              result.opds.acquisition.type,
+          },
+        );
+        setTab("downloads");
+        await refreshResourceCore();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to acquire the OPDS result.",
+        );
+      } finally {
+        setNetworkBusy(false);
+      }
+      return;
+    }
+
+    if (result.cloud) {
+      const account = cloudAccounts.find(
+        (item) => item.id === result.cloud?.accountId,
+      );
+      if (!account) {
+        setMessage("The cloud account is no longer connected.");
+        return;
+      }
+
+      setCloudBusy(true);
+      setMessage("");
+
+      try {
+        await startCloudEntryAcquisition(
+          account,
+          result.cloud.entry,
+        );
+        setTab("downloads");
+        await refreshResourceCore();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to acquire the cloud result.",
+        );
+      } finally {
+        setCloudBusy(false);
+      }
+    }
+  }
 
   function inspectInput() {
     const next = classifyResourceInput(input);
