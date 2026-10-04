@@ -69,6 +69,18 @@ export async function prepareHttpAcquisition(
   const extension = getBookExtension(
     probe.fileName ?? probe.finalUrl,
   );
+  const normalizedType = probe.contentType?.toLowerCase() ?? "";
+  const supportedByMetadata =
+    extension === "pdf" ||
+    extension === "epub" ||
+    normalizedType.includes("application/pdf") ||
+    normalizedType.includes("application/epub+zip");
+
+  if (!supportedByMetadata) {
+    throw new Error(
+      "RESOURCE-002 direct HTTP acquisition currently accepts PDF and EPUB resources only.",
+    );
+  }
 
   const metadataTitle =
     typeof metadata.title === "string" && metadata.title.trim()
