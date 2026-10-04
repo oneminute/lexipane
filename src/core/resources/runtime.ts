@@ -16,6 +16,7 @@ import {
   type ResourceTransferEvent,
 } from "./httpTransport";
 import { cleanupCloudTransfer } from "./cloudTransport";
+import { reattachEd2kTransfer } from "./ed2kAdapter";
 import { cleanupTorrentTransfer } from "./torrentTransport";
 import {
   appendResourceHistory,
@@ -162,18 +163,20 @@ async function ingestDownloadedTransfer(
     },
   });
 
-  const cleanup =
-    freshJob.providerId === "bittorrent"
-      ? cleanupTorrentTransfer
-      : freshJob.providerId === "google-drive" ||
-          freshJob.providerId === "dropbox" ||
-          freshJob.providerId === "onedrive"
-        ? cleanupCloudTransfer
-        : cleanupHttpTransferTemp;
+  if (freshJob.providerId !== "ed2k") {
+    const cleanup =
+      freshJob.providerId === "bittorrent"
+        ? cleanupTorrentTransfer
+        : freshJob.providerId === "google-drive" ||
+            freshJob.providerId === "dropbox" ||
+            freshJob.providerId === "onedrive"
+          ? cleanupCloudTransfer
+          : cleanupHttpTransferTemp;
 
-  await cleanup(event.jobId).catch((error) => {
-    console.warn("Unable to clean Resource Hub temp files", error);
-  });
+    await cleanup(event.jobId).catch((error) => {
+      console.warn("Unable to clean Resource Hub temp files", error);
+    });
+  }
 
   options.onLibraryChanged?.();
   dispatchTransferUpdated(event.jobId);
@@ -284,6 +287,31 @@ async function recoverInterruptedTransfers(
         });
         dispatchTransferUpdated(job.id);
       });
+      continue;
+    }
+
+    if (
+      job.providerId === "ed2k" &&
+      (job.state === "running" || job.state === "queued")
+    ) {
+      const attached = await reattachEd2kTransfer(job, false).catch(
+        () => false,
+      );
+
+      if (attached) {
+        await updateTransferJob(job.id, {
+          state: "running",
+          error: null,
+        });
+      } else {
+        await updateTransferJob(job.id, {
+          state: "paused",
+          error:
+            "LexiPane restarted and could not reattach this ED2K job to aMule. Verify the sidecar connection.",
+        });
+      }
+
+      dispatchTransferUpdated(job.id);
       continue;
     }
 
