@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   cancelHttpDownload,
+  discardHttpTransfer,
   pauseHttpDownload,
   prepareHttpAcquisition,
   resumeHttpTransfer,
@@ -542,7 +543,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
   async function handleTransferAction(
     job: TransferJob,
-    action: "pause" | "resume" | "cancel",
+    action: "pause" | "resume" | "cancel" | "discard",
   ) {
     setMessage("");
 
@@ -551,6 +552,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
         await pauseHttpDownload(job.id);
       } else if (action === "cancel") {
         await cancelHttpDownload(job.id);
+      } else if (action === "discard") {
+        await discardHttpTransfer(job);
+        await refreshResourceCore();
       } else {
         await resumeHttpTransfer(job);
       }
@@ -1098,15 +1102,26 @@ export function ResourceHubView({ onOpenBook }: Props) {
                     {(job.state === "paused" ||
                       job.state === "failed") &&
                       job.providerId === "http" && (
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() =>
-                            void handleTransferAction(job, "resume")
-                          }
-                        >
-                          {job.state === "failed" ? "Retry" : "Resume"}
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() =>
+                              void handleTransferAction(job, "resume")
+                            }
+                          >
+                            {job.state === "failed" ? "Retry" : "Resume"}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() =>
+                              void handleTransferAction(job, "discard")
+                            }
+                          >
+                            Discard
+                          </button>
+                        </>
                       )}
 
                     {job.state === "completed" &&
