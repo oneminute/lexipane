@@ -53,6 +53,20 @@ export async function prepareHttpAcquisition(
   metadata: Record<string, unknown> = {},
 ): Promise<HttpAcquisitionPreparation> {
   const probe = await probeHttpResource(url);
+  const opdsCatalogUrl =
+    typeof metadata.opdsCatalogUrl === "string"
+      ? metadata.opdsCatalogUrl
+      : undefined;
+  const opdsEntryId =
+    typeof metadata.opdsEntryId === "string"
+      ? metadata.opdsEntryId
+      : undefined;
+  const opdsSourceKey = opdsCatalogUrl
+    ? opdsCatalogUrl +
+      "#" +
+      (opdsEntryId ?? probe.finalUrl)
+    : undefined;
+
   const sourceKey = probe.finalUrl;
   const existing = await findResourceBundleBySource(
     "http",
@@ -60,6 +74,52 @@ export async function prepareHttpAcquisition(
   );
 
   if (existing) {
+    if (
+      opdsCatalogUrl &&
+      opdsSourceKey &&
+      !existing.sources.some(
+        (source) =>
+          source.providerId === "opds" &&
+          source.sourceKey === opdsSourceKey,
+      )
+    ) {
+      const now = new Date().toISOString();
+      const enriched: ResourceBundle = {
+        ...existing,
+        item: {
+          ...existing.item,
+          availability: {
+            ...existing.item.availability,
+            sourceCount: existing.sources.length + 1,
+          },
+          updatedAt: now,
+        },
+        sources: [
+          ...existing.sources,
+          {
+            id: createResourceRecordId("source"),
+            resourceItemId: existing.item.id,
+            providerId: "opds",
+            sourceKey: opdsSourceKey,
+            sourceType: "catalog",
+            uri: opdsCatalogUrl,
+            metadata: {
+              entryId: opdsEntryId,
+              acquisitionUrl: probe.finalUrl,
+            },
+            availability: {
+              remoteAvailable: true,
+            },
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      };
+
+      await saveResourceBundle(enriched);
+      return { probe, bundle: enriched };
+    }
+
     return { probe, bundle: existing };
   }
 
@@ -99,15 +159,6 @@ export async function prepareHttpAcquisition(
           typeof author === "string" && Boolean(author.trim()),
       )
     : [];
-  const opdsCatalogUrl =
-    typeof metadata.opdsCatalogUrl === "string"
-      ? metadata.opdsCatalogUrl
-      : undefined;
-  const opdsEntryId =
-    typeof metadata.opdsEntryId === "string"
-      ? metadata.opdsEntryId
-      : undefined;
-
   const item: ResourceItem = {
     id: itemId,
     title:
@@ -171,7 +222,7 @@ export async function prepareHttpAcquisition(
       resourceItemId: itemId,
       providerId: "opds",
       sourceKey:
-        opdsEntryId ??
+        opdsSourceKey ??
         opdsCatalogUrl + "#" + probe.finalUrl,
       sourceType: "catalog",
       uri: opdsCatalogUrl,
