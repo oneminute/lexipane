@@ -50,6 +50,7 @@ export interface TextGenerationRequest {
   model: string;
   messages: AIMessage[];
   temperature?: number;
+  responseFormat?: "text" | "json";
   signal?: AbortSignal;
 }
 
