@@ -347,14 +347,6 @@ function normalizedOffsetForPoint(
   return bestBefore ?? bestAfter;
 }
 
-function selectRange(window: Window, range: Range) {
-  const selection = window.getSelection();
-  if (!selection) return;
-
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
 export function getDomSentenceCount(
   document: Document,
   root: Node = document.body,
@@ -424,6 +416,35 @@ export function setDomSentenceHighlight(
   return true;
 }
 
+export function findDomSentenceByText(
+  document: Document,
+  sentenceText: string,
+  root: Node = document.body,
+): DomSentenceSelection | null {
+  const model = buildDomTextModel(root);
+  const sentences = segmentDomText(model.text);
+  const normalizedTarget = sentenceText.replace(/[\s\u00a0]+/g, " ").trim();
+  if (!normalizedTarget) return null;
+
+  const index = sentences.findIndex(
+    (sentence) =>
+      sentence.text.replace(/[\s\u00a0]+/g, " ").trim() === normalizedTarget,
+  );
+  if (index < 0) return null;
+
+  const sentence = sentences[index];
+  const range = rangeForSegment(document, model, sentence);
+  if (!range) return null;
+
+  return {
+    text: sentence.text,
+    context: model.text.slice(0, 9000),
+    index,
+    count: sentences.length,
+    range,
+  };
+}
+
 export function selectDomSentenceAtPoint(
   document: Document,
   x: number,
@@ -464,10 +485,7 @@ export function selectDomSentenceByIndex(
   if (!sentence) return null;
 
   const range = rangeForSegment(document, model, sentence);
-  const view = document.defaultView;
-  if (!range || !view) return null;
-
-  selectRange(view, range);
+  if (!range) return null;
 
   return {
     text: sentence.text,
