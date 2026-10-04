@@ -1495,6 +1495,41 @@ export function ReaderView({
     void runAi("grammar", undefined, nextSelection);
   }
 
+  function activatePdfSentence(
+    page: number,
+    requestedIndex: number,
+    contextHint = "",
+  ): boolean {
+    const context =
+      normalizedText(contextHint) ||
+      pageTexts[page] ||
+      getPdfPageText(page);
+    const sentences = segmentSentences(context);
+    if (sentences.length === 0) return false;
+
+    const sentenceIndex =
+      requestedIndex < 0
+        ? sentences.length - 1
+        : Math.min(requestedIndex, sentences.length - 1);
+    const sentence = sentences[sentenceIndex];
+    if (!sentence) return false;
+
+    const nextSelection: ActiveReaderSelection = {
+      text: sentence.text,
+      context,
+      page,
+      rects: locatePdfTextRects(page, sentence.text),
+      kind: "sentence",
+      sentenceIndex,
+      sentenceCount: sentences.length,
+    };
+
+    setCurrentPage(page);
+    applyReaderSelection(nextSelection);
+    void runAi("grammar", undefined, nextSelection);
+    return true;
+  }
+
   function navigatePdfSentence(direction: -1 | 1) {
     if (
       !selection ||
@@ -1510,22 +1545,34 @@ export function ReaderView({
       getPdfPageText(selection.page);
     const sentences = segmentSentences(context);
     const nextIndex = selection.sentenceIndex + direction;
-    const sentence = sentences[nextIndex];
 
-    if (!sentence) return;
+    if (
+      nextIndex >= 0 &&
+      nextIndex < sentences.length &&
+      activatePdfSentence(selection.page, nextIndex, context)
+    ) {
+      return;
+    }
 
-    const nextSelection: ActiveReaderSelection = {
-      text: sentence.text,
-      context,
-      page: selection.page,
-      rects: locatePdfTextRects(selection.page, sentence.text),
-      kind: "sentence",
-      sentenceIndex: nextIndex,
-      sentenceCount: sentences.length,
-    };
+    const nextPage = selection.page + direction;
+    if (nextPage < 1 || nextPage > pageCount) return;
 
-    applyReaderSelection(nextSelection);
-    void runAi("grammar", undefined, nextSelection);
+    const targetIndex = direction > 0 ? 0 : -1;
+
+    if (activatePdfSentence(nextPage, targetIndex)) {
+      jumpToPage(nextPage);
+      return;
+    }
+
+    jumpToPage(nextPage);
+
+    window.setTimeout(() => {
+      activatePdfSentence(
+        nextPage,
+        targetIndex,
+        getPdfPageText(nextPage),
+      );
+    }, 260);
   }
 
   function navigateSentence(direction: -1 | 1) {
@@ -2482,7 +2529,8 @@ export function ReaderView({
                       disabled={
                         aiBusy ||
                         selection.sentenceIndex === undefined ||
-                        selection.sentenceIndex <= 0
+                        (selection.sentenceIndex <= 0 &&
+                          (!isPdf || selection.page <= 1))
                       }
                       onClick={() => navigateSentence(-1)}
                     >
@@ -2502,8 +2550,9 @@ export function ReaderView({
                         aiBusy ||
                         selection.sentenceIndex === undefined ||
                         selection.sentenceCount === undefined ||
-                        selection.sentenceIndex >=
-                          selection.sentenceCount - 1
+                        (selection.sentenceIndex >=
+                          selection.sentenceCount - 1 &&
+                          (!isPdf || selection.page >= pageCount))
                       }
                       onClick={() => navigateSentence(1)}
                     >
