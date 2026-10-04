@@ -14,8 +14,10 @@ describe("resource provider registry", () => {
     expect(providers.some((item) => item.id === "google-drive")).toBe(true);
     expect(getResourceProvider("http")?.live).toBe(true);
     expect(getResourceProvider("opds")?.live).toBe(true);
-    expect(getResourceProvider("google-drive")?.live).toBe(false);
-    expect(getResourceProvider("bittorrent")?.live).toBe(false);
+    expect(getResourceProvider("google-drive")?.live).toBe(true);
+    expect(getResourceProvider("dropbox")?.live).toBe(true);
+    expect(getResourceProvider("onedrive")?.live).toBe(true);
+    expect(getResourceProvider("bittorrent")?.live).toBe(true);
     expect(getResourceProvider("ed2k")?.live).toBe(false);
   });
 
