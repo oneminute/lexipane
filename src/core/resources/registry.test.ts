@@ -7,12 +7,16 @@ import {
 } from "./registry";
 
 describe("resource provider registry", () => {
-  it("contains provider contracts without enabling live networking", () => {
+  it("enables only the providers implemented by the current milestone", () => {
     const providers = listResourceProviders();
 
     expect(providers.some((item) => item.id === "bittorrent")).toBe(true);
     expect(providers.some((item) => item.id === "google-drive")).toBe(true);
-    expect(providers.every((item) => item.live === false)).toBe(true);
+    expect(getResourceProvider("http")?.live).toBe(true);
+    expect(getResourceProvider("opds")?.live).toBe(true);
+    expect(getResourceProvider("google-drive")?.live).toBe(false);
+    expect(getResourceProvider("bittorrent")?.live).toBe(false);
+    expect(getResourceProvider("ed2k")?.live).toBe(false);
   });
 
   it("queries declared capabilities", () => {
