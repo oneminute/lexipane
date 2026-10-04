@@ -20,6 +20,10 @@ import { getBookExtension } from "../../core/books/openBook";
 import { normalizeTerm } from "../../core/reading/knownTerms";
 import type { EbookTheme } from "../../core/reading/ebookPreferences";
 import type { ReaderImagePreview } from "./readerImage";
+import {
+  selectDomSentenceAtPoint,
+  selectDomSentenceByIndex,
+} from "./sentenceNavigation";
 
 type KindleParser = Mobi | Kf8;
 type KindleTocItem = MobiTocItem | Kf8TocItem;
@@ -55,6 +59,16 @@ export interface KindleSelection {
   chapterId: string;
 }
 
+export interface KindleSentenceSelection extends KindleSelection {
+  sentenceIndex: number;
+  sentenceCount: number;
+}
+
+interface SentenceNavigationRequest {
+  token: number;
+  direction: -1 | 1;
+}
+
 interface Props {
   path: string;
   fontScale?: number;
@@ -63,6 +77,7 @@ interface Props {
   navigationChapterId?: string | null;
   annotations?: KindleTextAnnotation[];
   autoTerms?: DifficultTerm[];
+  sentenceNavigation?: SentenceNavigationRequest | null;
   onMetadataReady?: (metadata: KindleMetadataSummary) => void;
   onOutlineReady?: (outline: KindleOutlineEntry[]) => void;
   onCoverReady?: (coverDataUrl: string) => void;
@@ -75,6 +90,8 @@ interface Props {
     context: string,
   ) => void;
   onSelection?: (selection: KindleSelection) => void;
+  onWordSelection?: (selection: KindleSelection) => void;
+  onSentenceSelection?: (selection: KindleSentenceSelection) => void;
   onImageOpen?: (image: ReaderImagePreview) => void;
 }
 
@@ -339,12 +356,15 @@ export function MobiDocumentView({
   navigationChapterId,
   annotations = [],
   autoTerms = [],
+  sentenceNavigation = null,
   onMetadataReady,
   onOutlineReady,
   onCoverReady,
   onRelocated,
   onContextReady,
   onSelection,
+  onWordSelection,
+  onSentenceSelection,
   onImageOpen,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -352,6 +372,16 @@ export function MobiDocumentView({
   const pendingSelectorRef = useRef<string | null>(null);
   const annotationsRef = useRef(annotations);
   const autoTermsRef = useRef(autoTerms);
+  const wordSelectionTimerRef = useRef<number | null>(null);
+  const handledSentenceNavigationRef = useRef(0);
+  const activeSentenceRef = useRef<{
+    document: Document;
+    index: number;
+    count: number;
+    chapterId: string;
+  } | null>(null);
+  const onWordSelectionRef = useRef(onWordSelection);
+  const onSentenceSelectionRef = useRef(onSentenceSelection);
 
   const [parser, setParser] = useState<KindleParser | null>(null);
   const [spine, setSpine] = useState<KindleSpineEntry[]>([]);
@@ -362,6 +392,8 @@ export function MobiDocumentView({
 
   annotationsRef.current = annotations;
   autoTermsRef.current = autoTerms;
+  onWordSelectionRef.current = onWordSelection;
+  onSentenceSelectionRef.current = onSentenceSelection;
 
   useEffect(() => {
     let cancelled = false;
@@ -568,7 +600,70 @@ export function MobiDocumentView({
       }
     }
 
+    const handleDocumentMouseDown = (event: MouseEvent) => {
+      if (event.detail >= 3) {
+        event.preventDefault();
+      }
+    };
+
+    const handleDocumentDoubleClick = () => {
+      if (wordSelectionTimerRef.current !== null) {
+        window.clearTimeout(wordSelectionTimerRef.current);
+      }
+
+      wordSelectionTimerRef.current = window.setTimeout(() => {
+        wordSelectionTimerRef.current = null;
+
+        const selection = frameWindow.getSelection();
+        const text = normalizeText(selection?.toString());
+        if (!selection || selection.rangeCount === 0 || !text) return;
+
+        activeSentenceRef.current = null;
+        onWordSelectionRef.current?.({
+          text,
+          context: normalizeText(document.body?.textContent).slice(
+            0,
+            9000,
+          ),
+          chapterId,
+        });
+      }, 320);
+    };
+
     const handleDocumentClick = (event: MouseEvent) => {
+      if (event.detail === 3) {
+        if (wordSelectionTimerRef.current !== null) {
+          window.clearTimeout(wordSelectionTimerRef.current);
+          wordSelectionTimerRef.current = null;
+        }
+
+        event.preventDefault();
+
+        const sentence = selectDomSentenceAtPoint(
+          document,
+          event.clientX,
+          event.clientY,
+        );
+
+        if (sentence) {
+          activeSentenceRef.current = {
+            document,
+            index: sentence.index,
+            count: sentence.count,
+            chapterId,
+          };
+
+          onSentenceSelectionRef.current?.({
+            text: sentence.text,
+            context: sentence.context,
+            chapterId,
+            sentenceIndex: sentence.index,
+            sentenceCount: sentence.count,
+          });
+        }
+        return;
+      }
+
       const target =
         event.target instanceof Element ? event.target : null;
       const image = target?.closest<HTMLImageElement>("img");
@@ -608,14 +703,18 @@ export function MobiDocumentView({
       openImage(image);
     };
 
+    document.addEventListener("mousedown", handleDocumentMouseDown);
     document.addEventListener("mouseup", reportSelection);
     document.addEventListener("keyup", reportSelection);
+    document.addEventListener("dblclick", handleDocumentDoubleClick);
     document.addEventListener("click", handleDocumentClick);
     document.addEventListener("keydown", handleImageKeyDown);
 
     return () => {
+      document.removeEventListener("mousedown", handleDocumentMouseDown);
       document.removeEventListener("mouseup", reportSelection);
       document.removeEventListener("keyup", reportSelection);
+      document.removeEventListener("dblclick", handleDocumentDoubleClick);
       document.removeEventListener("click", handleDocumentClick);
       document.removeEventListener("keydown", handleImageKeyDown);
     };
@@ -640,6 +739,44 @@ export function MobiDocumentView({
     () => spine.findIndex((item) => item.id === chapterId),
     [chapterId, spine],
   );
+
+  useEffect(() => {
+    if (
+      !sentenceNavigation ||
+      sentenceNavigation.token === handledSentenceNavigationRef.current
+    ) {
+      return;
+    }
+
+    handledSentenceNavigationRef.current = sentenceNavigation.token;
+
+    const active = activeSentenceRef.current;
+    if (!active || active.chapterId !== chapterId) return;
+
+    const nextIndex = active.index + sentenceNavigation.direction;
+    if (nextIndex < 0 || nextIndex >= active.count) return;
+
+    const sentence = selectDomSentenceByIndex(
+      active.document,
+      nextIndex,
+    );
+    if (!sentence) return;
+
+    activeSentenceRef.current = {
+      document: active.document,
+      index: sentence.index,
+      count: sentence.count,
+      chapterId,
+    };
+
+    onSentenceSelectionRef.current?.({
+      text: sentence.text,
+      context: sentence.context,
+      chapterId,
+      sentenceIndex: sentence.index,
+      sentenceCount: sentence.count,
+    });
+  }, [chapterId, sentenceNavigation]);
 
   if (error) {
     return (
