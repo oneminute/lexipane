@@ -3473,3 +3473,11 @@ button { cursor: pointer; }
   min-height: 0;
   overflow: hidden;
 }
+
+
+.structured-raw-response {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+  color: var(--text, #29283a);
+}
