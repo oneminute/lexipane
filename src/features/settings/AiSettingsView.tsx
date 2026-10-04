@@ -763,8 +763,9 @@ export function AiSettingsView() {
           Server is the preferred Ollama endpoint and is never overwritten by
           automatic fallback. If it is unavailable, LexiPane may temporarily
           use another known local Ollama port and reports that explicitly.
-          Test LLM allows up to two minutes for a cold model load before timing
-          out.
+          Test LLM allows up to three minutes for a cold model load before
+          timing out. Reader analysis uses longer task-specific timeouts for
+          local models.
         </small>
       </section>
 
@@ -975,12 +976,12 @@ export function AiSettingsView() {
                           })
                         }
                       >
-                        <option value={15000}>15s</option>
-                        <option value={30000}>30s</option>
                         <option value={60000}>60s</option>
-                        <option value={75000}>75s</option>
                         <option value={90000}>90s</option>
                         <option value={120000}>120s</option>
+                        <option value={180000}>180s</option>
+                        <option value={240000}>240s</option>
+                        <option value={300000}>300s</option>
                       </select>
                     </label>
 
