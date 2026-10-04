@@ -120,8 +120,8 @@ export async function getAiUsageSummary(): Promise<AiUsageSummary> {
       "COALESCE(SUM(output_tokens), 0) AS output_tokens, " +
       "COALESCE(AVG(latency_ms), 0) AS average_latency_ms, " +
       "COALESCE(SUM(estimated_cost), 0) AS estimated_cost, " +
-      "COALESCE(SUM(CASE WHEN substr(created_at, 1, 10) = date('now') THEN estimated_cost ELSE 0 END), 0) AS estimated_cost_today, " +
-      "COALESCE(SUM(CASE WHEN substr(created_at, 1, 7) = strftime('%Y-%m', 'now') THEN estimated_cost ELSE 0 END), 0) AS estimated_cost_month, " +
+      "COALESCE(SUM(CASE WHEN substr(created_at, 1, 10) = date('now', 'localtime') THEN estimated_cost ELSE 0 END), 0) AS estimated_cost_today, " +
+      "COALESCE(SUM(CASE WHEN substr(created_at, 1, 7) = strftime('%Y-%m', 'now', 'localtime') THEN estimated_cost ELSE 0 END), 0) AS estimated_cost_month, " +
       "COALESCE(SUM(CASE WHEN provider_config_id IS NULL THEN 1 ELSE 0 END), 0) AS local_requests, " +
       "COALESCE(SUM(CASE WHEN provider_config_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS cloud_requests " +
       "FROM ai_usage",
