@@ -406,6 +406,7 @@ export interface CreateTransferJobInput {
   sourceId?: string;
   fileId?: string;
   destinationPath?: string;
+  resumeData?: Record<string, unknown>;
 }
 
 export async function createDraftTransferJob(
@@ -422,7 +423,7 @@ export async function createDraftTransferJob(
   await db.execute(
     "INSERT INTO transfer_jobs " +
       "(id, resource_item_id, source_id, file_id, provider_id, transport_type, state, progress, bytes_completed, destination_path, resume_json, created_at, updated_at) " +
-      "VALUES ($1,$2,$3,$4,$5,$6,'draft',0,0,$7,'{}',$8,$8)",
+      "VALUES ($1,$2,$3,$4,$5,$6,'draft',0,0,$7,$8,$9,$9)",
     [
       id,
       input.resourceItemId ?? null,
@@ -431,6 +432,7 @@ export async function createDraftTransferJob(
       input.providerId,
       input.transportType,
       input.destinationPath ?? null,
+      JSON.stringify(input.resumeData ?? {}),
       now,
     ],
   );
@@ -446,7 +448,7 @@ export async function createDraftTransferJob(
     progress: 0,
     bytesCompleted: 0,
     destinationPath: input.destinationPath,
-    resumeData: {},
+    resumeData: input.resumeData ?? {},
     createdAt: now,
     updatedAt: now,
   };
