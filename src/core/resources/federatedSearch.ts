@@ -9,6 +9,10 @@ import {
 } from "./ed2kAdapter";
 import type { Ed2kSearchResult } from "./ed2kTransport";
 import {
+  searchInternetArchive,
+  type InternetArchiveResult,
+} from "./internetArchive";
+import {
   searchS3Account,
   type ConnectedS3Account,
 } from "./s3Accounts";
@@ -50,6 +54,7 @@ export type FederatedResourceKind =
   | "cloud"
   | "webdav"
   | "s3"
+  | "internet-archive"
   | "ed2k"
   | "torrent";
 
@@ -64,6 +69,7 @@ export interface FederatedResourceSource {
   cloud?: FederatedResourceResult["cloud"];
   webdav?: FederatedResourceResult["webdav"];
   s3?: FederatedResourceResult["s3"];
+  internetArchive?: FederatedResourceResult["internetArchive"];
   ed2k?: FederatedResourceResult["ed2k"];
   torrent?: FederatedResourceResult["torrent"];
 }
@@ -98,6 +104,7 @@ export interface FederatedResourceResult {
     accountId: string;
     entry: S3Entry;
   };
+  internetArchive?: InternetArchiveResult;
   ed2k?: {
     accountId: string;
     query: string;
@@ -357,6 +364,32 @@ export async function federatedResourceSearch(
 
   const tasks: Array<Promise<void>> = [];
 
+  tasks.push(
+    searchInternetArchive(normalizedQuery)
+      .then((items) => {
+        results.push(
+          ...items.map((item) => ({
+            key: "internet-archive:" + item.identifier,
+            kind: "internet-archive" as const,
+            providerId: "internet-archive",
+            sourceLabel: "Internet Archive",
+            title: item.title,
+            authors: item.authors,
+            description: item.description,
+            internetArchive: item,
+          })),
+        );
+      })
+      .catch((error) => {
+        errors.push(
+          "Internet Archive: " +
+            (error instanceof Error
+              ? error.message
+              : String(error)),
+        );
+      }),
+  );
+
   for (const catalog of catalogs) {
     if (catalog.providerId === "torrent-catalog") {
       tasks.push(
@@ -492,9 +525,10 @@ export async function federatedResourceSearch(
       cloud: 1,
       webdav: 2,
       s3: 3,
-      opds: 4,
-      ed2k: 5,
-      torrent: 6,
+      internetArchive: 4,
+      opds: 5,
+      ed2k: 6,
+      torrent: 7,
     };
 
     return kindRank[left.kind] - kindRank[right.kind];
@@ -522,6 +556,7 @@ export async function federatedResourceSearch(
       cloud: result.cloud,
       webdav: result.webdav,
       s3: result.s3,
+      internetArchive: result.internetArchive,
       ed2k: result.ed2k,
       torrent: result.torrent,
     };
@@ -575,6 +610,6 @@ export async function federatedResourceSearch(
       ed2kEngines.length +
       webDavAccounts.length +
       s3Accounts.length +
-      1,
+      2,
   };
 }
