@@ -530,6 +530,27 @@ export function ResourceHubView({ onOpenBook }: Props) {
     }
   }
 
+  function alternativeAsResult(
+    parent: FederatedResourceResult,
+    source: NonNullable<FederatedResourceResult["alternatives"]>[number],
+  ): FederatedResourceResult {
+    return {
+      ...parent,
+      key: source.key,
+      kind: source.kind,
+      providerId: source.providerId,
+      sourceLabel: source.sourceLabel,
+      size: source.size ?? parent.size,
+      mimeType: source.mimeType ?? parent.mimeType,
+      opds: source.opds,
+      cloud: source.cloud,
+      webdav: source.webdav,
+      ed2k: source.ed2k,
+      torrent: source.torrent,
+      alternatives: [],
+    };
+  }
+
   async function acquireFederatedResult(
     result: FederatedResourceResult,
   ) {
@@ -1812,10 +1833,32 @@ export function ResourceHubView({ onOpenBook }: Props) {
                             <ul>
                               {result.alternatives.map((source) => (
                                 <li key={source.key}>
-                                  {source.sourceLabel} · {source.providerId}
-                                  {source.size
-                                    ? " · " + formatBytes(source.size)
-                                    : ""}
+                                  <span>
+                                    {source.sourceLabel} · {source.providerId}
+                                    {source.size
+                                      ? " · " + formatBytes(source.size)
+                                      : ""}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="ghost-button"
+                                    disabled={
+                                      networkBusy ||
+                                      cloudBusy ||
+                                      webDavBusy ||
+                                      ed2kBusy
+                                    }
+                                    onClick={() =>
+                                      void acquireFederatedResult(
+                                        alternativeAsResult(
+                                          result,
+                                          source,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    Get
+                                  </button>
                                 </li>
                               ))}
                             </ul>
