@@ -4121,8 +4121,11 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       {account.displayName || account.providerId}
                     </strong>
                     <small>
-                      Connected · {String(account.metadata.connectionMode ?? "access-token"){"}"}
-                        {" · "}credentials stored outside SQLite
+                      Connected ·{" "}
+                      {String(
+                        account.metadata.connectionMode ?? "access-token",
+                      )}
+                      {" · "}credentials stored outside SQLite
                     </small>
                   </div>
                   <div>
