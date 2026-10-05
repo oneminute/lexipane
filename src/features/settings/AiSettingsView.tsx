@@ -1,3 +1,4 @@
+import { APP_DEFAULTS } from "../../config/appDefaults";
 import { useEffect, useState } from "react";
 import { ProviderConnections } from "./ProviderConnections";
 import {
@@ -44,8 +45,10 @@ import {
 } from "../../core/reading/knownTerms";
 import {
   loadReadingLevel,
+  loadSentencePrefetchCount,
   readingLevels,
   saveReadingLevel,
+  saveSentencePrefetchCount,
   type ReadingLevel,
 } from "../../core/reading/preferences";
 
@@ -246,6 +249,9 @@ export function AiSettingsView() {
     useState<LlmTestStatus>("idle");
   const [llmTestMessage, setLlmTestMessage] = useState("");
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>("B2");
+  const [sentencePrefetchCount, setSentencePrefetchCount] = useState(
+    APP_DEFAULTS.reading.ai.sentencePrefetchCount,
+  );
   const [routePlans, setRoutePlans] =
     useState<Partial<Record<ReadingTaskType, TaskRoutePlan>>>({});
   const [providerConfigs, setProviderConfigs] =
@@ -269,6 +275,7 @@ export function AiSettingsView() {
   async function loadPreferences() {
     const [
       level,
+      prefetchCount,
       usageSummary,
       privacy,
       configuredProviders,
@@ -276,6 +283,7 @@ export function AiSettingsView() {
       ...routeValues
     ] = await Promise.all([
       loadReadingLevel(),
+      loadSentencePrefetchCount(),
       getAiUsageSummary(),
       loadAiPrivacyMode(),
       listProviderConfigs(),
@@ -284,6 +292,7 @@ export function AiSettingsView() {
     ]);
 
     setReadingLevel(level);
+    setSentencePrefetchCount(prefetchCount);
     setUsage(usageSummary);
     setPrivacyMode(privacy);
     setReadingProfile(profileSummary);
@@ -521,6 +530,12 @@ export function AiSettingsView() {
   async function changeReadingLevel(level: ReadingLevel) {
     setReadingLevel(level);
     await saveReadingLevel(level);
+  }
+
+  async function changeSentencePrefetchCount(count: number) {
+    const normalized = Math.max(0, Math.min(10, Math.trunc(count)));
+    setSentencePrefetchCount(normalized);
+    await saveSentencePrefetchCount(normalized);
   }
 
   async function changePrivacyMode(mode: AiPrivacyMode) {
@@ -802,6 +817,38 @@ export function AiSettingsView() {
                 (level) => level.id === readingLevel,
               )?.description
             }
+          </small>
+        </section>
+
+        <section className="settings-card">
+          <span className="eyebrow">Sentence AI prefetch</span>
+          <h2>{sentencePrefetchCount} sentence{sentencePrefetchCount === 1 ? "" : "s"} ahead</h2>
+          <p>
+            After the current sentence analysis is available, LexiPane
+            generates missing analyses for the next sentences in the
+            background and saves every successful result to SQLite.
+          </p>
+          <label className="settings-field">
+            <span>Pre-generate next sentences</span>
+            <select
+              className="settings-select"
+              value={sentencePrefetchCount}
+              onChange={(event) =>
+                void changeSentencePrefetchCount(
+                  Number(event.target.value),
+                )
+              }
+            >
+              {Array.from({ length: 11 }, (_, count) => (
+                <option key={count} value={count}>
+                  {count === 0 ? "Off" : count}
+                </option>
+              ))}
+            </select>
+          </label>
+          <small className="settings-help">
+            Existing saved sentence versions are reused first and do not
+            trigger another model request.
           </small>
         </section>
 
