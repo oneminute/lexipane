@@ -16,6 +16,22 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     },
   },
   {
+    id: "arxiv",
+    name: "arXiv",
+    kind: "catalog",
+    description:
+      "Open research-paper discovery with direct PDF acquisition.",
+    builtin: true,
+    live: true,
+    capabilities: {
+      search: true,
+      resolve: true,
+      preview: true,
+      previewLevels: [0, 1],
+      download: true,
+    },
+  },
+  {
     id: "internet-archive",
     name: "Internet Archive",
     kind: "catalog",
