@@ -16,6 +16,23 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     },
   },
   {
+    id: "internet-archive",
+    name: "Internet Archive",
+    kind: "catalog",
+    description:
+      "Open web archive discovery with Reader-compatible ebook acquisition.",
+    builtin: true,
+    live: true,
+    capabilities: {
+      search: true,
+      resolve: true,
+      preview: true,
+      previewLevels: [0, 1],
+      fileList: true,
+      download: true,
+    },
+  },
+  {
     id: "opds",
     name: "OPDS",
     kind: "catalog",
