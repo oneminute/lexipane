@@ -30,6 +30,23 @@ import {
   type CloudProviderId,
 } from "../../core/resources/cloudTransport";
 import {
+  browseWebDavAccount,
+  cancelWebDavDownload,
+  connectWebDavAccount,
+  disconnectWebDavAccount,
+  discardWebDavTransfer,
+  listWebDavAccounts,
+  pauseWebDavDownload,
+  resumeWebDavTransfer,
+  searchWebDavAccount,
+  startWebDavEntryAcquisition,
+  type ConnectedWebDavAccount,
+} from "../../core/resources/webdavAccounts";
+import {
+  webDavEntryIsBook,
+  type WebDavEntry,
+} from "../../core/resources/webdavTransport";
+import {
   cancelTorrentDownload,
   discardTorrentTransfer,
   inspectTorrent,
@@ -296,6 +313,23 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<CloudProviderId>("google-drive");
   const [connectDisplayName, setConnectDisplayName] = useState("");
   const [connectToken, setConnectToken] = useState("");
+  const [webDavAccounts, setWebDavAccounts] =
+    useState<ConnectedWebDavAccount[]>([]);
+  const [activeWebDavAccountId, setActiveWebDavAccountId] =
+    useState<string | null>(null);
+  const [webDavEntries, setWebDavEntries] = useState<WebDavEntry[]>([]);
+  const [webDavPath, setWebDavPath] = useState<string | undefined>(
+    undefined,
+  );
+  const [webDavFolderStack, setWebDavFolderStack] = useState<
+    Array<{ label: string; locator?: string }>
+  >([{ label: "Root" }]);
+  const [webDavQuery, setWebDavQuery] = useState("");
+  const [webDavBusy, setWebDavBusy] = useState(false);
+  const [webDavDisplayName, setWebDavDisplayName] = useState("");
+  const [webDavBaseUrl, setWebDavBaseUrl] = useState("");
+  const [webDavUsername, setWebDavUsername] = useState("");
+  const [webDavPassword, setWebDavPassword] = useState("");
   const [ed2kEngines, setEd2kEngines] =
     useState<Ed2kEngineAccount[]>([]);
   const [activeEd2kEngineId, setActiveEd2kEngineId] =
@@ -329,6 +363,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       savedCatalogs,
       connectedCloudAccounts,
       connectedEd2kEngines,
+      connectedWebDavAccounts,
     ] = await Promise.all([
       getResourceNativeCapabilities(),
       listPersistedResourceProviders(),
@@ -337,6 +372,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       listResourceCatalogs(),
       listConnectedCloudAccounts(),
       listEd2kEngines(),
+      listWebDavAccounts(),
     ]);
 
     setNativeCapabilities(native);
@@ -349,6 +385,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setResources(items);
     setCatalogs(savedCatalogs);
     setCloudAccounts(connectedCloudAccounts);
+    setWebDavAccounts(connectedWebDavAccounts);
     setEd2kEngines(connectedEd2kEngines);
     setActiveEd2kEngineId((current) =>
       current &&
@@ -361,6 +398,12 @@ export function ResourceHubView({ onOpenBook }: Props) {
       connectedCloudAccounts.some((account) => account.id === current)
         ? current
         : connectedCloudAccounts[0]?.id ?? null,
+    );
+    setActiveWebDavAccountId((current) =>
+      current &&
+      connectedWebDavAccounts.some((account) => account.id === current)
+        ? current
+        : connectedWebDavAccounts[0]?.id ?? null,
     );
   }
 
@@ -425,6 +468,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
         catalogs,
         cloudAccounts,
         ed2kEngines,
+        webDavAccounts,
       );
       setResourceSearchResults(response.results);
       setResourceSearchErrors(response.errors);
