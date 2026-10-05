@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { initializeDatabase } from "../db/database";
+import { findLibraryBookByPath } from "../books/library";
 import { stableHash } from "./cache";
 import {
   analyzeReadingSelection,
@@ -21,6 +22,7 @@ export interface SentenceAnalysisKeyInput {
 export interface SentenceAnalysisVersion {
   id: string;
   bookPath: string;
+  bookId?: string;
   sentenceKey: string;
   sentenceText: string;
   contextHash: string;
@@ -38,6 +40,7 @@ export interface SentenceAnalysisVersion {
 
 interface SentenceAnalysisRow {
   id: string;
+  book_id: string | null;
   book_path: string;
   sentence_key: string;
   sentence_text: string;
@@ -87,6 +90,7 @@ function rowToVersion(row: SentenceAnalysisRow): SentenceAnalysisVersion {
   return {
     id: row.id,
     bookPath: row.book_path,
+    bookId: row.book_id ?? undefined,
     sentenceKey: row.sentence_key,
     sentenceText: row.sentence_text,
     contextHash: row.context_hash,
@@ -136,6 +140,12 @@ export function createSentenceAnalysisKey(
   ].join(":");
 }
 
+async function resolveBookId(
+  bookPath: string,
+): Promise<string | null> {
+  return (await findLibraryBookByPath(bookPath))?.id ?? null;
+}
+
 export async function listSentenceAnalysisVersions(
   bookPath: string,
   sentenceKey: string,
@@ -145,33 +155,46 @@ export async function listSentenceAnalysisVersions(
   const db = await initializeDatabase();
   if (!db) return [];
 
-  const rows = await db.select<SentenceAnalysisRow[]>(
-    "SELECT * FROM sentence_ai_versions " +
-      "WHERE book_path = $1 AND sentence_key = $2 AND mode = 'grammar' " +
-      "ORDER BY version_no ASC",
-    [bookPath, sentenceKey],
-  );
+  const bookId = await resolveBookId(bookPath);
+  const rows = bookId
+    ? await db.select<SentenceAnalysisRow[]>(
+        "SELECT * FROM sentence_ai_versions " +
+          "WHERE (book_id = $1 OR (book_id IS NULL AND book_path = $2)) " +
+          "AND sentence_key = $3 AND mode = 'grammar' " +
+          "ORDER BY version_no ASC",
+        [bookId, bookPath, sentenceKey],
+      )
+    : await db.select<SentenceAnalysisRow[]>(
+        "SELECT * FROM sentence_ai_versions " +
+          "WHERE book_path = $1 AND sentence_key = $2 AND mode = 'grammar' " +
+          "ORDER BY version_no ASC",
+        [bookPath, sentenceKey],
+      );
 
-  return rows.map(rowToVersion);
+  if (bookId) {
+    await db.execute(
+      "UPDATE sentence_ai_versions SET book_id = $1 " +
+        "WHERE book_id IS NULL AND book_path = $2 AND sentence_key = $3",
+      [bookId, bookPath, sentenceKey],
+    );
+  }
+
+  return rows.map((row) =>
+    row.book_id
+      ? rowToVersion(row)
+      : rowToVersion({ ...row, book_id: bookId }),
+  );
 }
 
 export async function getLatestSentenceAnalysisVersion(
   bookPath: string,
   sentenceKey: string,
 ): Promise<SentenceAnalysisVersion | null> {
-  if (!isTauri() || !bookPath || !sentenceKey) return null;
-
-  const db = await initializeDatabase();
-  if (!db) return null;
-
-  const rows = await db.select<SentenceAnalysisRow[]>(
-    "SELECT * FROM sentence_ai_versions " +
-      "WHERE book_path = $1 AND sentence_key = $2 AND mode = 'grammar' " +
-      "ORDER BY version_no DESC LIMIT 1",
-    [bookPath, sentenceKey],
+  const versions = await listSentenceAnalysisVersions(
+    bookPath,
+    sentenceKey,
   );
-
-  return rows[0] ? rowToVersion(rows[0]) : null;
+  return versions.length > 0 ? versions[versions.length - 1] : null;
 }
 
 async function appendSentenceAnalysisVersion(
@@ -180,11 +203,15 @@ async function appendSentenceAnalysisVersion(
 ): Promise<SentenceAnalysisVersion> {
   const contextHash = stableHash(request.selection.context ?? "");
   const createdAt = new Date().toISOString();
+  const bookId = isTauri()
+    ? await resolveBookId(request.bookPath)
+    : null;
 
   if (!isTauri()) {
     return {
       id: createId(),
       bookPath: request.bookPath,
+      bookId: bookId ?? undefined,
       sentenceKey: request.sentenceKey,
       sentenceText: request.selection.text,
       contextHash,
@@ -212,20 +239,23 @@ async function appendSentenceAnalysisVersion(
     const versionRows = await db.select<Array<{ next_version: number }>>(
       "SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version " +
         "FROM sentence_ai_versions " +
-        "WHERE book_path = $1 AND sentence_key = $2 AND mode = 'grammar'",
-      [request.bookPath, request.sentenceKey],
+        "WHERE ((book_id IS NOT NULL AND book_id = $1) OR " +
+        "(book_id IS NULL AND book_path = $2)) " +
+        "AND sentence_key = $3 AND mode = 'grammar'",
+      [bookId, request.bookPath, request.sentenceKey],
     );
     const versionNo = Math.max(1, versionRows[0]?.next_version ?? 1);
     const id = createId();
 
     await db.execute(
       "INSERT INTO sentence_ai_versions " +
-        "(id, book_path, sentence_key, sentence_text, context_hash, mode, " +
+        "(id, book_id, book_path, sentence_key, sentence_text, context_hash, mode, " +
         "version_no, model_id, source, analysis_json, text, raw_response, " +
         "request_json, imported_legacy_cache, created_at) " +
-        "VALUES ($1,$2,$3,$4,$5,'grammar',$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+        "VALUES ($1,$2,$3,$4,$5,$6,'grammar',$7,$8,$9,$10,$11,$12,$13,$14,$15)",
       [
         id,
+        bookId,
         request.bookPath,
         request.sentenceKey,
         request.selection.text,
@@ -247,6 +277,7 @@ async function appendSentenceAnalysisVersion(
     return {
       id,
       bookPath: request.bookPath,
+      bookId: bookId ?? undefined,
       sentenceKey: request.sentenceKey,
       sentenceText: request.selection.text,
       contextHash,
