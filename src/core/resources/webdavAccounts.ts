@@ -220,15 +220,15 @@ export async function searchWebDavAccount(
   };
 }
 
-function extension(name: string): string | undefined {
-  const lower = name.toLowerCase();
-  if (lower.endsWith(".pdf")) return "pdf";
-  if (lower.endsWith(".epub")) return "epub";
-  return undefined;
+function extension(
+  name: string,
+  mimeType?: string,
+): string | undefined {
+  return supportedResourceBookFormat(name, mimeType) ?? undefined;
 }
 
 function title(name: string): string {
-  return name.replace(/.(pdf|epub)$/i, "");
+  return stripSupportedBookExtension(name);
 }
 
 async function prepareWebDavResource(
