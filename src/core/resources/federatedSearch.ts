@@ -9,6 +9,12 @@ import {
 } from "./ed2kAdapter";
 import type { Ed2kSearchResult } from "./ed2kTransport";
 import {
+  searchWebDavAccount,
+  webDavEntryIsBook,
+  type ConnectedWebDavAccount,
+} from "./webdavAccounts";
+import type { WebDavEntry } from "./webdavTransport";
+import {
   searchTorrentCatalog,
   type TorrentCatalogResult,
 } from "./torrentCatalog";
@@ -27,6 +33,7 @@ export type FederatedResourceKind =
   | "local"
   | "opds"
   | "cloud"
+  | "webdav"
   | "ed2k"
   | "torrent";
 
@@ -50,6 +57,10 @@ export interface FederatedResourceResult {
   cloud?: {
     accountId: string;
     entry: CloudEntry;
+  };
+  webdav?: {
+    accountId: string;
+    entry: WebDavEntry;
   };
   ed2k?: {
     accountId: string;
@@ -160,6 +171,28 @@ function cloudResults(
     }));
 }
 
+function webDavResults(
+  account: ConnectedWebDavAccount,
+  entries: WebDavEntry[],
+): FederatedResourceResult[] {
+  return entries
+    .filter(webDavEntryIsBook)
+    .map((entry) => ({
+      key: "webdav:" + account.id + ":" + entry.href,
+      kind: "webdav" as const,
+      providerId: "webdav",
+      sourceLabel: account.displayName || "WebDAV",
+      title: entry.name.replace(/\.(pdf|epub)$/i, ""),
+      authors: [],
+      size: entry.size,
+      mimeType: entry.mimeType,
+      webdav: {
+        accountId: account.id,
+        entry,
+      },
+    }));
+}
+
 function torrentResults(
   catalog: ResourceCatalog,
   entries: TorrentCatalogResult[],
@@ -217,6 +250,7 @@ export async function federatedResourceSearch(
   catalogs: ResourceCatalog[],
   cloudAccounts: ConnectedCloudAccount[],
   ed2kEngines: Ed2kEngineAccount[] = [],
+  webDavAccounts: ConnectedWebDavAccount[] = [],
 ): Promise<FederatedSearchResponse> {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) {
@@ -312,6 +346,26 @@ export async function federatedResourceSearch(
     );
   }
 
+  for (const account of webDavAccounts) {
+    tasks.push(
+      searchWebDavAccount(account, normalizedQuery)
+        .then((response) => {
+          results.push(
+            ...webDavResults(account, response.entries),
+          );
+        })
+        .catch((error) => {
+          errors.push(
+            (account.displayName || "WebDAV") +
+              ": " +
+              (error instanceof Error
+                ? error.message
+                : String(error)),
+          );
+        }),
+    );
+  }
+
   for (const engine of ed2kEngines) {
     tasks.push(
       searchEd2kEngine(engine, normalizedQuery, "global")
@@ -348,9 +402,10 @@ export async function federatedResourceSearch(
     const kindRank: Record<FederatedResourceKind, number> = {
       local: 0,
       cloud: 1,
-      opds: 2,
-      ed2k: 3,
-      torrent: 4,
+      webdav: 2,
+      opds: 3,
+      ed2k: 4,
+      torrent: 5,
     };
 
     return kindRank[left.kind] - kindRank[right.kind];
@@ -377,6 +432,7 @@ export async function federatedResourceSearch(
       catalogs.length +
       cloudAccounts.length +
       ed2kEngines.length +
+      webDavAccounts.length +
       1,
   };
 }
