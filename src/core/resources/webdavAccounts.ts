@@ -1,4 +1,8 @@
 import {
+  stripSupportedBookExtension,
+  supportedResourceBookFormat,
+} from "./bookFormats";
+import {
   cancelWebDavDownload,
   cleanupWebDavTransfer,
   listWebDavEntries,
@@ -232,7 +236,9 @@ async function prepareWebDavResource(
   entry: WebDavEntry,
 ): Promise<ResourceBundle> {
   if (!webDavEntryIsBook(entry)) {
-    throw new Error("LexiPane currently imports PDF/EPUB files from WebDAV.");
+    throw new Error(
+      "LexiPane imports Reader-supported PDF, EPUB, MOBI, AZW, and AZW3 files from WebDAV.",
+    );
   }
 
   const sourceKey = account.id + ":" + entry.href;
@@ -289,7 +295,7 @@ async function prepareWebDavResource(
     name: entry.name,
     sizeBytes: entry.size,
     mimeType: entry.mimeType,
-    extension: extension(entry.name),
+    extension: extension(entry.name, entry.mimeType),
     identifiers: {
       providerVersionId:
         entry.modifiedAt
