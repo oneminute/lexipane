@@ -354,6 +354,10 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<CloudProviderId>("google-drive");
   const [connectDisplayName, setConnectDisplayName] = useState("");
   const [connectToken, setConnectToken] = useState("");
+  const [connectRefreshToken, setConnectRefreshToken] = useState("");
+  const [connectClientId, setConnectClientId] = useState("");
+  const [connectClientSecret, setConnectClientSecret] = useState("");
+  const [connectTenant, setConnectTenant] = useState("common");
   const [webDavAccounts, setWebDavAccounts] =
     useState<ConnectedWebDavAccount[]>([]);
   const [activeWebDavAccountId, setActiveWebDavAccountId] =
@@ -1200,7 +1204,12 @@ export function ResourceHubView({ onOpenBook }: Props) {
   }
 
   async function connectCloud() {
-    if (!connectToken.trim()) return;
+    if (
+      !connectToken.trim() &&
+      !(connectRefreshToken.trim() && connectClientId.trim())
+    ) {
+      return;
+    }
 
     setCloudBusy(true);
     setMessage("");
@@ -1210,8 +1219,19 @@ export function ResourceHubView({ onOpenBook }: Props) {
         connectProvider,
         connectDisplayName,
         connectToken,
+        {
+          refreshToken: connectRefreshToken || undefined,
+          clientId: connectClientId || undefined,
+          clientSecret: connectClientSecret || undefined,
+          tenant:
+            connectProvider === "onedrive"
+              ? connectTenant || "common"
+              : undefined,
+        },
       );
       setConnectToken("");
+      setConnectRefreshToken("");
+      setConnectClientSecret("");
       setConnectDisplayName("");
       await refreshResourceCore();
       setActiveCloudAccountId(account.id);
@@ -1224,7 +1244,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       setTab("browse");
       setMessage(
         account.displayName +
-          " connected. Access token is stored in the native secure credential store.",
+          " connected. OAuth credentials are stored in the native secure credential store.",
       );
     } catch (error) {
       setMessage(
