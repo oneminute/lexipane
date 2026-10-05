@@ -960,3 +960,61 @@ export async function appendResourceHistory(
     ],
   );
 }
+
+
+export async function deleteTransferJob(
+  jobId: string,
+): Promise<void> {
+  if (!isTauri()) return;
+
+  const db = await initializeDatabase();
+  if (!db) return;
+
+  const rows = await db.select<Array<{ state: string }>>(
+    "SELECT state FROM transfer_jobs WHERE id = $1 LIMIT 1",
+    [jobId],
+  );
+  const state = rows[0]?.state;
+
+  if (
+    state &&
+    !["completed", "canceled", "failed", "draft"].includes(state)
+  ) {
+    throw new Error(
+      "Active transfer jobs must be paused or canceled before removal.",
+    );
+  }
+
+  await db.execute(
+    "DELETE FROM transfer_files WHERE transfer_job_id = $1",
+    [jobId],
+  );
+  await db.execute(
+    "DELETE FROM transfer_jobs WHERE id = $1",
+    [jobId],
+  );
+}
+
+export async function clearFinishedTransferJobs(): Promise<number> {
+  if (!isTauri()) return 0;
+
+  const db = await initializeDatabase();
+  if (!db) return 0;
+
+  const rows = await db.select<Array<{ count: number }>>(
+    "SELECT COUNT(*) AS count FROM transfer_jobs " +
+      "WHERE state IN ('completed','canceled')",
+  );
+  const count = Number(rows[0]?.count ?? 0);
+
+  await db.execute(
+    "DELETE FROM transfer_files WHERE transfer_job_id IN (" +
+      "SELECT id FROM transfer_jobs WHERE state IN ('completed','canceled')" +
+      ")",
+  );
+  await db.execute(
+    "DELETE FROM transfer_jobs WHERE state IN ('completed','canceled')",
+  );
+
+  return count;
+}
