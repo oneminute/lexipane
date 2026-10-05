@@ -1,4 +1,7 @@
 import {
+  supportedResourceBookFormat,
+} from "./bookFormats";
+import {
   cancelTorrentDownload,
   cleanupTorrentTransfer,
   pauseTorrentDownload,
@@ -38,10 +41,7 @@ function titleFromPath(path: string): string {
 }
 
 function extensionFromName(name: string): string | undefined {
-  const lower = name.toLowerCase();
-  if (lower.endsWith(".pdf")) return "pdf";
-  if (lower.endsWith(".epub")) return "epub";
-  return undefined;
+  return supportedResourceBookFormat(name) ?? undefined;
 }
 
 export async function inspectTorrent(
@@ -57,7 +57,7 @@ export async function prepareTorrentAcquisition(
 ): Promise<TorrentAcquisitionPreparation> {
   if (!selectedFile.bookCandidate) {
     throw new Error(
-      "LexiPane currently imports PDF/EPUB files from torrents.",
+      "LexiPane imports Reader-supported PDF, EPUB, MOBI, AZW, and AZW3 files from torrents.",
     );
   }
 
