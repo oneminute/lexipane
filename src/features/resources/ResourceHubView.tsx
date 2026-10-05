@@ -4030,21 +4030,71 @@ export function ResourceHubView({ onOpenBook }: Props) {
               disabled={cloudBusy}
               type="password"
               autoComplete="off"
-              placeholder="OAuth access token"
+              placeholder="OAuth access token (optional if refresh token is configured)"
               onChange={(event) =>
                 setConnectToken(event.target.value)
               }
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  void connectCloud();
-                }
-              }}
             />
+
+            <details className="cloud-oauth-advanced">
+              <summary>Automatic token refresh (optional)</summary>
+              <p>
+                Add the OAuth refresh token and client id so LexiPane can renew
+                expired access tokens. Client secret is optional for public
+                clients. OneDrive can also specify a tenant.
+              </p>
+
+              <input
+                value={connectRefreshToken}
+                disabled={cloudBusy}
+                type="password"
+                autoComplete="off"
+                placeholder="Refresh token"
+                onChange={(event) =>
+                  setConnectRefreshToken(event.target.value)
+                }
+              />
+              <input
+                value={connectClientId}
+                disabled={cloudBusy}
+                placeholder="OAuth client id"
+                onChange={(event) =>
+                  setConnectClientId(event.target.value)
+                }
+              />
+              <input
+                value={connectClientSecret}
+                disabled={cloudBusy}
+                type="password"
+                autoComplete="off"
+                placeholder="OAuth client secret (optional)"
+                onChange={(event) =>
+                  setConnectClientSecret(event.target.value)
+                }
+              />
+              {connectProvider === "onedrive" && (
+                <input
+                  value={connectTenant}
+                  disabled={cloudBusy}
+                  placeholder="Microsoft tenant (default: common)"
+                  onChange={(event) =>
+                    setConnectTenant(event.target.value)
+                  }
+                />
+              )}
+            </details>
 
             <button
               type="button"
               className="primary-button"
-              disabled={cloudBusy || !connectToken.trim()}
+              disabled={
+                cloudBusy ||
+                (!connectToken.trim() &&
+                  !(
+                    connectRefreshToken.trim() &&
+                    connectClientId.trim()
+                  ))
+              }
               onClick={() => void connectCloud()}
             >
               {cloudBusy ? "Verifying…" : "Connect"}
@@ -4071,7 +4121,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       {account.displayName || account.providerId}
                     </strong>
                     <small>
-                      Connected · secure token stored outside SQLite
+                      Connected · {String(account.metadata.connectionMode ?? "access-token"){"}"}
+                        {" · "}credentials stored outside SQLite
                     </small>
                   </div>
                   <div>
