@@ -71,6 +71,29 @@ export async function prepareHttpAcquisition(
       (opdsEntryId ?? probe.finalUrl)
     : undefined;
 
+  const catalogProviderId =
+    typeof metadata.catalogProviderId === "string"
+      ? metadata.catalogProviderId
+      : opdsCatalogUrl
+        ? "opds"
+        : undefined;
+  const catalogUrl =
+    typeof metadata.catalogUrl === "string"
+      ? metadata.catalogUrl
+      : opdsCatalogUrl;
+  const catalogSourceKey =
+    typeof metadata.catalogSourceKey === "string"
+      ? metadata.catalogSourceKey
+      : opdsSourceKey;
+  const catalogMetadata =
+    metadata.catalogMetadata &&
+    typeof metadata.catalogMetadata === "object"
+      ? metadata.catalogMetadata as Record<string, unknown>
+      : {
+          entryId: opdsEntryId,
+          acquisitionUrl: probe.finalUrl,
+        };
+
   const sourceKey = probe.finalUrl;
   const existing = await findResourceBundleBySource(
     "http",
@@ -79,12 +102,12 @@ export async function prepareHttpAcquisition(
 
   if (existing) {
     if (
-      opdsCatalogUrl &&
-      opdsSourceKey &&
+      catalogProviderId &&
+      catalogSourceKey &&
       !existing.sources.some(
         (source) =>
-          source.providerId === "opds" &&
-          source.sourceKey === opdsSourceKey,
+          source.providerId === catalogProviderId &&
+          source.sourceKey === catalogSourceKey,
       )
     ) {
       const now = new Date().toISOString();
@@ -103,14 +126,11 @@ export async function prepareHttpAcquisition(
           {
             id: createResourceRecordId("source"),
             resourceItemId: existing.item.id,
-            providerId: "opds",
-            sourceKey: opdsSourceKey,
+            providerId: catalogProviderId,
+            sourceKey: catalogSourceKey,
             sourceType: "catalog",
-            uri: opdsCatalogUrl,
-            metadata: {
-              entryId: opdsEntryId,
-              acquisitionUrl: probe.finalUrl,
-            },
+            uri: catalogUrl,
+            metadata: catalogMetadata,
             availability: {
               remoteAvailable: true,
             },
@@ -224,20 +244,19 @@ export async function prepareHttpAcquisition(
 
   const sources: ResourceSource[] = [source];
 
-  if (opdsCatalogUrl) {
+  if (
+    catalogProviderId &&
+    catalogSourceKey &&
+    catalogUrl
+  ) {
     sources.push({
       id: createResourceRecordId("source"),
       resourceItemId: itemId,
-      providerId: "opds",
-      sourceKey:
-        opdsSourceKey ??
-        opdsCatalogUrl + "#" + probe.finalUrl,
+      providerId: catalogProviderId,
+      sourceKey: catalogSourceKey,
       sourceType: "catalog",
-      uri: opdsCatalogUrl,
-      metadata: {
-        entryId: opdsEntryId,
-        acquisitionUrl: probe.finalUrl,
-      },
+      uri: catalogUrl,
+      metadata: catalogMetadata,
       availability: {
         remoteAvailable: true,
       },
