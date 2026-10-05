@@ -220,6 +220,8 @@ fn default_name_for_content_type(content_type: Option<&str>) -> String {
     match content_type.unwrap_or_default().to_ascii_lowercase().as_str() {
         value if value.contains("application/pdf") => "download.pdf".to_string(),
         value if value.contains("application/epub+zip") => "download.epub".to_string(),
+        value if value.contains("application/x-mobipocket-ebook") => "download.mobi".to_string(),
+        value if value.contains("application/vnd.amazon.ebook") => "download.azw3".to_string(),
         _ => "download".to_string(),
     }
 }
@@ -406,7 +408,7 @@ fn transfer_event(
 pub(crate) fn validate_downloaded_book(path: &Path) -> Result<String, String> {
     let mut file = StdFile::open(path)
         .map_err(|error| format!("Unable to open downloaded file for validation: {error}"))?;
-    let mut prefix = [0_u8; 8];
+    let mut prefix = [0_u8; 80];
     let read = file
         .read(&mut prefix)
         .map_err(|error| format!("Unable to validate downloaded file: {error}"))?;
@@ -437,7 +439,21 @@ pub(crate) fn validate_downloaded_book(path: &Path) -> Result<String, String> {
         }
     }
 
-    Err("Downloaded content is not a supported PDF or EPUB file.".to_string())
+    if read >= 68 && &prefix[60..68] == b"BOOKMOBI" {
+        let extension = path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_ascii_lowercase())
+            .filter(|value| matches!(value.as_str(), "mobi" | "azw" | "azw3"))
+            .unwrap_or_else(|| "mobi".to_string());
+
+        return Ok(extension);
+    }
+
+    Err(
+        "Downloaded content is not a supported PDF, EPUB, MOBI, AZW, or AZW3 file."
+            .to_string(),
+    )
 }
 
 async fn transfer_dir(app: &AppHandle, job_id: &str) -> Result<PathBuf, String> {
@@ -949,6 +965,23 @@ mod tests {
         assert_eq!(
             validate_downloaded_book(&path).expect("valid PDF"),
             "pdf"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn validates_mobi_family_by_palm_database_signature() {
+        let path = std::env::temp_dir().join(format!(
+            "lexipane-http-test-{}.azw3",
+            std::process::id()
+        ));
+
+        let mut bytes = vec![0_u8; 80];
+        bytes[60..68].copy_from_slice(b"BOOKMOBI");
+        std::fs::write(&path, bytes).expect("write temporary MOBI");
+        assert_eq!(
+            validate_downloaded_book(&path).expect("valid Kindle-family file"),
+            "azw3"
         );
         let _ = std::fs::remove_file(path);
     }
