@@ -478,7 +478,7 @@ export async function federatedResourceSearch(
     // File size is deliberately not part of logical identity: equivalent
     // editions from different providers can differ slightly because of
     // metadata/container changes. Keep format when known to avoid merging
-    // PDF and EPUB into a single acquisition choice.
+    // different Reader formats into a single acquisition choice.
     const format =
       supportedResourceBookFormat(
         result.title,
