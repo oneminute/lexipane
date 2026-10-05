@@ -123,6 +123,20 @@ export interface FederatedSearchResponse {
   searchedSources: number;
 }
 
+const PROJECT_GUTENBERG_CATALOG: ResourceCatalog = {
+  id: "builtin:project-gutenberg",
+  providerId: "opds",
+  name: "Project Gutenberg",
+  url: "https://www.gutenberg.org/ebooks/search.opds/",
+  enabled: true,
+  metadata: {
+    builtin: true,
+    publicDomain: true,
+  },
+  createdAt: "builtin",
+  updatedAt: "builtin",
+};
+
 function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -390,6 +404,29 @@ export async function federatedResourceSearch(
       }),
   );
 
+  tasks.push(
+    searchOpdsCatalog(
+      PROJECT_GUTENBERG_CATALOG.url,
+      normalizedQuery,
+    )
+      .then((feed) => {
+        results.push(
+          ...opdsResults(
+            PROJECT_GUTENBERG_CATALOG,
+            feed.entries,
+          ),
+        );
+      })
+      .catch((error) => {
+        errors.push(
+          "Project Gutenberg: " +
+            (error instanceof Error
+              ? error.message
+              : String(error)),
+        );
+      }),
+  );
+
   for (const catalog of catalogs) {
     if (catalog.providerId === "torrent-catalog") {
       tasks.push(
@@ -610,6 +647,6 @@ export async function federatedResourceSearch(
       ed2kEngines.length +
       webDavAccounts.length +
       s3Accounts.length +
-      2,
+      3,
   };
 }
