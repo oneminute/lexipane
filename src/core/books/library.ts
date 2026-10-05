@@ -407,6 +407,22 @@ export async function cleanupManagedLibraryStorage(): Promise<ManagedCleanupResu
   return cleanupManagedFiles(rows.map((row) => row.file_path));
 }
 
+export async function findLibraryBookByPath(
+  path: string,
+): Promise<LibraryBook | null> {
+  if (!isTauri() || !path.trim()) return null;
+
+  const db = await initializeDatabase();
+  if (!db) return null;
+
+  const rows = await db.select<LibraryBook[]>(
+    BOOK_SELECT + "WHERE b.file_path = $1 LIMIT 1",
+    [path],
+  );
+
+  return rows[0] ?? null;
+}
+
 export async function findLibraryBookByHash(
   fileHash: string,
 ): Promise<LibraryBook | null> {
