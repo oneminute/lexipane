@@ -753,6 +753,37 @@ export function ResourceHubView({ onOpenBook }: Props) {
       return;
     }
 
+    if (result.s3) {
+      const account = s3Accounts.find(
+        (item) => item.id === result.s3?.accountId,
+      );
+      if (!account) {
+        setMessage("The S3 account is no longer connected.");
+        return;
+      }
+
+      setS3Busy(true);
+      setMessage("");
+
+      try {
+        await startS3EntryAcquisition(
+          account,
+          result.s3.entry,
+        );
+        setTab("downloads");
+        await refreshResourceCore();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to acquire the S3 result.",
+        );
+      } finally {
+        setS3Busy(false);
+      }
+      return;
+    }
+
     if (result.ed2k) {
       const engine = ed2kEngines.find(
         (item) => item.id === result.ed2k?.accountId,
@@ -1565,6 +1596,224 @@ export function ResourceHubView({ onOpenBook }: Props) {
       );
     } finally {
       setWebDavBusy(false);
+    }
+  }
+
+  function activeS3Account(): ConnectedS3Account | null {
+    return (
+      s3Accounts.find(
+        (account) => account.id === activeS3AccountId,
+      ) ?? null
+    );
+  }
+
+  async function connectS3() {
+    if (
+      !s3Endpoint.trim() ||
+      !s3Region.trim() ||
+      !s3Bucket.trim() ||
+      !s3AccessKey.trim() ||
+      !s3SecretKey
+    ) {
+      return;
+    }
+
+    setS3Busy(true);
+    setMessage("");
+
+    try {
+      const account = await connectS3Account({
+        displayName: s3DisplayName,
+        endpoint: s3Endpoint,
+        region: s3Region,
+        bucket: s3Bucket,
+        prefix: s3RootPrefix,
+        accessKey: s3AccessKey,
+        secretKey: s3SecretKey,
+        sessionToken: s3SessionToken || undefined,
+      });
+
+      setS3SecretKey("");
+      setS3SessionToken("");
+      setActiveS3AccountId(account.id);
+      await refreshResourceCore();
+      await openS3Root(account);
+      setTab("browse");
+      setMessage("S3-compatible storage connected.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to connect S3-compatible storage.",
+      );
+    } finally {
+      setS3Busy(false);
+    }
+  }
+
+  async function disconnectS3(account: ConnectedS3Account) {
+    setS3Busy(true);
+    setMessage("");
+
+    try {
+      await disconnectS3Account(account);
+      if (activeS3AccountId === account.id) {
+        setActiveS3AccountId(null);
+        setS3Entries([]);
+        setS3Prefix(undefined);
+        setS3FolderStack([{ label: "Root" }]);
+      }
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to disconnect S3 storage.",
+      );
+    } finally {
+      setS3Busy(false);
+    }
+  }
+
+  async function openS3Root(account: ConnectedS3Account) {
+    setS3Busy(true);
+    setMessage("");
+
+    try {
+      const result = await browseS3Account(account);
+      const prefix =
+        typeof account.metadata.prefix === "string" &&
+        account.metadata.prefix
+          ? account.metadata.prefix
+          : result.prefix || undefined;
+      setActiveS3AccountId(account.id);
+      setS3Entries(result.entries);
+      setS3Prefix(prefix);
+      setS3FolderStack([{ label: "Root", prefix }]);
+      setS3Query("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to browse S3 storage.",
+      );
+    } finally {
+      setS3Busy(false);
+    }
+  }
+
+  async function openS3Folder(entry: S3Entry) {
+    const account = activeS3Account();
+    if (!account || !entry.isFolder) return;
+
+    setS3Busy(true);
+    setMessage("");
+
+    try {
+      const result = await browseS3Account(
+        account,
+        entry.key,
+      );
+      setS3Entries(result.entries);
+      setS3Prefix(result.prefix);
+      setS3FolderStack((current) => [
+        ...current,
+        { label: entry.name, prefix: result.prefix },
+      ]);
+      setS3Query("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to open S3 prefix.",
+      );
+    } finally {
+      setS3Busy(false);
+    }
+  }
+
+  async function goToS3Folder(index: number) {
+    const account = activeS3Account();
+    const target = s3FolderStack[index];
+    if (!account || !target) return;
+
+    setS3Busy(true);
+    setMessage("");
+
+    try {
+      const result = await browseS3Account(
+        account,
+        target.prefix,
+      );
+      setS3Entries(result.entries);
+      setS3Prefix(result.prefix);
+      setS3FolderStack((current) =>
+        current.slice(0, index + 1),
+      );
+      setS3Query("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to return to the S3 prefix.",
+      );
+    } finally {
+      setS3Busy(false);
+    }
+  }
+
+  async function searchS3() {
+    const account = activeS3Account();
+    if (!account || !s3Query.trim()) return;
+
+    setS3Busy(true);
+    setMessage("");
+
+    try {
+      const result = await searchS3Account(
+        account,
+        s3Query,
+        s3Prefix,
+      );
+      setS3Entries(result.entries);
+      if (result.truncated) {
+        setMessage(
+          "S3 search reached the 5,000-object inspection limit. Narrow the prefix or query for more precise results.",
+        );
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to search S3 storage.",
+      );
+    } finally {
+      setS3Busy(false);
+    }
+  }
+
+  async function acquireS3Entry(entry: S3Entry) {
+    const account = activeS3Account();
+    if (!account || !s3EntryIsBook(entry)) return;
+
+    setS3Busy(true);
+    setMessage("");
+
+    try {
+      await startS3EntryAcquisition(account, entry);
+      setTab("downloads");
+      setMessage(
+        "S3 download started. It continues if you leave Resources.",
+      );
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to download the S3 object.",
+      );
+    } finally {
+      setS3Busy(false);
     }
   }
 
