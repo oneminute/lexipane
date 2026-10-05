@@ -91,6 +91,7 @@ import {
 } from "../../core/reading/knownTerms";
 import {
   loadReadingLevel,
+  loadSentencePrefetchCount,
   type ReadingLevel,
 } from "../../core/reading/preferences";
 import {
@@ -299,6 +300,9 @@ export function ReaderView({
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>(
     APP_DEFAULTS.reading.level,
   );
+  const [sentencePrefetchCount, setSentencePrefetchCount] = useState(
+    APP_DEFAULTS.reading.ai.sentencePrefetchCount,
+  );
   const [pageTexts, setPageTexts] = useState<Record<number, string>>({});
   const [autoTermsByPage, setAutoTermsByPage] =
     useState<Record<number, DifficultTerm[]>>({});
@@ -379,6 +383,14 @@ export function ReaderView({
     void loadReadingLevel()
       .then(setReadingLevel)
       .catch(() => setReadingLevel(APP_DEFAULTS.reading.level));
+
+    void loadSentencePrefetchCount()
+      .then(setSentencePrefetchCount)
+      .catch(() =>
+        setSentencePrefetchCount(
+          APP_DEFAULTS.reading.ai.sentencePrefetchCount,
+        ),
+      );
 
     void getLocalOcrStatus()
       .then(setOcrStatus)
@@ -1833,46 +1845,87 @@ export function ReaderView({
   async function prefetchFollowingSentenceAnalyses(
     sentence: ActiveSentenceState,
   ) {
-    if (!bookPath) return;
+    if (!bookPath || sentencePrefetchCount <= 0) return;
 
-    const context = normalizedText(sentence.context);
-    if (!context) return;
+    let remaining = sentencePrefetchCount;
 
-    const sentences = segmentSentences(context);
-    const count = APP_DEFAULTS.reading.ai.sentencePrefetchCount;
+    async function prefetchContext(
+      context: string,
+      format: ActiveSentenceState["sentenceFormat"],
+      container: string,
+      startIndex: number,
+      page: number,
+    ) {
+      const normalizedContext = normalizedText(context);
+      if (!normalizedContext || remaining <= 0) return;
 
-    for (let offset = 1; offset <= count; offset += 1) {
-      const sentenceIndex = sentence.sentenceIndex + offset;
-      const segment = sentences[sentenceIndex];
+      const sentences = segmentSentences(normalizedContext);
 
-      if (!segment) break;
+      for (
+        let sentenceIndex = startIndex;
+        sentenceIndex < sentences.length && remaining > 0;
+        sentenceIndex += 1
+      ) {
+        const segment = sentences[sentenceIndex];
+        if (!segment) continue;
 
-      const historyKey = createSentenceAnalysisKey({
-        format: sentence.sentenceFormat,
-        container: sentence.sentenceContainer,
-        sentenceIndex,
-        text: segment.text,
-      });
-
-      try {
-        await resolveSentenceAnalysis({
-          bookPath,
-          sentenceKey: historyKey,
-          selection: {
-            text: segment.text,
-            context,
-            page: sentence.page,
-            bookPath,
-          },
-        });
-      } catch (error) {
-        console.warn(
-          "Unable to pre-generate sentence analysis",
+        const historyKey = createSentenceAnalysisKey({
+          format,
+          container,
           sentenceIndex,
-          error,
-        );
-        break;
+          text: segment.text,
+        });
+
+        try {
+          await resolveSentenceAnalysis({
+            bookPath,
+            sentenceKey: historyKey,
+            selection: {
+              text: segment.text,
+              context: normalizedContext,
+              page,
+              bookPath,
+            },
+          });
+          remaining -= 1;
+        } catch (error) {
+          console.warn(
+            "Unable to pre-generate sentence analysis",
+            sentenceIndex,
+            error,
+          );
+          return;
+        }
       }
+    }
+
+    await prefetchContext(
+      sentence.context ?? "",
+      sentence.sentenceFormat,
+      sentence.sentenceContainer,
+      sentence.sentenceIndex + 1,
+      sentence.page,
+    );
+
+    if (!isPdf || remaining <= 0) return;
+
+    for (
+      let page = sentence.page + 1;
+      page <= pageCount && remaining > 0;
+      page += 1
+    ) {
+      const context =
+        pageTexts[page] || getPdfPageText(page);
+      const normalizedContext = normalizedText(context);
+      if (!normalizedContext) break;
+
+      await prefetchContext(
+        normalizedContext,
+        "pdf",
+        "page:" + page,
+        0,
+        page,
+      );
     }
   }
 
