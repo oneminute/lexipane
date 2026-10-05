@@ -254,8 +254,29 @@ function formatBytes(value: number | undefined): string {
 }
 
 function opdsLinkLabel(link: OpdsLink): string {
-  if (link.type === "application/epub+zip") return "Get EPUB";
-  if (link.type === "application/pdf") return "Get PDF";
+  const type = link.type?.toLowerCase() ?? "";
+  const href = link.href.toLowerCase();
+
+  if (type === "application/epub+zip" || /\.epub(?:\?|$)/.test(href)) {
+    return "Get EPUB";
+  }
+  if (type === "application/pdf" || /\.pdf(?:\?|$)/.test(href)) {
+    return "Get PDF";
+  }
+  if (
+    type.includes("mobipocket") ||
+    /\.mobi(?:\?|$)/.test(href)
+  ) {
+    return "Get MOBI";
+  }
+  if (/\.azw3(?:\?|$)/.test(href)) return "Get AZW3";
+  if (
+    type.includes("amazon.ebook") ||
+    /\.azw(?:\?|$)/.test(href)
+  ) {
+    return "Get AZW";
+  }
+
   return link.title || "Get book";
 }
 
@@ -642,6 +663,43 @@ export function ResourceHubView({ onOpenBook }: Props) {
         );
       } finally {
         setWebDavBusy(false);
+      }
+      return;
+    }
+
+    if (result.torrent) {
+      setNetworkBusy(true);
+      setMessage("");
+
+      try {
+        const input = result.torrent.result.input;
+        const preview = await inspectTorrent(input);
+        const selectedFile = preview.files.find(
+          (file) => file.bookCandidate,
+        );
+
+        if (!selectedFile) {
+          throw new Error(
+            "The torrent result does not contain a Reader-compatible book file.",
+          );
+        }
+
+        const preparation = await prepareTorrentAcquisition(
+          input,
+          preview,
+          selectedFile,
+        );
+        await startPreparedTorrentAcquisition(preparation);
+        setTab("downloads");
+        await refreshResourceCore();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to acquire the BitTorrent result.",
+        );
+      } finally {
+        setNetworkBusy(false);
       }
       return;
     }
@@ -2559,7 +2617,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 <h2>Browse self-hosted and NAS storage</h2>
               </div>
               <small>
-                Standard WebDAV PROPFIND browsing with PDF/EPUB acquisition
+                Standard WebDAV PROPFIND browsing with Reader-compatible acquisition
                 through the same persistent download and Library pipeline.
               </small>
             </header>
@@ -2973,7 +3031,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
             <div className="resource-empty">
               <strong>No transfer jobs yet.</strong>
               <p>
-                Probe HTTP, choose a PDF/EPUB from OPDS, or preview a magnet
+                Probe HTTP, choose a Reader-compatible books from OPDS, or preview a magnet
                 and select a book file.
               </p>
             </div>
@@ -3379,7 +3437,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
               <strong>No connected cloud accounts.</strong>
               <p>
                 Once connected, the account becomes available in Browse for
-                folder navigation, search, and PDF/EPUB acquisition.
+                folder navigation, search, and Reader-compatible acquisition.
               </p>
             </div>
           ) : (
