@@ -37,6 +37,20 @@ export type FederatedResourceKind =
   | "ed2k"
   | "torrent";
 
+export interface FederatedResourceSource {
+  key: string;
+  kind: FederatedResourceKind;
+  providerId: string;
+  sourceLabel: string;
+  size?: number;
+  mimeType?: string;
+  opds?: FederatedResourceResult["opds"];
+  cloud?: FederatedResourceResult["cloud"];
+  webdav?: FederatedResourceResult["webdav"];
+  ed2k?: FederatedResourceResult["ed2k"];
+  torrent?: FederatedResourceResult["torrent"];
+}
+
 export interface FederatedResourceResult {
   key: string;
   kind: FederatedResourceKind;
@@ -71,6 +85,7 @@ export interface FederatedResourceResult {
     catalogId: string;
     result: TorrentCatalogResult;
   };
+  alternatives?: FederatedResourceSource[];
 }
 
 export interface FederatedSearchResponse {
@@ -411,19 +426,75 @@ export async function federatedResourceSearch(
     return kindRank[left.kind] - kindRank[right.kind];
   });
 
-  const seen = new Set<string>();
-  const unique = results.filter((result) => {
-    const identity = [
-      normalize(result.title),
-      normalize(result.authors.join(" ")),
-      result.mimeType ?? "",
-      result.size ?? "",
-    ].join("|");
+  const groups = new Map<
+    string,
+    {
+      primary: FederatedResourceResult;
+      alternatives: FederatedResourceSource[];
+    }
+  >();
 
-    if (seen.has(identity)) return false;
-    seen.add(identity);
-    return true;
-  });
+  function sourceFromResult(
+    result: FederatedResourceResult,
+  ): FederatedResourceSource {
+    return {
+      key: result.key,
+      kind: result.kind,
+      providerId: result.providerId,
+      sourceLabel: result.sourceLabel,
+      size: result.size,
+      mimeType: result.mimeType,
+      opds: result.opds,
+      cloud: result.cloud,
+      webdav: result.webdav,
+      ed2k: result.ed2k,
+      torrent: result.torrent,
+    };
+  }
+
+  function logicalIdentity(result: FederatedResourceResult): string {
+    const normalizedTitle = normalize(result.title);
+    const normalizedAuthors = normalize(result.authors.join(" "));
+
+    // File size is deliberately not part of logical identity: equivalent
+    // editions from different providers can differ slightly because of
+    // metadata/container changes. Keep format when known to avoid merging
+    // PDF and EPUB into a single acquisition choice.
+    const format =
+      result.mimeType?.toLowerCase().includes("pdf")
+        ? "pdf"
+        : result.mimeType?.toLowerCase().includes("epub")
+          ? "epub"
+          : result.title.toLowerCase().endsWith(".pdf")
+            ? "pdf"
+            : result.title.toLowerCase().endsWith(".epub")
+              ? "epub"
+              : "";
+
+    return [normalizedTitle, normalizedAuthors, format].join("|");
+  }
+
+  for (const result of results) {
+    const identity = logicalIdentity(result);
+    const current = groups.get(identity);
+
+    if (!current) {
+      groups.set(identity, {
+        primary: result,
+        alternatives: [],
+      });
+      continue;
+    }
+
+    current.alternatives.push(sourceFromResult(result));
+  }
+
+  const unique = Array.from(groups.values()).map(
+    ({ primary, alternatives }) => ({
+      ...primary,
+      alternatives,
+    }),
+  );
 
   return {
     results: unique,
