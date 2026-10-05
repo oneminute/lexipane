@@ -622,6 +622,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       cloud: source.cloud,
       webdav: source.webdav,
       s3: source.s3,
+      arxiv: source.arxiv,
       internetArchive: source.internetArchive,
       ed2k: source.ed2k,
       torrent: source.torrent,
@@ -720,6 +721,45 @@ export function ResourceHubView({ onOpenBook }: Props) {
         );
       } finally {
         setWebDavBusy(false);
+      }
+      return;
+    }
+
+    if (result.arxiv) {
+      setNetworkBusy(true);
+      setMessage("");
+
+      try {
+        await startHttpAcquisition(
+          result.arxiv.pdfUrl,
+          {
+            title: result.arxiv.title,
+            authors: result.arxiv.authors,
+            acquisitionType: "application/pdf",
+            catalogProviderId: "arxiv",
+            catalogSourceKey: result.arxiv.id,
+            catalogUrl:
+              "https://arxiv.org/abs/" +
+              encodeURIComponent(result.arxiv.id),
+            catalogMetadata: {
+              arxivId: result.arxiv.id,
+              categories: result.arxiv.categories,
+              publishedAt: result.arxiv.publishedAt,
+              updatedAt: result.arxiv.updatedAt,
+            },
+          },
+        );
+
+        setTab("downloads");
+        await refreshResourceCore();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to acquire the arXiv paper.",
+        );
+      } finally {
+        setNetworkBusy(false);
       }
       return;
     }
