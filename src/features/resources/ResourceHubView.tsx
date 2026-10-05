@@ -66,6 +66,7 @@ import {
   type OpdsLink,
 } from "../../core/resources/opds";
 import {
+  clearFinishedTransferJobs,
   createDraftTransferJob,
   listPersistedResourceProviders,
   listResourceCatalogs,
@@ -260,6 +261,8 @@ function opdsLinkLabel(link: OpdsLink): string {
 
 export function ResourceHubView({ onOpenBook }: Props) {
   const [tab, setTab] = useState<ResourceHubTab>("search");
+  const [transferFilter, setTransferFilter] =
+    useState<"active" | "completed" | "failed" | "all">("active");
   const [input, setInput] = useState("");
   const [classification, setClassification] =
     useState<ResourceInputClassification | null>(null);
@@ -347,6 +350,49 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<Ed2kSearchResult[]>([]);
   const [ed2kLinkMetadata, setEd2kLinkMetadata] =
     useState<Ed2kLinkMetadata | null>(null);
+
+  const visibleTransfers = useMemo(() => {
+    if (transferFilter === "all") return transfers;
+
+    if (transferFilter === "completed") {
+      return transfers.filter(
+        (job) =>
+          job.state === "completed" || job.state === "canceled",
+      );
+    }
+
+    if (transferFilter === "failed") {
+      return transfers.filter((job) => job.state === "failed");
+    }
+
+    return transfers.filter(
+      (job) =>
+        job.state === "draft" ||
+        job.state === "queued" ||
+        job.state === "running" ||
+        job.state === "paused" ||
+        job.state === "downloaded" ||
+        job.state === "ingesting",
+    );
+  }, [transfers, transferFilter]);
+
+  async function clearFinishedDownloads() {
+    try {
+      const count = await clearFinishedTransferJobs();
+      await refreshResourceCore();
+      setMessage(
+        count > 0
+          ? "Cleared " + count + " finished transfer job(s)."
+          : "There are no finished transfer jobs to clear.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to clear finished downloads.",
+      );
+    }
+  }
 
   const liveTransportCount = useMemo(() => {
     if (!nativeCapabilities) return 0;
@@ -2839,6 +2885,32 @@ export function ResourceHubView({ onOpenBook }: Props) {
             </small>
           </header>
 
+          <div className="download-manager-toolbar">
+            <div className="resource-tabs compact-tabs">
+              {(["active", "completed", "failed", "all"] as const).map(
+                (filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    className={
+                      transferFilter === filter ? "selected" : ""
+                    }
+                    onClick={() => setTransferFilter(filter)}
+                  >
+                    {filter[0].toUpperCase() + filter.slice(1)}
+                  </button>
+                ),
+              )}
+            </div>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => void clearFinishedDownloads()}
+            >
+              Clear finished
+            </button>
+          </div>
+
           {transfers.length === 0 ? (
             <div className="resource-empty">
               <strong>No transfer jobs yet.</strong>
@@ -2847,9 +2919,13 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 and select a book file.
               </p>
             </div>
+          ) : visibleTransfers.length === 0 ? (
+            <div className="resource-empty compact">
+              <strong>No {transferFilter} transfer jobs.</strong>
+            </div>
           ) : (
             <div className="resource-transfer-list">
-              {transfers.map((job) => (
+              {visibleTransfers.map((job) => (
                 <article key={job.id} className={"state-" + job.state}>
                   <div className="resource-transfer-main">
                     <span className="resource-kind-badge">{job.state}</span>
