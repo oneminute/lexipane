@@ -597,7 +597,7 @@ export async function federatedResourceSearch(
       webdav: 2,
       s3: 3,
       arxiv: 4,
-      internetArchive: 5,
+      "internet-archive": 5,
       opds: 6,
       ed2k: 7,
       torrent: 8,
