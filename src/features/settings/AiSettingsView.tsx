@@ -249,9 +249,8 @@ export function AiSettingsView() {
     useState<LlmTestStatus>("idle");
   const [llmTestMessage, setLlmTestMessage] = useState("");
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>("B2");
-  const [sentencePrefetchCount, setSentencePrefetchCount] = useState(
-    APP_DEFAULTS.reading.ai.sentencePrefetchCount,
-  );
+  const [sentencePrefetchCount, setSentencePrefetchCount] =
+    useState<number>(APP_DEFAULTS.reading.ai.sentencePrefetchCount);
   const [routePlans, setRoutePlans] =
     useState<Partial<Record<ReadingTaskType, TaskRoutePlan>>>({});
   const [providerConfigs, setProviderConfigs] =
