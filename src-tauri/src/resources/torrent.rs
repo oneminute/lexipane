@@ -64,7 +64,11 @@ pub struct TorrentManager {
 
 fn is_book_candidate(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    lower.ends_with(".pdf") || lower.ends_with(".epub")
+    lower.ends_with(".pdf")
+        || lower.ends_with(".epub")
+        || lower.ends_with(".mobi")
+        || lower.ends_with(".azw")
+        || lower.ends_with(".azw3")
 }
 
 fn validate_input(input: &str) -> Result<String, String> {
