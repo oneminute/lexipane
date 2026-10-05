@@ -548,6 +548,37 @@ export function ResourceHubView({ onOpenBook }: Props) {
       return;
     }
 
+    if (result.webdav) {
+      const account = webDavAccounts.find(
+        (item) => item.id === result.webdav?.accountId,
+      );
+      if (!account) {
+        setMessage("The WebDAV account is no longer connected.");
+        return;
+      }
+
+      setWebDavBusy(true);
+      setMessage("");
+
+      try {
+        await startWebDavEntryAcquisition(
+          account,
+          result.webdav.entry,
+        );
+        setTab("downloads");
+        await refreshResourceCore();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to acquire the WebDAV result.",
+        );
+      } finally {
+        setWebDavBusy(false);
+      }
+      return;
+    }
+
     if (result.ed2k) {
       const engine = ed2kEngines.find(
         (item) => item.id === result.ed2k?.accountId,
@@ -1163,6 +1194,203 @@ export function ResourceHubView({ onOpenBook }: Props) {
       );
     } finally {
       setCloudBusy(false);
+    }
+  }
+
+  function activeWebDavAccount(): ConnectedWebDavAccount | null {
+    return (
+      webDavAccounts.find(
+        (account) => account.id === activeWebDavAccountId,
+      ) ?? null
+    );
+  }
+
+  async function connectWebDav() {
+    if (!webDavBaseUrl.trim()) return;
+
+    setWebDavBusy(true);
+    setMessage("");
+
+    try {
+      const account = await connectWebDavAccount({
+        displayName: webDavDisplayName,
+        baseUrl: webDavBaseUrl,
+        username: webDavUsername,
+        password: webDavPassword,
+      });
+
+      setWebDavPassword("");
+      setActiveWebDavAccountId(account.id);
+      await refreshResourceCore();
+      await openWebDavRoot(account);
+      setTab("browse");
+      setMessage("WebDAV / Nextcloud account connected.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to connect the WebDAV account.",
+      );
+    } finally {
+      setWebDavBusy(false);
+    }
+  }
+
+  async function disconnectWebDav(account: ConnectedWebDavAccount) {
+    setWebDavBusy(true);
+    setMessage("");
+
+    try {
+      await disconnectWebDavAccount(account);
+      if (activeWebDavAccountId === account.id) {
+        setActiveWebDavAccountId(null);
+        setWebDavEntries([]);
+        setWebDavPath(undefined);
+        setWebDavFolderStack([{ label: "Root" }]);
+      }
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to disconnect WebDAV.",
+      );
+    } finally {
+      setWebDavBusy(false);
+    }
+  }
+
+  async function openWebDavRoot(
+    account: ConnectedWebDavAccount,
+  ) {
+    setWebDavBusy(true);
+    setMessage("");
+
+    try {
+      const result = await browseWebDavAccount(account);
+      setActiveWebDavAccountId(account.id);
+      setWebDavEntries(result.entries);
+      setWebDavPath(result.path);
+      setWebDavFolderStack([{ label: "Root", locator: result.path }]);
+      setWebDavQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to browse WebDAV.",
+      );
+    } finally {
+      setWebDavBusy(false);
+    }
+  }
+
+  async function openWebDavFolder(entry: WebDavEntry) {
+    const account = activeWebDavAccount();
+    if (!account || !entry.isFolder) return;
+
+    setWebDavBusy(true);
+    setMessage("");
+
+    try {
+      const result = await browseWebDavAccount(
+        account,
+        entry.href,
+      );
+      setWebDavEntries(result.entries);
+      setWebDavPath(result.path);
+      setWebDavFolderStack((current) => [
+        ...current,
+        { label: entry.name, locator: result.path },
+      ]);
+      setWebDavQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to open WebDAV folder.",
+      );
+    } finally {
+      setWebDavBusy(false);
+    }
+  }
+
+  async function goToWebDavFolder(index: number) {
+    const account = activeWebDavAccount();
+    const target = webDavFolderStack[index];
+    if (!account || !target) return;
+
+    setWebDavBusy(true);
+    setMessage("");
+
+    try {
+      const result = await browseWebDavAccount(
+        account,
+        target.locator,
+      );
+      setWebDavEntries(result.entries);
+      setWebDavPath(result.path);
+      setWebDavFolderStack((current) =>
+        current.slice(0, index + 1),
+      );
+      setWebDavQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to return to WebDAV folder.",
+      );
+    } finally {
+      setWebDavBusy(false);
+    }
+  }
+
+  async function searchWebDav() {
+    const account = activeWebDavAccount();
+    if (!account || !webDavQuery.trim()) return;
+
+    setWebDavBusy(true);
+    setMessage("");
+
+    try {
+      const result = await searchWebDavAccount(
+        account,
+        webDavQuery,
+        webDavPath,
+      );
+      setWebDavEntries(result.entries);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to search WebDAV.",
+      );
+    } finally {
+      setWebDavBusy(false);
+    }
+  }
+
+  async function acquireWebDavEntry(entry: WebDavEntry) {
+    const account = activeWebDavAccount();
+    if (!account || !webDavEntryIsBook(entry)) return;
+
+    setWebDavBusy(true);
+    setMessage("");
+
+    try {
+      await startWebDavEntryAcquisition(account, entry);
+      setTab("downloads");
+      setMessage(
+        "WebDAV download started. It continues if you leave Resources.",
+      );
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to download the WebDAV file.",
+      );
+    } finally {
+      setWebDavBusy(false);
     }
   }
 
