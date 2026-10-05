@@ -280,8 +280,10 @@ async function accountCredentialBundle(
   }
 
   if (
-    bundle.expiresAt &&
-    bundle.expiresAt <= Date.now() + 60_000
+    (bundle.expiresAt &&
+      bundle.expiresAt <= Date.now() + 60_000) ||
+    (!bundle.expiresAt &&
+      Boolean(bundle.refreshToken && bundle.clientId))
   ) {
     return refreshAccountToken(account, bundle);
   }
