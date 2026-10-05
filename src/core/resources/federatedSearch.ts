@@ -30,6 +30,11 @@ import {
   type ResourceCatalog,
 } from "./persistence";
 import { listLibraryBooks } from "../books/library";
+import {
+  mimeTypeForResourceBook,
+  stripSupportedBookExtension,
+  supportedResourceBookFormat,
+} from "./bookFormats";
 
 export type FederatedResourceKind =
   | "local"
@@ -130,9 +135,7 @@ function opdsResults(
   return entries.flatMap((entry) => {
     const acquisition = entry.acquisitions.find(
       (link) =>
-        link.type === "application/epub+zip" ||
-        link.type === "application/pdf" ||
-        /\.(epub|pdf)(?:\?|$)/i.test(link.href),
+        supportedResourceBookFormat(link.href, link.type) !== null,
     );
 
     if (!acquisition) return [];
@@ -178,7 +181,7 @@ function cloudResults(
       providerId: account.providerId,
       sourceLabel:
         account.displayName || account.providerId,
-      title: entry.name.replace(/\.(pdf|epub)$/i, ""),
+      title: stripSupportedBookExtension(entry.name),
       authors: [],
       size: entry.size,
       mimeType: entry.mimeType,
@@ -200,7 +203,7 @@ function webDavResults(
       kind: "webdav" as const,
       providerId: "webdav",
       sourceLabel: account.displayName || "WebDAV",
-      title: entry.name.replace(/\.(pdf|epub)$/i, ""),
+      title: stripSupportedBookExtension(entry.name),
       authors: [],
       size: entry.size,
       mimeType: entry.mimeType,
@@ -252,7 +255,7 @@ function ed2kResults(
       kind: "ed2k" as const,
       providerId: "ed2k",
       sourceLabel: account.displayName || "aMule ED2K",
-      title: entry.name.replace(/\.(pdf|epub)$/i, ""),
+      title: stripSupportedBookExtension(entry.name),
       authors: [],
       size: entry.size,
       ed2k: {
@@ -304,11 +307,13 @@ export async function federatedResourceSearch(
       title,
       authors,
       mimeType:
-        book.format === "pdf"
-          ? "application/pdf"
-          : book.format === "epub"
-            ? "application/epub+zip"
-            : undefined,
+        supportedResourceBookFormat(book.file_path)
+          ? mimeTypeForResourceBook(
+              supportedResourceBookFormat(
+                book.file_path,
+              )!,
+            )
+          : undefined,
       localResourceId: book.id,
       localPath: book.file_path,
     });
@@ -475,15 +480,10 @@ export async function federatedResourceSearch(
     // metadata/container changes. Keep format when known to avoid merging
     // PDF and EPUB into a single acquisition choice.
     const format =
-      result.mimeType?.toLowerCase().includes("pdf")
-        ? "pdf"
-        : result.mimeType?.toLowerCase().includes("epub")
-          ? "epub"
-          : result.title.toLowerCase().endsWith(".pdf")
-            ? "pdf"
-            : result.title.toLowerCase().endsWith(".epub")
-              ? "epub"
-              : "";
+      supportedResourceBookFormat(
+        result.title,
+        result.mimeType,
+      ) ?? "";
 
     return [normalizedTitle, normalizedAuthors, format].join("|");
   }
