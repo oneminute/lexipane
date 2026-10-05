@@ -176,7 +176,7 @@ export async function prepareCloudAcquisition(
 ): Promise<ResourceBundle> {
   if (!cloudEntryIsBook(entry)) {
     throw new Error(
-      "LexiPane currently imports PDF/EPUB files from cloud storage.",
+      "LexiPane imports Reader-supported PDF, EPUB, MOBI, AZW, and AZW3 files from cloud storage.",
     );
   }
 
