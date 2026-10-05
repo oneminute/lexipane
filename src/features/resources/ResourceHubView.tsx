@@ -2921,6 +2921,170 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <section className="resource-section">
             <header>
               <div>
+                <span className="eyebrow">S3-compatible storage</span>
+                <h2>Browse object storage</h2>
+              </div>
+              <small>
+                AWS S3, MinIO, Cloudflare R2, Backblaze B2 and compatible
+                endpoints use the same verified download and Library pipeline.
+              </small>
+            </header>
+
+            {s3Accounts.length === 0 ? (
+              <div className="resource-empty">
+                <strong>No S3-compatible account connected.</strong>
+                <p>
+                  Add an endpoint, bucket, region and credentials from Accounts.
+                </p>
+                <button
+                  type="button"
+                  className="primary-button compact"
+                  onClick={() => setTab("accounts")}
+                >
+                  Connect S3
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="cloud-account-switcher">
+                  {s3Accounts.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      className={
+                        activeS3AccountId === account.id
+                          ? "selected"
+                          : ""
+                      }
+                      onClick={() => void openS3Root(account)}
+                    >
+                      <strong>{account.displayName || "S3"}</strong>
+                      <small>
+                        {String(account.metadata.bucket ?? "")}
+                        {" · "}
+                        {String(account.metadata.region ?? "")}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+
+                {activeS3Account() && (
+                  <div className="cloud-browser">
+                    <div className="cloud-breadcrumbs">
+                      {s3FolderStack.map((item, index) => (
+                        <button
+                          key={index + ":" + (item.prefix ?? "root")}
+                          type="button"
+                          disabled={
+                            s3Busy ||
+                            index === s3FolderStack.length - 1
+                          }
+                          onClick={() => void goToS3Folder(index)}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="opds-search-row">
+                      <input
+                        value={s3Query}
+                        placeholder="Search objects under this prefix…"
+                        onChange={(event) =>
+                          setS3Query(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            void searchS3();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={s3Busy || !s3Query.trim()}
+                        onClick={() => void searchS3()}
+                      >
+                        {s3Busy ? "Working…" : "Search"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={s3Busy}
+                        onClick={() => {
+                          const account = activeS3Account();
+                          if (account) void openS3Root(account);
+                        }}
+                      >
+                        Root
+                      </button>
+                    </div>
+
+                    {s3Entries.length === 0 ? (
+                      <div className="resource-empty compact">
+                        <strong>
+                          {s3Busy ? "Loading objects…" : "No objects loaded."}
+                        </strong>
+                      </div>
+                    ) : (
+                      <div className="cloud-entry-list">
+                        {s3Entries.map((entry) => (
+                          <article key={entry.id}>
+                            <div className="cloud-entry-icon">
+                              {entry.isFolder ? "▣" : "▤"}
+                            </div>
+                            <div className="cloud-entry-main">
+                              <strong>{entry.name}</strong>
+                              <small>
+                                {entry.isFolder
+                                  ? "Prefix"
+                                  : formatBytes(entry.size)}
+                                {entry.modifiedAt
+                                  ? " · " + entry.modifiedAt
+                                  : ""}
+                              </small>
+                            </div>
+
+                            {entry.isFolder ? (
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                disabled={s3Busy}
+                                onClick={() =>
+                                  void openS3Folder(entry)
+                                }
+                              >
+                                Open
+                              </button>
+                            ) : s3EntryIsBook(entry) ? (
+                              <button
+                                type="button"
+                                className="primary-button compact"
+                                disabled={s3Busy}
+                                onClick={() =>
+                                  void acquireS3Entry(entry)
+                                }
+                              >
+                                Download
+                              </button>
+                            ) : (
+                              <small className="muted">
+                                Not a Reader format
+                              </small>
+                            )}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="resource-section">
+            <header>
+              <div>
                 <span className="eyebrow">WebDAV / Nextcloud</span>
                 <h2>Browse self-hosted and NAS storage</h2>
               </div>
@@ -3586,6 +3750,131 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       onClick={() => void disconnectEd2k(engine)}
                     >
                       Remove
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+
+          <div className="ed2k-account-card">
+            <div>
+              <span className="eyebrow">S3-compatible storage</span>
+              <strong>Connect object storage</strong>
+              <small>
+                Compatible with AWS S3, MinIO, R2 and B2 S3 APIs. Access and
+                secret keys are stored in the native secure credential store.
+              </small>
+            </div>
+
+            <input
+              value={s3DisplayName}
+              disabled={s3Busy}
+              placeholder="Account label (optional)"
+              onChange={(event) => setS3DisplayName(event.target.value)}
+            />
+            <input
+              value={s3Endpoint}
+              disabled={s3Busy}
+              placeholder="https://s3.us-east-1.amazonaws.com"
+              onChange={(event) => setS3Endpoint(event.target.value)}
+            />
+            <div className="cloud-token-grid">
+              <input
+                value={s3Region}
+                disabled={s3Busy}
+                placeholder="Region, e.g. us-east-1"
+                onChange={(event) => setS3Region(event.target.value)}
+              />
+              <input
+                value={s3Bucket}
+                disabled={s3Busy}
+                placeholder="Bucket"
+                onChange={(event) => setS3Bucket(event.target.value)}
+              />
+            </div>
+            <input
+              value={s3RootPrefix}
+              disabled={s3Busy}
+              placeholder="Root prefix (optional), e.g. books/"
+              onChange={(event) => setS3RootPrefix(event.target.value)}
+            />
+            <div className="cloud-token-grid">
+              <input
+                value={s3AccessKey}
+                disabled={s3Busy}
+                placeholder="Access key"
+                onChange={(event) => setS3AccessKey(event.target.value)}
+              />
+              <input
+                value={s3SecretKey}
+                disabled={s3Busy}
+                type="password"
+                autoComplete="off"
+                placeholder="Secret key"
+                onChange={(event) => setS3SecretKey(event.target.value)}
+              />
+            </div>
+            <input
+              value={s3SessionToken}
+              disabled={s3Busy}
+              type="password"
+              autoComplete="off"
+              placeholder="Session token (optional)"
+              onChange={(event) => setS3SessionToken(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void connectS3();
+              }}
+            />
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                s3Busy ||
+                !s3Endpoint.trim() ||
+                !s3Region.trim() ||
+                !s3Bucket.trim() ||
+                !s3AccessKey.trim() ||
+                !s3SecretKey
+              }
+              onClick={() => void connectS3()}
+            >
+              {s3Busy ? "Connecting…" : "Connect S3"}
+            </button>
+          </div>
+
+          {s3Accounts.length > 0 && (
+            <div className="cloud-account-list">
+              {s3Accounts.map((account) => (
+                <article key={account.id}>
+                  <div>
+                    <span className="resource-kind-badge">S3</span>
+                    <strong>{account.displayName || "S3"}</strong>
+                    <small>
+                      {String(account.metadata.bucket ?? "")}
+                      {" · "}
+                      {String(account.metadata.endpoint ?? "")}
+                    </small>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={s3Busy}
+                      onClick={() => {
+                        setTab("browse");
+                        void openS3Root(account);
+                      }}
+                    >
+                      Browse
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={s3Busy}
+                      onClick={() => void disconnectS3(account)}
+                    >
+                      Disconnect
                     </button>
                   </div>
                 </article>
