@@ -182,7 +182,7 @@ function fallbackTagText(
   );
   const match = body.match(expression);
   const value = match?.[1]
-    ?.replace(/<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>/g, "$1")
+    ?.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/<[^>]+>/g, "")
     .trim();
 
@@ -209,14 +209,14 @@ function parseXmlCatalogWithoutDom(
   baseUrl: string,
 ): TorrentCatalogResult[] {
   const itemExpression =
-    /<(?:[\\w.-]+:)?item(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?item>/gi;
+    /<(?:[\w.-]+:)?item(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?item>/gi;
   const items = Array.from(body.matchAll(itemExpression));
 
   return items.flatMap((match, index) => {
     const itemBody = match[1] ?? "";
     const attrs = new Map<string, string>();
     const attrExpression =
-      /<(?:[\\w.-]+:)?attr\\b([^>]*)\\/?\\s*>/gi;
+      /<(?:[\w.-]+:)?attr\b([^>]*)\/?\s*>/gi;
 
     for (const attrMatch of itemBody.matchAll(attrExpression)) {
       const raw = attrMatch[1] ?? "";
@@ -226,7 +226,7 @@ function parseXmlCatalogWithoutDom(
     }
 
     const enclosureMatch = itemBody.match(
-      /<(?:[\\w.-]+:)?enclosure\\b([^>]*)\\/?\\s*>/i,
+      /<(?:[\w.-]+:)?enclosure\b([^>]*)\/?\s*>/i,
     );
     const enclosure = enclosureMatch?.[1] ?? "";
     const title = fallbackTagText(itemBody, "title");
