@@ -9,6 +9,7 @@ const WEB_FALLBACK: ResourceNativeCapabilities = {
     torrent: false,
     ed2k: false,
     cloud: false,
+    webdav: false,
   },
 };
 
