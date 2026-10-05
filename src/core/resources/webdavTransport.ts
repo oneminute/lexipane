@@ -1,3 +1,4 @@
+import { isSupportedResourceBook } from "./bookFormats";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export interface WebDavEntry {
@@ -72,14 +73,8 @@ export async function cleanupWebDavTransfer(jobId: string): Promise<boolean> {
 }
 
 export function webDavEntryIsBook(entry: WebDavEntry): boolean {
-  if (entry.isFolder) return false;
-  const lower = entry.name.toLowerCase();
-  const mime = entry.mimeType?.toLowerCase() ?? "";
-
   return (
-    lower.endsWith(".pdf") ||
-    lower.endsWith(".epub") ||
-    mime.includes("application/pdf") ||
-    mime.includes("application/epub+zip")
+    !entry.isFolder &&
+    isSupportedResourceBook(entry.name, entry.mimeType)
   );
 }
