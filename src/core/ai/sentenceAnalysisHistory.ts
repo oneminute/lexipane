@@ -150,7 +150,9 @@ async function resolveBookId(
   }
 
   const bookId = (await findLibraryBookByPath(bookPath))?.id ?? null;
-  bookIdCache.set(bookPath, bookId);
+  if (bookId) {
+    bookIdCache.set(bookPath, bookId);
+  }
   return bookId;
 }
 
