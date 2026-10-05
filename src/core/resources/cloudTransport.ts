@@ -1,3 +1,4 @@
+import { isSupportedResourceBook } from "./bookFormats";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export type CloudProviderId =
@@ -112,14 +113,8 @@ export function cloudFolderLocator(
 }
 
 export function cloudEntryIsBook(entry: CloudEntry): boolean {
-  if (entry.isFolder) return false;
-
-  const lower = entry.name.toLowerCase();
-  if (lower.endsWith(".pdf") || lower.endsWith(".epub")) return true;
-
-  const mime = entry.mimeType?.toLowerCase() ?? "";
   return (
-    mime.includes("application/pdf") ||
-    mime.includes("application/epub+zip")
+    !entry.isFolder &&
+    isSupportedResourceBook(entry.name, entry.mimeType)
   );
 }
