@@ -8,6 +8,7 @@ import {
   cloudEntryIsBook,
   listCloudEntries,
   pauseCloudDownload,
+  refreshCloudAccessToken,
   searchCloudEntries,
   startCloudDownload,
   type CloudEntry,
@@ -44,6 +45,24 @@ export interface ConnectedCloudAccount extends ResourceAccount {
   providerId: CloudProviderId;
 }
 
+export interface CloudCredentialOptions {
+  refreshToken?: string;
+  clientId?: string;
+  clientSecret?: string;
+  tenant?: string;
+  expiresAt?: number;
+}
+
+interface CloudCredentialBundle {
+  version: 1;
+  accessToken: string;
+  refreshToken?: string;
+  clientId?: string;
+  clientSecret?: string;
+  tenant?: string;
+  expiresAt?: number;
+}
+
 function isCloudProvider(
   value: string,
 ): value is CloudProviderId {
@@ -70,14 +89,45 @@ export async function connectCloudAccount(
   providerId: CloudProviderId,
   displayName: string,
   accessToken: string,
+  options: CloudCredentialOptions = {},
 ): Promise<ConnectedCloudAccount> {
-  const token = accessToken.trim();
-  if (!token) {
-    throw new Error("Access token is required.");
+  let bundle: CloudCredentialBundle = {
+    version: 1,
+    accessToken: accessToken.trim(),
+    refreshToken: options.refreshToken?.trim() || undefined,
+    clientId: options.clientId?.trim() || undefined,
+    clientSecret: options.clientSecret || undefined,
+    tenant: options.tenant?.trim() || undefined,
+    expiresAt: options.expiresAt,
+  };
+
+  if (!bundle.accessToken) {
+    if (!bundle.refreshToken || !bundle.clientId) {
+      throw new Error(
+        "Provide an access token, or a refresh token together with an OAuth client id.",
+      );
+    }
+
+    const refreshed = await refreshCloudAccessToken(
+      providerId,
+      bundle.refreshToken,
+      bundle.clientId,
+      bundle.clientSecret,
+      bundle.tenant,
+    );
+    bundle = {
+      ...bundle,
+      accessToken: refreshed.accessToken,
+      refreshToken:
+        refreshed.refreshToken ?? bundle.refreshToken,
+      expiresAt: refreshed.expiresIn
+        ? Date.now() + refreshed.expiresIn * 1000
+        : undefined,
+    };
   }
 
   // Verify the token before saving it.
-  await listCloudEntries(providerId, token);
+  await listCloudEntries(providerId, bundle.accessToken);
 
   const created = await saveResourceAccount({
     providerId,
@@ -86,7 +136,13 @@ export async function connectCloudAccount(
       providerId.replace("-", " "),
     status: "connected",
     metadata: {
-      connectionMode: "access-token",
+      connectionMode:
+        bundle.refreshToken && bundle.clientId
+          ? "oauth-refresh"
+          : "access-token",
+      oauthClientIdConfigured: Boolean(bundle.clientId),
+      refreshConfigured: Boolean(bundle.refreshToken),
+      tenant: bundle.tenant,
     },
   });
 
@@ -98,7 +154,7 @@ export async function connectCloudAccount(
     await setResourceAccountToken(
       providerId,
       created.id,
-      token,
+      JSON.stringify(bundle),
     );
   } catch (error) {
     await deleteResourceAccount(created.id).catch(() => undefined);
@@ -118,31 +174,162 @@ export async function disconnectCloudAccount(
   await deleteResourceAccount(account.id);
 }
 
-async function accountToken(
+function parseCredentialBundle(
+  value: string | null,
+): CloudCredentialBundle | null {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value) as Partial<CloudCredentialBundle>;
+    if (
+      parsed.version === 1 &&
+      typeof parsed.accessToken === "string"
+    ) {
+      return {
+        version: 1,
+        accessToken: parsed.accessToken,
+        refreshToken:
+          typeof parsed.refreshToken === "string"
+            ? parsed.refreshToken
+            : undefined,
+        clientId:
+          typeof parsed.clientId === "string"
+            ? parsed.clientId
+            : undefined,
+        clientSecret:
+          typeof parsed.clientSecret === "string"
+            ? parsed.clientSecret
+            : undefined,
+        tenant:
+          typeof parsed.tenant === "string"
+            ? parsed.tenant
+            : undefined,
+        expiresAt:
+          typeof parsed.expiresAt === "number"
+            ? parsed.expiresAt
+            : undefined,
+      };
+    }
+  } catch {
+    // Legacy account tokens were stored as a raw string.
+  }
+
+  return {
+    version: 1,
+    accessToken: value,
+  };
+}
+
+async function saveCredentialBundle(
   account: ConnectedCloudAccount,
-): Promise<string> {
-  const token = await getResourceAccountToken(
+  bundle: CloudCredentialBundle,
+): Promise<void> {
+  await setResourceAccountToken(
     account.providerId,
     account.id,
+    JSON.stringify(bundle),
   );
+}
 
-  if (!token) {
+async function refreshAccountToken(
+  account: ConnectedCloudAccount,
+  bundle: CloudCredentialBundle,
+): Promise<CloudCredentialBundle> {
+  if (!bundle.refreshToken || !bundle.clientId) {
     throw new Error(
-      "The secure access token for this cloud account is missing. Reconnect the account.",
+      "The cloud access token expired and no refresh credentials are configured. Reconnect the account.",
     );
   }
 
-  return token;
+  const refreshed = await refreshCloudAccessToken(
+    account.providerId,
+    bundle.refreshToken,
+    bundle.clientId,
+    bundle.clientSecret,
+    bundle.tenant,
+  );
+
+  const next: CloudCredentialBundle = {
+    ...bundle,
+    accessToken: refreshed.accessToken,
+    refreshToken:
+      refreshed.refreshToken ?? bundle.refreshToken,
+    expiresAt: refreshed.expiresIn
+      ? Date.now() + refreshed.expiresIn * 1000
+      : undefined,
+  };
+
+  await saveCredentialBundle(account, next);
+  return next;
+}
+
+async function accountCredentialBundle(
+  account: ConnectedCloudAccount,
+): Promise<CloudCredentialBundle> {
+  const bundle = parseCredentialBundle(
+    await getResourceAccountToken(
+      account.providerId,
+      account.id,
+    ),
+  );
+
+  if (!bundle) {
+    throw new Error(
+      "The secure credentials for this cloud account are missing. Reconnect the account.",
+    );
+  }
+
+  if (
+    bundle.expiresAt &&
+    bundle.expiresAt <= Date.now() + 60_000
+  ) {
+    return refreshAccountToken(account, bundle);
+  }
+
+  return bundle;
+}
+
+async function accountToken(
+  account: ConnectedCloudAccount,
+): Promise<string> {
+  return (await accountCredentialBundle(account)).accessToken;
+}
+
+async function withCloudToken<T>(
+  account: ConnectedCloudAccount,
+  operation: (token: string) => Promise<T>,
+): Promise<T> {
+  const bundle = await accountCredentialBundle(account);
+
+  try {
+    return await operation(bundle.accessToken);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error);
+
+    if (
+      !/\b401\b/.test(message) ||
+      !bundle.refreshToken ||
+      !bundle.clientId
+    ) {
+      throw error;
+    }
+
+    const refreshed = await refreshAccountToken(account, bundle);
+    return operation(refreshed.accessToken);
+  }
 }
 
 export async function browseCloudAccount(
   account: ConnectedCloudAccount,
   folder?: string,
 ): Promise<CloudListResult> {
-  return listCloudEntries(
-    account.providerId,
-    await accountToken(account),
-    folder,
+  return withCloudToken(account, (token) =>
+    listCloudEntries(
+      account.providerId,
+      token,
+      folder,
+    ),
   );
 }
 
@@ -151,11 +338,13 @@ export async function searchCloudAccount(
   query: string,
   folder?: string,
 ): Promise<CloudListResult> {
-  return searchCloudEntries(
-    account.providerId,
-    await accountToken(account),
-    query,
-    folder,
+  return withCloudToken(account, (token) =>
+    searchCloudEntries(
+      account.providerId,
+      token,
+      query,
+      folder,
+    ),
   );
 }
 
@@ -362,15 +551,15 @@ export async function resumeCloudTransfer(
     );
   }
 
-  const token = await getResourceAccountToken(
-    job.providerId,
-    accountId,
+  const account = (await listConnectedCloudAccounts()).find(
+    (item) => item.id === accountId && item.providerId === job.providerId,
   );
-  if (!token) {
+  if (!account) {
     throw new Error(
-      "The cloud account token is unavailable. Reconnect the account before resuming.",
+      "The cloud account is unavailable. Reconnect it before resuming.",
     );
   }
+  const token = await accountToken(account);
 
   await resetTransferJobForRetry(job.id);
 
