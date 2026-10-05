@@ -27,9 +27,9 @@ import {
 } from "./opds";
 import {
   listResourceCatalogs,
-  listResourceItems,
   type ResourceCatalog,
 } from "./persistence";
+import { listLibraryBooks } from "../books/library";
 
 export type FederatedResourceKind =
   | "local"
@@ -64,6 +64,7 @@ export interface FederatedResourceResult {
   size?: number;
   mimeType?: string;
   localResourceId?: string;
+  localPath?: string;
   opds?: {
     catalogId: string;
     catalogUrl: string;
@@ -280,25 +281,36 @@ export async function federatedResourceSearch(
 
   const errors: string[] = [];
   const results: FederatedResourceResult[] = [];
-  const localItems = await listResourceItems(300);
+  const localBooks = await listLibraryBooks();
 
-  for (const item of localItems) {
+  for (const book of localBooks) {
+    const title =
+      book.title?.trim() ||
+      book.file_path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ||
+      "Untitled book";
+    const authors = book.author?.trim() ? [book.author.trim()] : [];
     const score = relevance(
       normalizedQuery,
-      item.title,
-      item.authors,
+      title,
+      authors,
     );
     if (score <= 0) continue;
 
     results.push({
-      key: "local:" + item.id,
+      key: "local:" + book.id,
       kind: "local",
       providerId: "local",
-      sourceLabel: "Resource history",
-      title: item.title,
-      authors: item.authors,
-      description: item.description,
-      localResourceId: item.id,
+      sourceLabel: "Library",
+      title,
+      authors,
+      mimeType:
+        book.format === "pdf"
+          ? "application/pdf"
+          : book.format === "epub"
+            ? "application/epub+zip"
+            : undefined,
+      localResourceId: book.id,
+      localPath: book.file_path,
     });
   }
 
