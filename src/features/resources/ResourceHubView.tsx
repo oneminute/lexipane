@@ -1745,6 +1745,11 @@ export function ResourceHubView({ onOpenBook }: Props) {
                           ? result.authors.join(", ") + " · "
                           : ""}
                         {result.sourceLabel}
+                        {result.alternatives?.length
+                          ? " · " +
+                            (result.alternatives.length + 1) +
+                            " sources"
+                          : ""}
                         {result.size
                           ? " · " + formatBytes(result.size)
                           : ""}
@@ -1752,6 +1757,24 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       {result.description && (
                         <p>{result.description}</p>
                       )}
+                      {result.alternatives &&
+                        result.alternatives.length > 0 && (
+                          <details className="federated-alternatives">
+                            <summary>
+                              Other sources ({result.alternatives.length})
+                            </summary>
+                            <ul>
+                              {result.alternatives.map((source) => (
+                                <li key={source.key}>
+                                  {source.sourceLabel} · {source.providerId}
+                                  {source.size
+                                    ? " · " + formatBytes(source.size)
+                                    : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
                     </div>
 
                     {result.kind === "local" ? (
