@@ -76,6 +76,9 @@ import type {
   TorrentPreviewResult,
 } from "../../core/resources/torrentTransport";
 import {
+  resolveInternetArchiveAcquisitions,
+} from "../../core/resources/internetArchive";
+import {
   fetchOpdsCatalog,
   searchOpdsCatalog,
   type OpdsEntry,
@@ -619,6 +622,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       cloud: source.cloud,
       webdav: source.webdav,
       s3: source.s3,
+      internetArchive: source.internetArchive,
       ed2k: source.ed2k,
       torrent: source.torrent,
       alternatives: [],
@@ -716,6 +720,54 @@ export function ResourceHubView({ onOpenBook }: Props) {
         );
       } finally {
         setWebDavBusy(false);
+      }
+      return;
+    }
+
+    if (result.internetArchive) {
+      setNetworkBusy(true);
+      setMessage("");
+
+      try {
+        const acquisitions =
+          await resolveInternetArchiveAcquisitions(
+            result.internetArchive,
+          );
+        const acquisition = acquisitions[0];
+
+        if (!acquisition) {
+          throw new Error(
+            "This Internet Archive item does not expose a Reader-compatible downloadable file.",
+          );
+        }
+
+        await startHttpAcquisition(acquisition.url, {
+          title: result.internetArchive.title,
+          authors: result.internetArchive.authors,
+          acquisitionType: acquisition.format,
+          catalogProviderId: "internet-archive",
+          catalogSourceKey: result.internetArchive.identifier,
+          catalogUrl:
+            "https://archive.org/details/" +
+            encodeURIComponent(result.internetArchive.identifier),
+          catalogMetadata: {
+            identifier: result.internetArchive.identifier,
+            fileName: acquisition.name,
+            format: acquisition.format,
+            size: acquisition.size,
+          },
+        });
+
+        setTab("downloads");
+        await refreshResourceCore();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to acquire the Internet Archive result.",
+        );
+      } finally {
+        setNetworkBusy(false);
       }
       return;
     }
