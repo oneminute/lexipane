@@ -1,7 +1,7 @@
 use crate::resources::http::{validate_downloaded_book, ResourceTransferEvent};
 use futures_util::StreamExt;
 use reqwest::{
-    header::{CONTENT_LENGTH, CONTENT_TYPE, RANGE},
+    header::{ACCEPT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, RANGE},
     Client, Method, StatusCode, Url,
 };
 use roxmltree::Document;
@@ -87,8 +87,8 @@ fn client() -> Result<Client, String> {
         .map_err(|error| format!("Unable to initialize WebDAV client: {error}"))
 }
 
-fn validate_base_url(value: &str) -> Result<Url, String> {
-    let mut url = Url::parse(value.trim())
+fn validate_http_url(value: &str) -> Result<Url, String> {
+    let url = Url::parse(value.trim())
         .map_err(|error| format!("Invalid WebDAV URL: {error}"))?;
 
     if url.scheme() != "http" && url.scheme() != "https" {
@@ -101,6 +101,12 @@ fn validate_base_url(value: &str) -> Result<Url, String> {
                 .to_string(),
         );
     }
+
+    Ok(url)
+}
+
+fn validate_base_url(value: &str) -> Result<Url, String> {
+    let mut url = validate_http_url(value)?;
 
     if !url.path().ends_with('/') {
         let next = format!("{}/", url.path());
@@ -173,7 +179,7 @@ fn basic_auth(
     }
 }
 
-fn descendant_text<'a>(node: roxmltree::Node<'a, 'a>, name: &str) -> Option<String> {
+fn descendant_text(node: roxmltree::Node<'_, '_>, name: &str) -> Option<String> {
     node.descendants()
         .find(|child| child.is_element() && child.tag_name().name().eq_ignore_ascii_case(name))
         .and_then(|child| child.text())
@@ -364,7 +370,7 @@ async fn run_download(
     password: Option<String>,
     file_name: String,
 ) -> Result<(), String> {
-    let url = resolve_url(&file_url, None)?;
+    let url = validate_http_url(&file_url)?;
     let client = client()?;
     let dir = job_dir(&app, &job_id).await?;
     let name = safe_name(&file_name);
@@ -374,7 +380,9 @@ async fn run_download(
         .map(|metadata| metadata.len())
         .unwrap_or(0);
 
-    let mut request = client.get(url.clone());
+    let mut request = client
+        .get(url.clone())
+        .header(ACCEPT_ENCODING, "identity");
     if existing > 0 {
         request = request.header(RANGE, format!("bytes={existing}-"));
     }
@@ -637,6 +645,12 @@ mod tests {
     #[test]
     fn validates_webdav_urls() {
         assert!(validate_base_url("https://example.test/dav").is_ok());
+        assert_eq!(
+            validate_http_url("https://example.test/dav/book.epub")
+                .unwrap()
+                .path(),
+            "/dav/book.epub"
+        );
         assert!(validate_base_url("webdav://example.test/dav").is_err());
         assert!(validate_base_url("ftp://example.test/dav").is_err());
     }
