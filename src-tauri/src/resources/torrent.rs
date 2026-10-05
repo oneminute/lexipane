@@ -431,7 +431,7 @@ pub async fn resource_torrent_start_download(
             .api_torrent_action_delete(TorrentIdOrHash::Id(torrent_id))
             .await;
         return Err(
-            "LexiPane currently imports PDF/EPUB files from torrents."
+            "LexiPane imports Reader-supported PDF, EPUB, MOBI, AZW, and AZW3 files from torrents."
                 .to_string(),
         );
     }
@@ -557,6 +557,9 @@ mod tests {
     fn recognizes_reader_book_files() {
         assert!(is_book_candidate("folder/book.epub"));
         assert!(is_book_candidate("BOOK.PDF"));
+        assert!(is_book_candidate("reader/book.mobi"));
+        assert!(is_book_candidate("reader/book.azw"));
+        assert!(is_book_candidate("reader/book.azw3"));
         assert!(!is_book_candidate("movie.mkv"));
     }
 }
