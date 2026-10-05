@@ -1,4 +1,8 @@
 import {
+  stripSupportedBookExtension,
+  supportedResourceBookFormat,
+} from "./bookFormats";
+import {
   cancelCloudDownload,
   cleanupCloudTransfer,
   cloudEntryIsBook,
@@ -155,16 +159,15 @@ export async function searchCloudAccount(
   );
 }
 
-function fileExtension(name: string): string | undefined {
-  const lower = name.toLowerCase();
-  if (lower.endsWith(".pdf")) return "pdf";
-  if (lower.endsWith(".epub")) return "epub";
-  return undefined;
+function fileExtension(
+  name: string,
+  mimeType?: string,
+): string | undefined {
+  return supportedResourceBookFormat(name, mimeType) ?? undefined;
 }
 
 function contentTitle(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(0, dot) : name;
+  return stripSupportedBookExtension(name);
 }
 
 export async function prepareCloudAcquisition(
@@ -237,7 +240,7 @@ export async function prepareCloudAcquisition(
     relativePath: entry.path,
     sizeBytes: entry.size,
     mimeType: entry.mimeType,
-    extension: fileExtension(entry.name),
+    extension: fileExtension(entry.name, entry.mimeType),
     identifiers: {
       providerVersionId: entry.id,
     },
