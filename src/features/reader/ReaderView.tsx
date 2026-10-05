@@ -300,9 +300,6 @@ export function ReaderView({
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>(
     APP_DEFAULTS.reading.level,
   );
-  const [sentencePrefetchCount, setSentencePrefetchCount] = useState(
-    APP_DEFAULTS.reading.ai.sentencePrefetchCount,
-  );
   const [pageTexts, setPageTexts] = useState<Record<number, string>>({});
   const [autoTermsByPage, setAutoTermsByPage] =
     useState<Record<number, DifficultTerm[]>>({});
@@ -384,13 +381,6 @@ export function ReaderView({
       .then(setReadingLevel)
       .catch(() => setReadingLevel(APP_DEFAULTS.reading.level));
 
-    void loadSentencePrefetchCount()
-      .then(setSentencePrefetchCount)
-      .catch(() =>
-        setSentencePrefetchCount(
-          APP_DEFAULTS.reading.ai.sentencePrefetchCount,
-        ),
-      );
 
     void getLocalOcrStatus()
       .then(setOcrStatus)
@@ -1845,9 +1835,14 @@ export function ReaderView({
   async function prefetchFollowingSentenceAnalyses(
     sentence: ActiveSentenceState,
   ) {
-    if (!bookPath || sentencePrefetchCount <= 0) return;
+    if (!bookPath) return;
 
-    let remaining = sentencePrefetchCount;
+    const configuredPrefetchCount = await loadSentencePrefetchCount()
+      .catch(() => APP_DEFAULTS.reading.ai.sentencePrefetchCount);
+
+    if (configuredPrefetchCount <= 0) return;
+
+    let remaining = configuredPrefetchCount;
 
     async function prefetchContext(
       context: string,
