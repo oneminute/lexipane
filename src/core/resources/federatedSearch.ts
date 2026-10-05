@@ -9,6 +9,14 @@ import {
 } from "./ed2kAdapter";
 import type { Ed2kSearchResult } from "./ed2kTransport";
 import {
+  searchS3Account,
+  type ConnectedS3Account,
+} from "./s3Accounts";
+import {
+  s3EntryIsBook,
+  type S3Entry,
+} from "./s3Transport";
+import {
   searchWebDavAccount,
   type ConnectedWebDavAccount,
 } from "./webdavAccounts";
@@ -41,6 +49,7 @@ export type FederatedResourceKind =
   | "opds"
   | "cloud"
   | "webdav"
+  | "s3"
   | "ed2k"
   | "torrent";
 
@@ -54,6 +63,7 @@ export interface FederatedResourceSource {
   opds?: FederatedResourceResult["opds"];
   cloud?: FederatedResourceResult["cloud"];
   webdav?: FederatedResourceResult["webdav"];
+  s3?: FederatedResourceResult["s3"];
   ed2k?: FederatedResourceResult["ed2k"];
   torrent?: FederatedResourceResult["torrent"];
 }
@@ -83,6 +93,10 @@ export interface FederatedResourceResult {
   webdav?: {
     accountId: string;
     entry: WebDavEntry;
+  };
+  s3?: {
+    accountId: string;
+    entry: S3Entry;
   };
   ed2k?: {
     accountId: string;
@@ -214,6 +228,27 @@ function webDavResults(
     }));
 }
 
+function s3Results(
+  account: ConnectedS3Account,
+  entries: S3Entry[],
+): FederatedResourceResult[] {
+  return entries
+    .filter(s3EntryIsBook)
+    .map((entry) => ({
+      key: "s3:" + account.id + ":" + entry.key,
+      kind: "s3" as const,
+      providerId: "s3",
+      sourceLabel: account.displayName || "S3",
+      title: stripSupportedBookExtension(entry.name),
+      authors: [],
+      size: entry.size,
+      s3: {
+        accountId: account.id,
+        entry,
+      },
+    }));
+}
+
 function torrentResults(
   catalog: ResourceCatalog,
   entries: TorrentCatalogResult[],
@@ -272,6 +307,7 @@ export async function federatedResourceSearch(
   cloudAccounts: ConnectedCloudAccount[],
   ed2kEngines: Ed2kEngineAccount[] = [],
   webDavAccounts: ConnectedWebDavAccount[] = [],
+  s3Accounts: ConnectedS3Account[] = [],
 ): Promise<FederatedSearchResponse> {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) {
@@ -380,6 +416,24 @@ export async function federatedResourceSearch(
     );
   }
 
+  for (const account of s3Accounts) {
+    tasks.push(
+      searchS3Account(account, normalizedQuery)
+        .then((response) => {
+          results.push(...s3Results(account, response.entries));
+        })
+        .catch((error) => {
+          errors.push(
+            (account.displayName || "S3") +
+              ": " +
+              (error instanceof Error
+                ? error.message
+                : String(error)),
+          );
+        }),
+    );
+  }
+
   for (const account of webDavAccounts) {
     tasks.push(
       searchWebDavAccount(account, normalizedQuery)
@@ -437,9 +491,10 @@ export async function federatedResourceSearch(
       local: 0,
       cloud: 1,
       webdav: 2,
-      opds: 3,
-      ed2k: 4,
-      torrent: 5,
+      s3: 3,
+      opds: 4,
+      ed2k: 5,
+      torrent: 6,
     };
 
     return kindRank[left.kind] - kindRank[right.kind];
@@ -466,6 +521,7 @@ export async function federatedResourceSearch(
       opds: result.opds,
       cloud: result.cloud,
       webdav: result.webdav,
+      s3: result.s3,
       ed2k: result.ed2k,
       torrent: result.torrent,
     };
@@ -518,6 +574,7 @@ export async function federatedResourceSearch(
       cloudAccounts.length +
       ed2kEngines.length +
       webDavAccounts.length +
+      s3Accounts.length +
       1,
   };
 }
