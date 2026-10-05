@@ -12,6 +12,7 @@ pub fn run() {
         .manage(resources::http::HttpTransferManager::default())
         .manage(resources::torrent::TorrentManager::default())
         .manage(resources::webdav::WebDavTransferManager::default())
+        .manage(resources::s3::S3TransferManager::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
@@ -59,6 +60,12 @@ pub fn run() {
             resources::webdav::resource_webdav_pause,
             resources::webdav::resource_webdav_cancel,
             resources::webdav::resource_webdav_cleanup,
+            resources::s3::resource_s3_list,
+            resources::s3::resource_s3_search,
+            resources::s3::resource_s3_start_download,
+            resources::s3::resource_s3_pause,
+            resources::s3::resource_s3_cancel,
+            resources::s3::resource_s3_cleanup,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_has,
