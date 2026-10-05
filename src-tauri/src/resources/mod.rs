@@ -2,6 +2,7 @@ pub mod cloud;
 pub mod ed2k;
 pub mod http;
 pub mod torrent;
+pub mod webdav;
 
 use serde::Serialize;
 
@@ -12,6 +13,7 @@ pub struct LiveTransportCapabilities {
     pub torrent: bool,
     pub ed2k: bool,
     pub cloud: bool,
+    pub webdav: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -32,6 +34,7 @@ pub fn resource_runtime_capabilities() -> ResourceRuntimeCapabilities {
             torrent: true,
             ed2k: true,
             cloud: true,
+            webdav: true,
         },
     }
 }
@@ -49,5 +52,6 @@ mod tests {
         assert!(capabilities.live_transports.torrent);
         assert!(capabilities.live_transports.ed2k);
         assert!(capabilities.live_transports.cloud);
+        assert!(capabilities.live_transports.webdav);
     }
 }
