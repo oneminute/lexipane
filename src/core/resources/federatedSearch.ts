@@ -10,10 +10,12 @@ import {
 import type { Ed2kSearchResult } from "./ed2kTransport";
 import {
   searchWebDavAccount,
-  webDavEntryIsBook,
   type ConnectedWebDavAccount,
 } from "./webdavAccounts";
-import type { WebDavEntry } from "./webdavTransport";
+import {
+  webDavEntryIsBook,
+  type WebDavEntry,
+} from "./webdavTransport";
 import {
   searchTorrentCatalog,
   type TorrentCatalogResult,
