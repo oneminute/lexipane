@@ -30,6 +30,7 @@ pub fn run() {
             ocr::local_ocr_status,
             ocr::ocr_image,
             resources::resource_runtime_capabilities,
+            resources::cloud::resource_cloud_refresh_token,
             resources::cloud::resource_cloud_list,
             resources::cloud::resource_cloud_search,
             resources::cloud::resource_cloud_start_download,
