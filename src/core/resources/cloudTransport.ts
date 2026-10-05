@@ -21,6 +21,35 @@ export interface CloudListResult {
   entries: CloudEntry[];
 }
 
+export interface CloudTokenRefreshResult {
+  accessToken: string;
+  refreshToken?: string;
+  expiresIn?: number;
+}
+
+export async function refreshCloudAccessToken(
+  provider: CloudProviderId,
+  refreshToken: string,
+  clientId: string,
+  clientSecret?: string,
+  tenant?: string,
+): Promise<CloudTokenRefreshResult> {
+  if (!isTauri()) {
+    throw new Error("Cloud token refresh requires the desktop application.");
+  }
+
+  return invoke<CloudTokenRefreshResult>(
+    "resource_cloud_refresh_token",
+    {
+      provider,
+      refreshToken,
+      clientId,
+      clientSecret,
+      tenant,
+    },
+  );
+}
+
 export async function listCloudEntries(
   provider: CloudProviderId,
   accessToken: string,
