@@ -1568,6 +1568,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
         job.providerId === "dropbox" ||
         job.providerId === "onedrive";
       const ed2k = job.providerId === "ed2k";
+      const webdav = job.providerId === "webdav";
 
       if (action === "pause") {
         if (torrent) {
@@ -1576,6 +1577,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
           await pauseCloudDownload(job.id);
         } else if (ed2k) {
           await pauseEd2kTransfer(job);
+        } else if (webdav) {
+          await pauseWebDavDownload(job.id);
         } else {
           await pauseHttpDownload(job.id);
         }
@@ -1586,6 +1589,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
           await cancelCloudDownload(job.id);
         } else if (ed2k) {
           await cancelEd2kTransfer(job);
+        } else if (webdav) {
+          await cancelWebDavDownload(job.id);
         } else {
           await cancelHttpDownload(job.id);
         }
@@ -1596,6 +1601,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
           await discardCloudTransfer(job);
         } else if (ed2k) {
           await cancelEd2kTransfer(job);
+        } else if (webdav) {
+          await discardWebDavTransfer(job);
         } else {
           await discardHttpTransfer(job);
         }
@@ -1606,6 +1613,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
         await resumeCloudTransfer(job);
       } else if (ed2k) {
         await resumeEd2kTransfer(job);
+      } else if (webdav) {
+        await resumeWebDavTransfer(job);
       } else {
         await resumeHttpTransfer(job);
       }
@@ -2699,6 +2708,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         job.providerId === "google-drive" ||
                         job.providerId === "dropbox" ||
                         job.providerId === "onedrive" ||
+                        job.providerId === "webdav" ||
                         job.providerId === "ed2k") && (
                       <>
                         <button
@@ -2729,6 +2739,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         job.providerId === "google-drive" ||
                         job.providerId === "dropbox" ||
                         job.providerId === "onedrive" ||
+                        job.providerId === "webdav" ||
                         job.providerId === "ed2k") && (
                         <>
                           <button
