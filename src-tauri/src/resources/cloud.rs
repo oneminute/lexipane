@@ -47,6 +47,14 @@ pub struct CloudListResult {
     pub entries: Vec<CloudEntry>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudTokenRefreshResult {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_in: Option<u64>,
+}
+
 #[derive(Clone, Default)]
 pub struct CloudTransferManager {
     controls: Arc<Mutex<HashMap<String, Arc<AtomicU8>>>>,
@@ -454,6 +462,93 @@ async fn list_or_search(
     Ok(CloudListResult {
         provider: provider.to_string(),
         entries,
+    })
+}
+
+#[tauri::command]
+pub async fn resource_cloud_refresh_token(
+    provider: String,
+    refresh_token: String,
+    client_id: String,
+    client_secret: Option<String>,
+    tenant: Option<String>,
+) -> Result<CloudTokenRefreshResult, String> {
+    let provider = provider_id(&provider)?;
+    let refresh_token = refresh_token.trim();
+    let client_id = client_id.trim();
+
+    if refresh_token.is_empty() || client_id.is_empty() {
+        return Err(
+            "Refresh token and OAuth client id are required.".to_string(),
+        );
+    }
+
+    let client = client()?;
+    let mut form = vec![
+        ("grant_type", "refresh_token".to_string()),
+        ("refresh_token", refresh_token.to_string()),
+        ("client_id", client_id.to_string()),
+    ];
+
+    if let Some(secret) = client_secret
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        form.push(("client_secret", secret.to_string()));
+    }
+
+    let url = match provider {
+        "google-drive" => {
+            "https://oauth2.googleapis.com/token".to_string()
+        }
+        "dropbox" => {
+            "https://api.dropboxapi.com/oauth2/token".to_string()
+        }
+        "onedrive" => {
+            let tenant = tenant
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("common");
+            format!(
+                "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+            )
+        }
+        _ => unreachable!(),
+    };
+
+    let response = client
+        .post(url)
+        .form(&form)
+        .send()
+        .await
+        .map_err(|error| format!("Cloud token refresh failed: {error}"))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("Unable to read token refresh response: {error}"))?;
+
+    if !status.is_success() {
+        return Err(format!(
+            "Cloud token refresh returned HTTP {}: {}",
+            status.as_u16(),
+            body.chars().take(300).collect::<String>()
+        ));
+    }
+
+    let value: Value = serde_json::from_str(&body)
+        .map_err(|error| format!("Cloud token refresh returned invalid JSON: {error}"))?;
+
+    let access_token = string_field(&value, "access_token")
+        .ok_or_else(|| "Token refresh response did not include access_token.".to_string())?;
+
+    Ok(CloudTokenRefreshResult {
+        access_token,
+        refresh_token: string_field(&value, "refresh_token"),
+        expires_in: u64_field(&value, "expires_in"),
     })
 }
 
