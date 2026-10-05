@@ -10,6 +10,7 @@ const WEB_FALLBACK: ResourceNativeCapabilities = {
     ed2k: false,
     cloud: false,
     webdav: false,
+    s3: false,
   },
 };
 
