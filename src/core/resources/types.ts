@@ -174,5 +174,6 @@ export interface ResourceNativeCapabilities {
     torrent: boolean;
     ed2k: boolean;
     cloud: boolean;
+    webdav: boolean;
   };
 }
