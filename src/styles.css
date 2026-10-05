@@ -4828,3 +4828,28 @@ button { cursor: pointer; }
     flex-direction: column;
   }
 }
+
+
+.download-manager-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px 0 14px;
+}
+
+.compact-tabs {
+  margin-bottom: 0;
+}
+
+.compact-tabs button {
+  padding: 6px 10px;
+  font-size: 9px;
+}
+
+@media (max-width: 620px) {
+  .download-manager-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
