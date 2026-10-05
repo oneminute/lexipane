@@ -18,6 +18,7 @@ import {
 import { cleanupCloudTransfer } from "./cloudTransport";
 import { reattachEd2kTransfer } from "./ed2kAdapter";
 import { cleanupTorrentTransfer } from "./torrentTransport";
+import { cleanupWebDavTransfer } from "./webdavTransport";
 import {
   appendResourceHistory,
   getTransferJob,
@@ -171,7 +172,9 @@ async function ingestDownloadedTransfer(
             freshJob.providerId === "dropbox" ||
             freshJob.providerId === "onedrive"
           ? cleanupCloudTransfer
-          : cleanupHttpTransferTemp;
+          : freshJob.providerId === "webdav"
+            ? cleanupWebDavTransfer
+            : cleanupHttpTransferTemp;
 
     await cleanup(event.jobId).catch((error) => {
       console.warn("Unable to clean Resource Hub temp files", error);
@@ -320,7 +323,8 @@ async function recoverInterruptedTransfers(
         job.providerId === "bittorrent" ||
         job.providerId === "google-drive" ||
         job.providerId === "dropbox" ||
-        job.providerId === "onedrive") &&
+        job.providerId === "onedrive" ||
+        job.providerId === "webdav") &&
       (job.state === "running" || job.state === "queued")
     ) {
       await updateTransferJob(job.id, {
