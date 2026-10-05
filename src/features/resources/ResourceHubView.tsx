@@ -2111,8 +2111,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
             <div className="resource-safety-note">
               <strong>RESOURCE-002 boundary</strong>
               <p>
-                HTTP/HTTPS is live for validated PDF/EPUB acquisition. Cloud
-                OAuth, BitTorrent, and ED2K networking remain disabled.
+                HTTP, OPDS, connected cloud storage, WebDAV, BitTorrent, and
+                ED2K are connected to the persistent acquisition pipeline.
               </p>
             </div>
           </aside>
@@ -2428,6 +2428,172 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <section className="resource-section">
             <header>
               <div>
+                <span className="eyebrow">WebDAV / Nextcloud</span>
+                <h2>Browse self-hosted and NAS storage</h2>
+              </div>
+              <small>
+                Standard WebDAV PROPFIND browsing with PDF/EPUB acquisition
+                through the same persistent download and Library pipeline.
+              </small>
+            </header>
+
+            {webDavAccounts.length === 0 ? (
+              <div className="resource-empty">
+                <strong>No WebDAV account connected.</strong>
+                <p>
+                  Add a WebDAV or Nextcloud endpoint from Accounts.
+                </p>
+                <button
+                  type="button"
+                  className="primary-button compact"
+                  onClick={() => setTab("accounts")}
+                >
+                  Connect WebDAV
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="cloud-account-switcher">
+                  {webDavAccounts.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      className={
+                        activeWebDavAccountId === account.id
+                          ? "selected"
+                          : ""
+                      }
+                      onClick={() => void openWebDavRoot(account)}
+                    >
+                      <strong>
+                        {account.displayName || "WebDAV"}
+                      </strong>
+                      <small>
+                        {String(account.metadata.baseUrl ?? "")}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+
+                {activeWebDavAccount() && (
+                  <div className="cloud-browser">
+                    <div className="cloud-breadcrumbs">
+                      {webDavFolderStack.map((item, index) => (
+                        <button
+                          key={index + ":" + (item.locator ?? "root")}
+                          type="button"
+                          disabled={
+                            webDavBusy ||
+                            index === webDavFolderStack.length - 1
+                          }
+                          onClick={() => void goToWebDavFolder(index)}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="opds-search-row">
+                      <input
+                        value={webDavQuery}
+                        placeholder="Search WebDAV folders…"
+                        onChange={(event) =>
+                          setWebDavQuery(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            void searchWebDav();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={webDavBusy || !webDavQuery.trim()}
+                        onClick={() => void searchWebDav()}
+                      >
+                        {webDavBusy ? "Working…" : "Search"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={webDavBusy}
+                        onClick={() => {
+                          const account = activeWebDavAccount();
+                          if (account) void openWebDavRoot(account);
+                        }}
+                      >
+                        Root
+                      </button>
+                    </div>
+
+                    {webDavEntries.length === 0 ? (
+                      <div className="resource-empty compact">
+                        <strong>
+                          {webDavBusy
+                            ? "Loading WebDAV…"
+                            : "No files loaded."}
+                        </strong>
+                      </div>
+                    ) : (
+                      <div className="cloud-entry-list">
+                        {webDavEntries.map((entry) => (
+                          <article key={entry.id}>
+                            <div className="cloud-entry-icon">
+                              {entry.isFolder ? "▣" : "▤"}
+                            </div>
+                            <div className="cloud-entry-main">
+                              <strong>{entry.name}</strong>
+                              <small>
+                                {entry.isFolder
+                                  ? "Folder"
+                                  : formatBytes(entry.size)}
+                                {entry.mimeType
+                                  ? " · " + entry.mimeType
+                                  : ""}
+                              </small>
+                            </div>
+
+                            {entry.isFolder ? (
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                disabled={webDavBusy}
+                                onClick={() =>
+                                  void openWebDavFolder(entry)
+                                }
+                              >
+                                Open
+                              </button>
+                            ) : webDavEntryIsBook(entry) ? (
+                              <button
+                                type="button"
+                                className="primary-button compact"
+                                disabled={webDavBusy}
+                                onClick={() =>
+                                  void acquireWebDavEntry(entry)
+                                }
+                              >
+                                Download
+                              </button>
+                            ) : (
+                              <small className="muted">
+                                Not a Reader format
+                              </small>
+                            )}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="resource-section">
+            <header>
+              <div>
                 <span className="eyebrow">OPDS catalogs</span>
                 <h2>Browse open or authorized book catalogs</h2>
               </div>
@@ -2601,8 +2767,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 <h2>Available contracts</h2>
               </div>
               <small>
-                Live means an implementation exists. Cloud and P2P providers
-                remain contract-only.
+                Live means an implementation exists and is wired to Resource
+                Hub. Provider-specific credentials or engines may still be
+                required.
               </small>
             </header>
 
@@ -2644,8 +2811,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
               <h2>Downloads</h2>
             </div>
             <small>
-              HTTP and BitTorrent jobs run in the native layer and remain
-              active when you navigate elsewhere in LexiPane.
+              HTTP, cloud, WebDAV, BitTorrent, and ED2K jobs are persisted
+              outside the page lifecycle and feed the same Library pipeline.
             </small>
           </header>
 
@@ -2894,6 +3061,105 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       onClick={() => void disconnectEd2k(engine)}
                     >
                       Remove
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+
+          <div className="ed2k-account-card">
+            <div>
+              <span className="eyebrow">WebDAV / Nextcloud</span>
+              <strong>Connect WebDAV storage</strong>
+              <small>
+                Use the WebDAV endpoint, such as a Nextcloud
+                /remote.php/dav/files/USERNAME/ URL. Passwords are stored in
+                the native secure credential store.
+              </small>
+            </div>
+
+            <input
+              value={webDavDisplayName}
+              disabled={webDavBusy}
+              placeholder="Account label (optional)"
+              onChange={(event) =>
+                setWebDavDisplayName(event.target.value)
+              }
+            />
+            <input
+              value={webDavBaseUrl}
+              disabled={webDavBusy}
+              placeholder="https://server.example/remote.php/dav/files/user/"
+              onChange={(event) =>
+                setWebDavBaseUrl(event.target.value)
+              }
+            />
+            <input
+              value={webDavUsername}
+              disabled={webDavBusy}
+              placeholder="Username"
+              onChange={(event) =>
+                setWebDavUsername(event.target.value)
+              }
+            />
+            <input
+              value={webDavPassword}
+              disabled={webDavBusy}
+              type="password"
+              autoComplete="off"
+              placeholder="Password / app password"
+              onChange={(event) =>
+                setWebDavPassword(event.target.value)
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void connectWebDav();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="primary-button"
+              disabled={webDavBusy || !webDavBaseUrl.trim()}
+              onClick={() => void connectWebDav()}
+            >
+              {webDavBusy ? "Connecting…" : "Connect WebDAV"}
+            </button>
+          </div>
+
+          {webDavAccounts.length > 0 && (
+            <div className="cloud-account-list">
+              {webDavAccounts.map((account) => (
+                <article key={account.id}>
+                  <div>
+                    <span className="resource-kind-badge">WebDAV</span>
+                    <strong>
+                      {account.displayName || "WebDAV"}
+                    </strong>
+                    <small>
+                      {String(account.metadata.baseUrl ?? "")}
+                    </small>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={webDavBusy}
+                      onClick={() => {
+                        setTab("browse");
+                        void openWebDavRoot(account);
+                      }}
+                    >
+                      Browse
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={webDavBusy}
+                      onClick={() => void disconnectWebDav(account)}
+                    >
+                      Disconnect
                     </button>
                   </div>
                 </article>
