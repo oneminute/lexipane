@@ -1,4 +1,8 @@
 import {
+  stripSupportedBookExtension,
+  supportedResourceBookFormat,
+} from "./bookFormats";
+import {
   addEd2kLink,
   attachEd2kJob,
   cancelEd2kJob,
@@ -82,7 +86,7 @@ export function parseEd2kLink(link: string): Ed2kLinkMetadata {
     name,
     size,
     hash,
-    bookCandidate: /\.(pdf|epub)$/i.test(name),
+    bookCandidate: supportedResourceBookFormat(name) !== null,
   };
 }
 
@@ -222,12 +226,9 @@ function makeBundle(
   const itemId = createResourceRecordId("resource");
   const sourceId = createResourceRecordId("source");
   const fileId = createResourceRecordId("file");
-  const extension = input.name.toLowerCase().endsWith(".pdf")
-    ? "pdf"
-    : input.name.toLowerCase().endsWith(".epub")
-      ? "epub"
-      : undefined;
-  const title = input.name.replace(/\.(pdf|epub)$/i, "");
+  const extension =
+    supportedResourceBookFormat(input.name) ?? undefined;
+  const title = stripSupportedBookExtension(input.name);
 
   const item: ResourceItem = {
     id: itemId,
@@ -295,7 +296,9 @@ export async function startEd2kLinkAcquisition(
 ): Promise<TransferJob> {
   const metadata = parseEd2kLink(link);
   if (!metadata.bookCandidate) {
-    throw new Error("LexiPane currently imports PDF/EPUB files from ED2K.");
+    throw new Error(
+      "LexiPane imports Reader-supported PDF, EPUB, MOBI, AZW, and AZW3 files from ED2K.",
+    );
   }
 
   const sourceKey = metadata.hash.toLowerCase();
@@ -379,7 +382,9 @@ export async function startEd2kSearchResultAcquisition(
   result: Ed2kSearchResult,
 ): Promise<TransferJob> {
   if (!result.bookCandidate) {
-    throw new Error("LexiPane currently imports PDF/EPUB files from ED2K.");
+    throw new Error(
+      "LexiPane imports Reader-supported PDF, EPUB, MOBI, AZW, and AZW3 files from ED2K.",
+    );
   }
 
   const sourceKey = [
