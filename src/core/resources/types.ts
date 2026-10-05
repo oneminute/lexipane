@@ -175,5 +175,6 @@ export interface ResourceNativeCapabilities {
     ed2k: boolean;
     cloud: boolean;
     webdav: boolean;
+    s3: boolean;
   };
 }
