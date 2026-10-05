@@ -11,6 +11,7 @@ pub fn run() {
         .manage(resources::ed2k::Ed2kManager::default())
         .manage(resources::http::HttpTransferManager::default())
         .manage(resources::torrent::TorrentManager::default())
+        .manage(resources::webdav::WebDavTransferManager::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
@@ -53,6 +54,11 @@ pub fn run() {
             resources::torrent::resource_torrent_pause,
             resources::torrent::resource_torrent_cancel,
             resources::torrent::resource_torrent_cleanup,
+            resources::webdav::resource_webdav_list,
+            resources::webdav::resource_webdav_start_download,
+            resources::webdav::resource_webdav_pause,
+            resources::webdav::resource_webdav_cancel,
+            resources::webdav::resource_webdav_cleanup,
             secrets::secret_set,
             secrets::secret_get,
             secrets::secret_has,
