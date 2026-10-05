@@ -47,6 +47,23 @@ import {
   type WebDavEntry,
 } from "../../core/resources/webdavTransport";
 import {
+  browseS3Account,
+  cancelS3Download,
+  connectS3Account,
+  disconnectS3Account,
+  discardS3Transfer,
+  listS3Accounts,
+  pauseS3Download,
+  resumeS3Transfer,
+  searchS3Account,
+  startS3EntryAcquisition,
+  type ConnectedS3Account,
+} from "../../core/resources/s3Accounts";
+import {
+  s3EntryIsBook,
+  type S3Entry,
+} from "../../core/resources/s3Transport";
+import {
   cancelTorrentDownload,
   discardTorrentTransfer,
   inspectTorrent,
@@ -354,6 +371,27 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [webDavBaseUrl, setWebDavBaseUrl] = useState("");
   const [webDavUsername, setWebDavUsername] = useState("");
   const [webDavPassword, setWebDavPassword] = useState("");
+  const [s3Accounts, setS3Accounts] =
+    useState<ConnectedS3Account[]>([]);
+  const [activeS3AccountId, setActiveS3AccountId] =
+    useState<string | null>(null);
+  const [s3Entries, setS3Entries] = useState<S3Entry[]>([]);
+  const [s3Prefix, setS3Prefix] = useState<string | undefined>(
+    undefined,
+  );
+  const [s3FolderStack, setS3FolderStack] = useState<
+    Array<{ label: string; prefix?: string }>
+  >([{ label: "Root" }]);
+  const [s3Query, setS3Query] = useState("");
+  const [s3Busy, setS3Busy] = useState(false);
+  const [s3DisplayName, setS3DisplayName] = useState("");
+  const [s3Endpoint, setS3Endpoint] = useState("");
+  const [s3Region, setS3Region] = useState("us-east-1");
+  const [s3Bucket, setS3Bucket] = useState("");
+  const [s3RootPrefix, setS3RootPrefix] = useState("");
+  const [s3AccessKey, setS3AccessKey] = useState("");
+  const [s3SecretKey, setS3SecretKey] = useState("");
+  const [s3SessionToken, setS3SessionToken] = useState("");
   const [ed2kEngines, setEd2kEngines] =
     useState<Ed2kEngineAccount[]>([]);
   const [activeEd2kEngineId, setActiveEd2kEngineId] =
@@ -431,6 +469,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       connectedCloudAccounts,
       connectedEd2kEngines,
       connectedWebDavAccounts,
+      connectedS3Accounts,
     ] = await Promise.all([
       getResourceNativeCapabilities(),
       listPersistedResourceProviders(),
@@ -440,6 +479,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       listConnectedCloudAccounts(),
       listEd2kEngines(),
       listWebDavAccounts(),
+      listS3Accounts(),
     ]);
 
     setNativeCapabilities(native);
@@ -453,6 +493,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setCatalogs(savedCatalogs);
     setCloudAccounts(connectedCloudAccounts);
     setWebDavAccounts(connectedWebDavAccounts);
+    setS3Accounts(connectedS3Accounts);
     setEd2kEngines(connectedEd2kEngines);
     setActiveEd2kEngineId((current) =>
       current &&
@@ -471,6 +512,12 @@ export function ResourceHubView({ onOpenBook }: Props) {
       connectedWebDavAccounts.some((account) => account.id === current)
         ? current
         : connectedWebDavAccounts[0]?.id ?? null,
+    );
+    setActiveS3AccountId((current) =>
+      current &&
+      connectedS3Accounts.some((account) => account.id === current)
+        ? current
+        : connectedS3Accounts[0]?.id ?? null,
     );
   }
 
@@ -536,6 +583,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
         cloudAccounts,
         ed2kEngines,
         webDavAccounts,
+        s3Accounts,
       );
       setResourceSearchResults(response.results);
       setResourceSearchErrors(response.errors);
@@ -566,6 +614,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       opds: source.opds,
       cloud: source.cloud,
       webdav: source.webdav,
+      s3: source.s3,
       ed2k: source.ed2k,
       torrent: source.torrent,
       alternatives: [],
