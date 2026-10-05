@@ -2018,6 +2018,17 @@ export function ReaderView({
     const targetSelection = overrideSelection ?? selection;
     if (!targetSelection || aiBusy) return;
 
+    if (
+      mode === "grammar" &&
+      targetSelection.kind === "sentence" &&
+      activeSentence &&
+      normalizedText(targetSelection.text) ===
+        normalizedText(activeSentence.text)
+    ) {
+      await runSentenceAi(activeSentence);
+      return;
+    }
+
     sentenceAiRequestTokenRef.current += 1;
     setSentenceVersions([]);
     setSentenceVersionIndex(-1);
