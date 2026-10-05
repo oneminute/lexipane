@@ -1,5 +1,9 @@
 import { getBookExtension } from "../books/openBook";
 import {
+  isSupportedResourceBook,
+  supportedResourceBookFormat,
+} from "./bookFormats";
+import {
   cancelHttpDownload,
   cleanupHttpTransferTemp,
   pauseHttpDownload,
@@ -130,22 +134,23 @@ export async function prepareHttpAcquisition(
   const extension = getBookExtension(
     probe.fileName ?? probe.finalUrl,
   );
-  const normalizedType = probe.contentType?.toLowerCase() ?? "";
   const declaredType =
     typeof metadata.acquisitionType === "string"
-      ? metadata.acquisitionType.toLowerCase()
-      : "";
-  const supportedByMetadata =
-    extension === "pdf" ||
-    extension === "epub" ||
-    normalizedType.includes("application/pdf") ||
-    normalizedType.includes("application/epub+zip") ||
-    declaredType.includes("application/pdf") ||
-    declaredType.includes("application/epub+zip");
+      ? metadata.acquisitionType
+      : undefined;
+  const detectedFormat =
+    supportedResourceBookFormat(
+      probe.fileName ?? probe.finalUrl,
+      probe.contentType,
+    ) ??
+    supportedResourceBookFormat(
+      probe.fileName ?? probe.finalUrl,
+      declaredType,
+    );
 
-  if (!supportedByMetadata) {
+  if (!detectedFormat) {
     throw new Error(
-      "RESOURCE-002 direct HTTP acquisition currently accepts PDF and EPUB resources only.",
+      "Direct acquisition currently accepts Reader-supported PDF, EPUB, MOBI, AZW, and AZW3 resources only.",
     );
   }
 
@@ -208,7 +213,10 @@ export async function prepareHttpAcquisition(
     name: probe.fileName ?? "download",
     sizeBytes: probe.contentLength,
     mimeType: probe.contentType,
-    extension: extension || undefined,
+    extension:
+      (isSupportedResourceBook(probe.fileName ?? probe.finalUrl)
+        ? extension
+        : detectedFormat) || undefined,
     identifiers: {},
     metadata: {},
     createdAt: now,
