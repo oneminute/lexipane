@@ -129,6 +129,25 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     },
   },
   {
+    id: "s3",
+    name: "S3-compatible storage",
+    kind: "storage",
+    description:
+      "AWS S3, MinIO, Cloudflare R2, Backblaze B2, and compatible object storage.",
+    builtin: true,
+    live: true,
+    capabilities: {
+      search: true,
+      browse: true,
+      resolve: true,
+      preview: true,
+      previewLevels: [0, 1],
+      fileList: true,
+      download: true,
+      authentication: true,
+    },
+  },
+  {
     id: "bittorrent",
     name: "BitTorrent",
     kind: "p2p",
