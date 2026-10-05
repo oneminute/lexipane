@@ -158,10 +158,137 @@ function torznabAttrs(
   return result;
 }
 
+
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function fallbackTagText(
+  body: string,
+  tag: string,
+): string | undefined {
+  const expression = new RegExp(
+    "<(?:[\\w.-]+:)?" +
+      tag +
+      "(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?" +
+      tag +
+      ">",
+    "i",
+  );
+  const match = body.match(expression);
+  const value = match?.[1]
+    ?.replace(/<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+
+  return value ? decodeXmlText(value) : undefined;
+}
+
+function fallbackAttribute(
+  source: string,
+  name: string,
+): string | undefined {
+  const expression = new RegExp(
+    "(?:^|\\s)" +
+      name +
+      "\\s*=\\s*(?:\\\"([^\\\"]*)\\\"|'([^']*)')",
+    "i",
+  );
+  const match = source.match(expression);
+  const value = match?.[1] ?? match?.[2];
+  return value ? decodeXmlText(value.trim()) : undefined;
+}
+
+function parseXmlCatalogWithoutDom(
+  body: string,
+  baseUrl: string,
+): TorrentCatalogResult[] {
+  const itemExpression =
+    /<(?:[\\w.-]+:)?item(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?item>/gi;
+  const items = Array.from(body.matchAll(itemExpression));
+
+  return items.flatMap((match, index) => {
+    const itemBody = match[1] ?? "";
+    const attrs = new Map<string, string>();
+    const attrExpression =
+      /<(?:[\\w.-]+:)?attr\\b([^>]*)\\/?\\s*>/gi;
+
+    for (const attrMatch of itemBody.matchAll(attrExpression)) {
+      const raw = attrMatch[1] ?? "";
+      const name = fallbackAttribute(raw, "name")?.toLowerCase();
+      const value = fallbackAttribute(raw, "value");
+      if (name && value) attrs.set(name, value);
+    }
+
+    const enclosureMatch = itemBody.match(
+      /<(?:[\\w.-]+:)?enclosure\\b([^>]*)\\/?\\s*>/i,
+    );
+    const enclosure = enclosureMatch?.[1] ?? "";
+    const title = fallbackTagText(itemBody, "title");
+    const link = fallbackTagText(itemBody, "link");
+
+    const candidates = [
+      attrs.get("magneturl"),
+      attrs.get("downloadurl"),
+      fallbackAttribute(enclosure, "url"),
+      link,
+    ];
+
+    let input: string | undefined;
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+
+      if (/^magnet:\?/i.test(candidate)) {
+        input = candidate;
+        break;
+      }
+
+      try {
+        input = validTorrentInput(
+          new URL(candidate, baseUrl).toString(),
+        );
+      } catch {
+        // Try the next candidate.
+      }
+
+      if (input) break;
+    }
+
+    if (!title || !input) return [];
+
+    return [{
+      id:
+        fallbackTagText(itemBody, "guid") ??
+        "xml:" + index + ":" + title,
+      title,
+      input,
+      size:
+        numberValue(attrs.get("size")) ??
+        numberValue(fallbackAttribute(enclosure, "length")),
+      seeders: numberValue(attrs.get("seeders")),
+      leechers:
+        numberValue(attrs.get("peers")) ??
+        numberValue(attrs.get("leechers")),
+      publishedAt: fallbackTagText(itemBody, "pubdate"),
+      detailsUrl: link,
+    }];
+  });
+}
+
 function parseXmlCatalog(
   body: string,
   baseUrl: string,
 ): TorrentCatalogResult[] {
+  if (typeof DOMParser === "undefined") {
+    return parseXmlCatalogWithoutDom(body, baseUrl);
+  }
+
   const document = new DOMParser().parseFromString(
     body,
     "application/xml",
