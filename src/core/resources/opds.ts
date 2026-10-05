@@ -31,6 +31,11 @@ const ACQUISITION_REL = "http://opds-spec.org/acquisition";
 const BOOK_MEDIA_TYPES = new Set([
   "application/epub+zip",
   "application/pdf",
+  "application/x-mobipocket-ebook",
+  "application/vnd.amazon.ebook",
+  "application/x-amazon-ebook",
+  "application/x-mobi8-ebook",
+  "application/x-kf8-ebook",
 ]);
 
 function resolveUrl(href: string, baseUrl: string): string {
