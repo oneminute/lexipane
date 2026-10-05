@@ -75,6 +75,8 @@ export interface SentenceAnalysisResolution {
 }
 
 const inFlight = new Map<string, Promise<SentenceAnalysisResolution>>();
+const bookIdCache = new Map<string, string | null>();
+const versionCache = new Map<string, SentenceAnalysisVersion[]>();
 
 function parseJson<T>(value: string | null, fallback: T): T {
   if (!value) return fallback;
@@ -143,7 +145,38 @@ export function createSentenceAnalysisKey(
 async function resolveBookId(
   bookPath: string,
 ): Promise<string | null> {
-  return (await findLibraryBookByPath(bookPath))?.id ?? null;
+  if (bookIdCache.has(bookPath)) {
+    return bookIdCache.get(bookPath) ?? null;
+  }
+
+  const bookId = (await findLibraryBookByPath(bookPath))?.id ?? null;
+  bookIdCache.set(bookPath, bookId);
+  return bookId;
+}
+
+function versionCacheKey(
+  bookPath: string,
+  sentenceKey: string,
+): string {
+  return bookPath + "|" + sentenceKey;
+}
+
+export function invalidateSentenceAnalysisBookIdentity(
+  bookPath?: string,
+): void {
+  if (bookPath) {
+    bookIdCache.delete(bookPath);
+
+    for (const key of versionCache.keys()) {
+      if (key.startsWith(bookPath + "|")) {
+        versionCache.delete(key);
+      }
+    }
+    return;
+  }
+
+  bookIdCache.clear();
+  versionCache.clear();
 }
 
 export async function listSentenceAnalysisVersions(
@@ -151,6 +184,10 @@ export async function listSentenceAnalysisVersions(
   sentenceKey: string,
 ): Promise<SentenceAnalysisVersion[]> {
   if (!isTauri() || !bookPath || !sentenceKey) return [];
+
+  const cacheKey = versionCacheKey(bookPath, sentenceKey);
+  const cached = versionCache.get(cacheKey);
+  if (cached) return [...cached];
 
   const db = await initializeDatabase();
   if (!db) return [];
@@ -179,11 +216,13 @@ export async function listSentenceAnalysisVersions(
     );
   }
 
-  return rows.map((row) =>
+  const versions = rows.map((row) =>
     row.book_id
       ? rowToVersion(row)
       : rowToVersion({ ...row, book_id: bookId }),
   );
+  versionCache.set(cacheKey, versions);
+  return [...versions];
 }
 
 export async function getLatestSentenceAnalysisVersion(
@@ -273,6 +312,9 @@ async function appendSentenceAnalysisVersion(
     );
 
     await db.execute("COMMIT");
+    versionCache.delete(
+      versionCacheKey(request.bookPath, request.sentenceKey),
+    );
 
     return {
       id,
@@ -302,6 +344,12 @@ async function generate(
   request: SentenceAnalysisRequest,
   options: GenerateSentenceAnalysisOptions,
 ): Promise<SentenceAnalysisResolution> {
+  if (options.forceNew) {
+    versionCache.delete(
+      versionCacheKey(request.bookPath, request.sentenceKey),
+    );
+  }
+
   if (!options.forceNew) {
     const existing = await listSentenceAnalysisVersions(
       request.bookPath,
