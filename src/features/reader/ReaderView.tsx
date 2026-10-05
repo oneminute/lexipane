@@ -1836,6 +1836,7 @@ export function ReaderView({
     sentence: ActiveSentenceState,
   ) {
     if (!bookPath) return;
+    const activeBookPath = bookPath;
 
     const configuredPrefetchCount = await loadSentencePrefetchCount()
       .catch(() => APP_DEFAULTS.reading.ai.sentencePrefetchCount);
@@ -1873,13 +1874,13 @@ export function ReaderView({
 
         try {
           await resolveSentenceAnalysis({
-            bookPath,
+            bookPath: activeBookPath,
             sentenceKey: historyKey,
             selection: {
               text: segment.text,
               context: normalizedContext,
               page,
-              bookPath,
+              bookPath: activeBookPath,
             },
           });
           remaining -= 1;
