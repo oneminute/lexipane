@@ -110,6 +110,25 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     },
   },
   {
+    id: "webdav",
+    name: "WebDAV / Nextcloud",
+    kind: "storage",
+    description:
+      "WebDAV and Nextcloud-compatible browse/download with secure credentials.",
+    builtin: true,
+    live: true,
+    capabilities: {
+      search: true,
+      browse: true,
+      resolve: true,
+      preview: true,
+      previewLevels: [0, 1],
+      fileList: true,
+      download: true,
+      authentication: true,
+    },
+  },
+  {
     id: "bittorrent",
     name: "BitTorrent",
     kind: "p2p",
