@@ -1866,15 +1866,30 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         )}
                     </div>
 
-                    {result.kind === "local" ? (
+                    {result.kind === "local" && result.localPath ? (
+                      <button
+                        type="button"
+                        className="primary-button compact"
+                        onClick={() =>
+                          void onOpenBook(result.localPath!)
+                        }
+                      >
+                        Open
+                      </button>
+                    ) : result.kind === "local" ? (
                       <span className="federated-local-badge">
-                        Indexed
+                        Library
                       </span>
                     ) : (
                       <button
                         type="button"
                         className="primary-button compact"
-                        disabled={networkBusy || cloudBusy}
+                        disabled={
+                          networkBusy ||
+                          cloudBusy ||
+                          webDavBusy ||
+                          ed2kBusy
+                        }
                         onClick={() =>
                           void acquireFederatedResult(result)
                         }
