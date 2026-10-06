@@ -85,6 +85,7 @@ import {
   sftpEntryIsBook,
   type SftpEntry,
 } from "../../core/resources/sftpTransport";
+import { supportedResourceBookFormat } from "../../core/resources/bookFormats";
 import {
   cancelTorrentDownload,
   discardTorrentTransfer,
@@ -394,6 +395,10 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState(0);
   const [resourceSearchSources, setResourceSearchSources] =
     useState<FederatedSourceStatus[]>([]);
+  const [resourceFormatFilter, setResourceFormatFilter] =
+    useState<"all" | "pdf" | "epub" | "mobi" | "azw" | "azw3">("all");
+  const [resourceSourceFilter, setResourceSourceFilter] =
+    useState<"all" | "local" | "storage" | "public" | "p2p">("all");
   const resourceSearchTokenRef = useRef(0);
 
   const [catalogName, setCatalogName] = useState("");
@@ -501,6 +506,49 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<Ed2kSearchResult[]>([]);
   const [ed2kLinkMetadata, setEd2kLinkMetadata] =
     useState<Ed2kLinkMetadata | null>(null);
+
+  const visibleResourceSearchResults = useMemo(() => {
+    return resourceSearchResults.filter((result) => {
+      const format =
+        supportedResourceBookFormat(
+          result.title,
+          result.mimeType,
+        );
+
+      if (
+        resourceFormatFilter !== "all" &&
+        format !== resourceFormatFilter
+      ) {
+        return false;
+      }
+
+      if (resourceSourceFilter === "all") return true;
+      if (resourceSourceFilter === "local") {
+        return result.kind === "local";
+      }
+      if (resourceSourceFilter === "storage") {
+        return (
+          result.kind === "cloud" ||
+          result.kind === "webdav" ||
+          result.kind === "s3" ||
+          result.kind === "sftp"
+        );
+      }
+      if (resourceSourceFilter === "public") {
+        return (
+          result.kind === "opds" ||
+          result.kind === "arxiv" ||
+          result.kind === "internet-archive"
+        );
+      }
+
+      return result.kind === "ed2k" || result.kind === "torrent";
+    });
+  }, [
+    resourceSearchResults,
+    resourceFormatFilter,
+    resourceSourceFilter,
+  ]);
 
   const visibleTransfers = useMemo(() => {
     if (transferFilter === "all") return transfers;
@@ -2675,6 +2723,59 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   </small>
                 </div>
 
+                <div className="federated-filter-row">
+                  <label>
+                    <span>Format</span>
+                    <select
+                      value={resourceFormatFilter}
+                      onChange={(event) =>
+                        setResourceFormatFilter(
+                          event.target.value as
+                            | "all"
+                            | "pdf"
+                            | "epub"
+                            | "mobi"
+                            | "azw"
+                            | "azw3",
+                        )
+                      }
+                    >
+                      <option value="all">All formats</option>
+                      <option value="pdf">PDF</option>
+                      <option value="epub">EPUB</option>
+                      <option value="mobi">MOBI</option>
+                      <option value="azw">AZW</option>
+                      <option value="azw3">AZW3</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Source</span>
+                    <select
+                      value={resourceSourceFilter}
+                      onChange={(event) =>
+                        setResourceSourceFilter(
+                          event.target.value as
+                            | "all"
+                            | "local"
+                            | "storage"
+                            | "public"
+                            | "p2p",
+                        )
+                      }
+                    >
+                      <option value="all">All sources</option>
+                      <option value="local">Local Library</option>
+                      <option value="storage">Cloud / storage</option>
+                      <option value="public">Public / open</option>
+                      <option value="p2p">P2P</option>
+                    </select>
+                  </label>
+                  <small>
+                    Showing {visibleResourceSearchResults.length} of{" "}
+                    {resourceSearchResults.length}
+                  </small>
+                </div>
+
                 {resourceSearchSources.length > 0 && (
                   <details className="federated-source-status">
                     <summary>Source health & latency</summary>
@@ -2699,7 +2800,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   </details>
                 )}
 
-                {resourceSearchResults.map((result) => (
+                {visibleResourceSearchResults.map((result) => (
                   <article key={result.key}>
                     <div>
                       <span className="resource-kind-badge">
