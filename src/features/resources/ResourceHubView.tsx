@@ -11,6 +11,11 @@ import {
 } from "../../core/resources/acquisition";
 import { getResourceNativeCapabilities } from "../../core/resources/native";
 import {
+  DEFAULT_RESOURCE_TRANSFER_CONCURRENCY,
+  loadResourceTransferConcurrency,
+  saveResourceTransferConcurrency,
+} from "../../core/resources/preferences";
+import {
   browseCloudAccount,
   cancelCloudDownload,
   connectCloudAccount,
@@ -273,6 +278,40 @@ function formatBytes(value: number | undefined): string {
   );
 }
 
+function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+
+  const rounded = Math.max(0, Math.round(seconds));
+  if (rounded < 60) return rounded + "s";
+
+  const minutes = Math.floor(rounded / 60);
+  const restSeconds = rounded % 60;
+  if (minutes < 60) {
+    return minutes + "m " + restSeconds + "s";
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return hours + "h " + restMinutes + "m";
+}
+
+function transferEta(job: TransferJob): string | null {
+  if (
+    job.state !== "running" ||
+    !job.bytesTotal ||
+    !job.downloadRate ||
+    job.downloadRate <= 0
+  ) {
+    return null;
+  }
+
+  const remaining = Math.max(
+    0,
+    job.bytesTotal - job.bytesCompleted,
+  );
+  return formatDuration(remaining / job.downloadRate);
+}
+
 function opdsLinkLabel(link: OpdsLink): string {
   const type = link.type?.toLowerCase() ?? "";
   const href = link.href.toLowerCase();
@@ -304,6 +343,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [tab, setTab] = useState<ResourceHubTab>("search");
   const [transferFilter, setTransferFilter] =
     useState<"active" | "completed" | "failed" | "all">("active");
+  const [transferConcurrency, setTransferConcurrency] = useState<number>(
+    DEFAULT_RESOURCE_TRANSFER_CONCURRENCY,
+  );
   const [input, setInput] = useState("");
   const [classification, setClassification] =
     useState<ResourceInputClassification | null>(null);
@@ -442,6 +484,22 @@ export function ResourceHubView({ onOpenBook }: Props) {
     );
   }, [transfers, transferFilter]);
 
+  async function changeTransferConcurrency(value: number) {
+    try {
+      const applied = await saveResourceTransferConcurrency(value);
+      setTransferConcurrency(applied);
+      setMessage(
+        "Direct download concurrency set to " + applied + ".",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to update transfer concurrency.",
+      );
+    }
+  }
+
   async function clearFinishedDownloads() {
     try {
       const count = await clearFinishedTransferJobs();
@@ -477,6 +535,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       connectedEd2kEngines,
       connectedWebDavAccounts,
       connectedS3Accounts,
+      configuredConcurrency,
     ] = await Promise.all([
       getResourceNativeCapabilities(),
       listPersistedResourceProviders(),
@@ -487,6 +546,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       listEd2kEngines(),
       listWebDavAccounts(),
       listS3Accounts(),
+      loadResourceTransferConcurrency(),
     ]);
 
     setNativeCapabilities(native);
@@ -501,6 +561,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setCloudAccounts(connectedCloudAccounts);
     setWebDavAccounts(connectedWebDavAccounts);
     setS3Accounts(connectedS3Accounts);
+    setTransferConcurrency(configuredConcurrency);
     setEd2kEngines(connectedEd2kEngines);
     setActiveEd2kEngineId((current) =>
       current &&
@@ -3580,8 +3641,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
               <h2>Downloads</h2>
             </div>
             <small>
-              HTTP, cloud, WebDAV, BitTorrent, and ED2K jobs are persisted
-              outside the page lifecycle and feed the same Library pipeline.
+              Transfers persist outside the page lifecycle. HTTP, cloud,
+              WebDAV, S3, and SFTP-style direct transfers share the native
+              concurrency queue; BitTorrent and ED2K use their engine queues.
             </small>
           </header>
 
@@ -3602,13 +3664,34 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 ),
               )}
             </div>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => void clearFinishedDownloads()}
-            >
-              Clear finished
-            </button>
+            <div className="download-manager-controls">
+              <label>
+                <span>Direct concurrency</span>
+                <select
+                  value={transferConcurrency}
+                  onChange={(event) =>
+                    void changeTransferConcurrency(
+                      Number(event.target.value),
+                    )
+                  }
+                >
+                  {Array.from({ length: 8 }, (_, index) => index + 1).map(
+                    (value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => void clearFinishedDownloads()}
+              >
+                Clear finished
+              </button>
+            </div>
           </div>
 
           {transfers.length === 0 ? (
@@ -3655,6 +3738,12 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         ? " · " +
                           formatBytes(job.downloadRate) +
                           "/s"
+                        : ""}
+                      {transferEta(job)
+                        ? " · ETA " + transferEta(job)
+                        : ""}
+                      {job.state === "queued"
+                        ? " · waiting for a transfer slot"
                         : ""}
                     </small>
 
