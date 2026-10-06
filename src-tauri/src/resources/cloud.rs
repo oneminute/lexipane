@@ -866,6 +866,23 @@ pub async fn resource_cloud_start_download(
 
     tauri::async_runtime::spawn(async move {
         let _permit = limiter.acquire().await;
+
+        match control.load(Ordering::Relaxed) {
+            CONTROL_CANCEL => {
+                let event = transfer_event(&spawned_job, "canceled", None, 0);
+                emit_event(&spawned_app, event);
+                spawned_manager.remove(&spawned_job).await;
+                return;
+            }
+            CONTROL_PAUSE => {
+                let event = transfer_event(&spawned_job, "paused", None, 0);
+                emit_event(&spawned_app, event);
+                spawned_manager.remove(&spawned_job).await;
+                return;
+            }
+            _ => {}
+        }
+
         if let Err(error) = run_cloud_download(
             spawned_app.clone(),
             spawned_manager.clone(),
