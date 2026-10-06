@@ -991,6 +991,37 @@ export function ResourceHubView({ onOpenBook }: Props) {
       return;
     }
 
+    if (result.sftp) {
+      const account = sftpAccounts.find(
+        (item) => item.id === result.sftp?.accountId,
+      );
+      if (!account) {
+        setMessage("The SFTP account is no longer connected.");
+        return;
+      }
+
+      setSftpBusy(true);
+      setMessage("");
+
+      try {
+        await startSftpEntryAcquisition(
+          account,
+          result.sftp.entry,
+        );
+        setTab("downloads");
+        await refreshResourceCore();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to acquire the SFTP result.",
+        );
+      } finally {
+        setSftpBusy(false);
+      }
+      return;
+    }
+
     if (result.ed2k) {
       const engine = ed2kEngines.find(
         (item) => item.id === result.ed2k?.accountId,
@@ -2037,6 +2068,221 @@ export function ResourceHubView({ onOpenBook }: Props) {
       );
     } finally {
       setS3Busy(false);
+    }
+  }
+
+  function activeSftpAccount(): ConnectedSftpAccount | null {
+    return (
+      sftpAccounts.find(
+        (account) => account.id === activeSftpAccountId,
+      ) ?? null
+    );
+  }
+
+  async function connectSftp() {
+    const port = Number(sftpPort);
+    if (
+      !sftpHost.trim() ||
+      !sftpUsername.trim() ||
+      !Number.isFinite(port)
+    ) {
+      return;
+    }
+
+    setSftpBusy(true);
+    setMessage("");
+
+    try {
+      const account = await connectSftpAccount({
+        displayName: sftpDisplayName,
+        host: sftpHost,
+        port,
+        username: sftpUsername,
+        password: sftpPassword || undefined,
+        privateKeyPath: sftpPrivateKeyPath || undefined,
+        privateKeyPassphrase:
+          sftpPrivateKeyPassphrase || undefined,
+        rootPath: sftpRootPath,
+      });
+
+      setSftpPassword("");
+      setSftpPrivateKeyPassphrase("");
+      setActiveSftpAccountId(account.id);
+      await refreshResourceCore();
+      await openSftpRoot(account);
+      setTab("browse");
+      setMessage("SFTP storage connected.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to connect SFTP storage.",
+      );
+    } finally {
+      setSftpBusy(false);
+    }
+  }
+
+  async function disconnectSftp(account: ConnectedSftpAccount) {
+    setSftpBusy(true);
+    setMessage("");
+
+    try {
+      await disconnectSftpAccount(account);
+      if (activeSftpAccountId === account.id) {
+        setActiveSftpAccountId(null);
+        setSftpEntries([]);
+        setSftpPath(undefined);
+        setSftpFolderStack([{ label: "Root" }]);
+      }
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to disconnect SFTP.",
+      );
+    } finally {
+      setSftpBusy(false);
+    }
+  }
+
+  async function openSftpRoot(account: ConnectedSftpAccount) {
+    setSftpBusy(true);
+    setMessage("");
+
+    try {
+      const result = await browseSftpAccount(account);
+      setActiveSftpAccountId(account.id);
+      setSftpEntries(result.entries);
+      setSftpPath(result.path);
+      setSftpFolderStack([
+        { label: "Root", path: result.path },
+      ]);
+      setSftpQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to browse SFTP storage.",
+      );
+    } finally {
+      setSftpBusy(false);
+    }
+  }
+
+  async function openSftpFolder(entry: SftpEntry) {
+    const account = activeSftpAccount();
+    if (!account || !entry.isFolder) return;
+
+    setSftpBusy(true);
+    setMessage("");
+
+    try {
+      const result = await browseSftpAccount(
+        account,
+        entry.path,
+      );
+      setSftpEntries(result.entries);
+      setSftpPath(result.path);
+      setSftpFolderStack((current) => [
+        ...current,
+        { label: entry.name, path: result.path },
+      ]);
+      setSftpQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to open SFTP folder.",
+      );
+    } finally {
+      setSftpBusy(false);
+    }
+  }
+
+  async function goToSftpFolder(index: number) {
+    const account = activeSftpAccount();
+    const target = sftpFolderStack[index];
+    if (!account || !target) return;
+
+    setSftpBusy(true);
+    setMessage("");
+
+    try {
+      const result = await browseSftpAccount(
+        account,
+        target.path,
+      );
+      setSftpEntries(result.entries);
+      setSftpPath(result.path);
+      setSftpFolderStack((current) =>
+        current.slice(0, index + 1),
+      );
+      setSftpQuery("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to return to the SFTP folder.",
+      );
+    } finally {
+      setSftpBusy(false);
+    }
+  }
+
+  async function searchSftp() {
+    const account = activeSftpAccount();
+    if (!account || !sftpQuery.trim()) return;
+
+    setSftpBusy(true);
+    setMessage("");
+
+    try {
+      const result = await searchSftpAccount(
+        account,
+        sftpQuery,
+        sftpPath,
+      );
+      setSftpEntries(result.entries);
+      if (result.truncated) {
+        setMessage(
+          "SFTP search reached the recursive folder limit. Narrow the root folder or query for more precise results.",
+        );
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to search SFTP storage.",
+      );
+    } finally {
+      setSftpBusy(false);
+    }
+  }
+
+  async function acquireSftpEntry(entry: SftpEntry) {
+    const account = activeSftpAccount();
+    if (!account || !sftpEntryIsBook(entry)) return;
+
+    setSftpBusy(true);
+    setMessage("");
+
+    try {
+      await startSftpEntryAcquisition(account, entry);
+      setTab("downloads");
+      setMessage(
+        "SFTP download started. It continues if you leave Resources.",
+      );
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to download the SFTP file.",
+      );
+    } finally {
+      setSftpBusy(false);
     }
   }
 
