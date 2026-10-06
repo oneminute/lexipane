@@ -349,35 +349,6 @@ function torrentResults(
   }));
 }
 
-function ed2kResults(
-  account: Ed2kEngineAccount,
-  query: string,
-  entries: Ed2kSearchResult[],
-): FederatedResourceResult[] {
-  return entries
-    .filter((entry) => entry.bookCandidate)
-    .map((entry) => ({
-      key:
-        "ed2k:" +
-        account.id +
-        ":" +
-        entry.index +
-        ":" +
-        entry.name,
-      kind: "ed2k" as const,
-      providerId: "ed2k",
-      sourceLabel: account.displayName || "aMule ED2K",
-      title: stripSupportedBookExtension(entry.name),
-      authors: [],
-      size: entry.size,
-      ed2k: {
-        accountId: account.id,
-        query,
-        result: entry,
-      },
-    }));
-}
-
 function nativeEd2kResults(
   query: string,
   entries: NativeEd2kSearchResult[],
