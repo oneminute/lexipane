@@ -86,7 +86,7 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **RESOURCE-006N — Native ED2K search engine**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 User decision: aMule is no longer the default ED2K backend. LexiPane now contains a native Rust ED2K Server Search implementation; the existing aMule adapter remains only as an optional compatibility/download fallback until native transfer support is implemented.
 
@@ -105,7 +105,7 @@ Validation / evidence:
 
 - native protocol commit CI has passed Linux `cargo check` and `cargo test --lib`, including unit coverage for TCP framing, multi-word search expression encoding, server.met parsing, search-result tag parsing and cross-server deduplication;
 - final frontend commit CI run 37413251250 passed `npm run typecheck`, `npm test`, and `npm run build`;
-- Windows Rust validation reached Tauri's Windows resource build and exposed a CI-only prerequisite: `src-tauri/icons/icon.ico` is not committed; the Windows check is being adjusted to create a temporary validation icon before compiling;
+- the first Windows Rust run was blocked only by Tauri's missing repository `src-tauri/icons/icon.ico`; CI now creates a validation-only minimal icon and the replacement Windows `cargo check/test` run is executing past that prerequisite;
 - a local Windows/Tauri live-search smoke test is still required to verify public server.met retrieval, real ED2K server login, and OP_SEARCHRESULT compatibility.
 
 Known limitations / next phases:
