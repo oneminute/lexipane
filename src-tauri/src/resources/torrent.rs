@@ -46,7 +46,6 @@ pub struct TorrentStartResult {
 struct TorrentRuntimeJob {
     torrent_id: usize,
     input: String,
-    file_index: usize,
     file_path: PathBuf,
     file_name: String,
 }
@@ -448,7 +447,6 @@ pub async fn resource_torrent_start_download(
             TorrentRuntimeJob {
                 torrent_id,
                 input: input.clone(),
-                file_index,
                 file_path,
                 file_name: selected.name.clone(),
             },
