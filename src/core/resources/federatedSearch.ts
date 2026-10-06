@@ -4,10 +4,13 @@ import {
 } from "./cloudAccounts";
 import { cloudEntryIsBook, type CloudEntry } from "./cloudTransport";
 import {
-  searchEd2kEngine,
   type Ed2kEngineAccount,
 } from "./ed2kAdapter";
-import type { Ed2kSearchResult } from "./ed2kTransport";
+import {
+  searchNativeEd2k,
+  type Ed2kSearchResult,
+  type NativeEd2kSearchResult,
+} from "./ed2kTransport";
 import {
   searchArxiv,
   type ArxivResult,
@@ -127,9 +130,10 @@ export interface FederatedResourceResult {
   arxiv?: ArxivResult;
   internetArchive?: InternetArchiveResult;
   ed2k?: {
-    accountId: string;
+    accountId?: string;
     query: string;
-    result: Ed2kSearchResult;
+    result?: Ed2kSearchResult;
+    nativeResult?: NativeEd2kSearchResult;
   };
   torrent?: {
     catalogId: string;
@@ -374,11 +378,40 @@ function ed2kResults(
     }));
 }
 
+function nativeEd2kResults(
+  query: string,
+  entries: NativeEd2kSearchResult[],
+): FederatedResourceResult[] {
+  return entries
+    .filter((entry) => entry.bookCandidate)
+    .map((entry) => ({
+      key: "ed2k:native:" + entry.hash + ":" + entry.size,
+      kind: "ed2k" as const,
+      providerId: "ed2k-native",
+      sourceLabel: "LexiPane Native ED2K",
+      title: stripSupportedBookExtension(entry.name),
+      authors: [],
+      size: entry.size,
+      description:
+        entry.sources +
+        " source" +
+        (entry.sources === 1 ? "" : "s") +
+        " · " +
+        entry.servers.length +
+        " server" +
+        (entry.servers.length === 1 ? "" : "s"),
+      ed2k: {
+        query,
+        nativeResult: entry,
+      },
+    }));
+}
+
 export async function federatedResourceSearch(
   query: string,
   catalogs: ResourceCatalog[],
   cloudAccounts: ConnectedCloudAccount[],
-  ed2kEngines: Ed2kEngineAccount[] = [],
+  _ed2kEngines: Ed2kEngineAccount[] = [],
   webDavAccounts: ConnectedWebDavAccount[] = [],
   s3Accounts: ConnectedS3Account[] = [],
   sftpAccounts: ConnectedSftpAccount[] = [],
@@ -603,25 +636,18 @@ export async function federatedResourceSearch(
     );
   }
 
-  for (const engine of ed2kEngines) {
-    const label = engine.displayName || "aMule ED2K";
-    scheduleSource(
-      "ed2k:" + engine.id,
-      label,
-      async () =>
-        ed2kResults(
-          engine,
-          normalizedQuery,
-          (
-            await searchEd2kEngine(
-              engine,
-              normalizedQuery,
-              "global",
-            )
-          ).results,
-        ),
-    );
-  }
+  // Native ED2K discovery is always available in the desktop app and does
+  // not require an external aMule account. aMule remains an optional download
+  // fallback, not a prerequisite for federated ED2K search.
+  scheduleSource(
+    "ed2k:native",
+    "LexiPane Native ED2K",
+    async () =>
+      nativeEd2kResults(
+        normalizedQuery,
+        (await searchNativeEd2k(normalizedQuery, 4)).results,
+      ),
+  );
 
   await Promise.all(tasks);
 
