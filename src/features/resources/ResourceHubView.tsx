@@ -3564,6 +3564,178 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <section className="resource-section">
             <header>
               <div>
+                <span className="eyebrow">SFTP storage</span>
+                <h2>Browse SSH file servers</h2>
+              </div>
+              <small>
+                Password or private-key authenticated SFTP folders feed the
+                same persistent download and verified Library pipeline.
+              </small>
+            </header>
+
+            {sftpAccounts.length === 0 ? (
+              <div className="resource-empty">
+                <strong>No SFTP account connected.</strong>
+                <p>
+                  Add an SFTP server from Accounts, then browse or search its
+                  configured root folder here.
+                </p>
+                <button
+                  type="button"
+                  className="primary-button compact"
+                  onClick={() => setTab("accounts")}
+                >
+                  Connect SFTP
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="cloud-account-switcher">
+                  {sftpAccounts.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      className={
+                        activeSftpAccountId === account.id
+                          ? "selected"
+                          : ""
+                      }
+                      onClick={() => void openSftpRoot(account)}
+                    >
+                      <strong>{account.displayName || "SFTP"}</strong>
+                      <small>
+                        {String(account.metadata.username ?? "")}
+                        {"@"}
+                        {String(account.metadata.host ?? "")}
+                        {":"}
+                        {String(account.metadata.port ?? 22)}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+
+                {activeSftpAccount() && (
+                  <div className="cloud-browser">
+                    <div className="cloud-breadcrumbs">
+                      {sftpFolderStack.map((item, index) => (
+                        <button
+                          key={index + ":" + (item.path ?? "root")}
+                          type="button"
+                          disabled={
+                            sftpBusy ||
+                            index === sftpFolderStack.length - 1
+                          }
+                          onClick={() => void goToSftpFolder(index)}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="opds-search-row">
+                      <input
+                        value={sftpQuery}
+                        placeholder="Search SFTP folders…"
+                        onChange={(event) =>
+                          setSftpQuery(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            void searchSftp();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={sftpBusy || !sftpQuery.trim()}
+                        onClick={() => void searchSftp()}
+                      >
+                        {sftpBusy ? "Working…" : "Search"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={sftpBusy}
+                        onClick={() => {
+                          const account = activeSftpAccount();
+                          if (account) void openSftpRoot(account);
+                        }}
+                      >
+                        Root
+                      </button>
+                    </div>
+
+                    {sftpEntries.length === 0 ? (
+                      <div className="resource-empty compact">
+                        <strong>
+                          {sftpBusy
+                            ? "Loading SFTP…"
+                            : "No files loaded."}
+                        </strong>
+                      </div>
+                    ) : (
+                      <div className="cloud-entry-list">
+                        {sftpEntries.map((entry) => (
+                          <article key={entry.id}>
+                            <div className="cloud-entry-icon">
+                              {entry.isFolder ? "▣" : "▤"}
+                            </div>
+                            <div className="cloud-entry-main">
+                              <strong>{entry.name}</strong>
+                              <small>
+                                {entry.isFolder
+                                  ? "Folder"
+                                  : formatBytes(entry.size)}
+                                {entry.modifiedAt
+                                  ? " · modified " +
+                                    new Date(
+                                      entry.modifiedAt * 1000,
+                                    ).toLocaleString()
+                                  : ""}
+                              </small>
+                            </div>
+
+                            {entry.isFolder ? (
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                disabled={sftpBusy}
+                                onClick={() =>
+                                  void openSftpFolder(entry)
+                                }
+                              >
+                                Open
+                              </button>
+                            ) : sftpEntryIsBook(entry) ? (
+                              <button
+                                type="button"
+                                className="primary-button compact"
+                                disabled={sftpBusy}
+                                onClick={() =>
+                                  void acquireSftpEntry(entry)
+                                }
+                              >
+                                Download
+                              </button>
+                            ) : (
+                              <small className="muted">
+                                Not a Reader format
+                              </small>
+                            )}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="resource-section">
+            <header>
+              <div>
                 <span className="eyebrow">WebDAV / Nextcloud</span>
                 <h2>Browse self-hosted and NAS storage</h2>
               </div>
