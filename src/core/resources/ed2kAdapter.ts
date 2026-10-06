@@ -5,13 +5,17 @@ import {
 import {
   addEd2kLink,
   attachEd2kJob,
+  autoConfigureEd2k,
   cancelEd2kJob,
+  detectEd2kEnvironment,
   downloadEd2kSearchResult,
   getEd2kStatus,
   pauseEd2kJob,
   resumeEd2kJob,
   searchEd2k,
+  type Ed2kAutoConfigureResult,
   type Ed2kConnectionConfig,
+  type Ed2kEnvironment,
   type Ed2kLinkMetadata,
   type Ed2kSearchResponse,
   type Ed2kSearchResult,
@@ -51,6 +55,79 @@ export interface Ed2kEngineSettings {
 
 export interface Ed2kEngineAccount extends ResourceAccount {
   providerId: "ed2k";
+}
+
+export interface AutoConfiguredEd2kEngine {
+  engine: Ed2kEngineAccount;
+  setup: Ed2kAutoConfigureResult;
+}
+
+function generateEd2kControlPassword(): string {
+  const bytes = new Uint8Array(24);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+export async function inspectLocalEd2kEnvironment(): Promise<Ed2kEnvironment> {
+  return detectEd2kEnvironment();
+}
+
+export async function autoConfigureLocalEd2kEngine(): Promise<
+  AutoConfiguredEd2kEngine
+> {
+  const password = generateEd2kControlPassword();
+  const setup = await autoConfigureEd2k(password);
+  const environment = setup.environment;
+
+  if (!environment.installed || !environment.executable) {
+    throw new Error(
+      "aMule was not found. Install the official aMule 3.x Windows package, then run Auto setup again.",
+    );
+  }
+
+  if (!environment.incomingDir) {
+    throw new Error(
+      "LexiPane could not determine an aMule Incoming directory.",
+    );
+  }
+
+  const existing = (await listEd2kEngines()).find((account) => {
+    const executable =
+      typeof account.metadata.executable === "string"
+        ? account.metadata.executable
+        : "";
+    return executable === environment.executable;
+  });
+
+  const account = await saveResourceAccount({
+    id: existing?.id,
+    providerId: "ed2k",
+    displayName: "Local aMule ED2K",
+    status: "connected",
+    metadata: {
+      executable: environment.executable,
+      host: "127.0.0.1",
+      port: 4712,
+      incomingDir: environment.incomingDir,
+      configPath: environment.configPath,
+      autoConfigured: true,
+      lastStatus: setup.status.slice(0, 1200),
+      restartRequired: setup.restartRequired,
+    },
+  });
+
+  if (!account) {
+    throw new Error("Unable to save the auto-configured aMule connection.");
+  }
+
+  await setResourceAccountToken("ed2k", account.id, password);
+
+  return {
+    engine: account as Ed2kEngineAccount,
+    setup,
+  };
 }
 
 export function parseEd2kLink(link: string): Ed2kLinkMetadata {
