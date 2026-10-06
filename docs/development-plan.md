@@ -80,7 +80,26 @@ Two workstreams are tracked in this batch:
 1. **Resource Acquisition Platform** — HTTP/OPDS is complete; cloud, BitTorrent, ED2K, WebDAV, S3, public/open discovery, and federated search are implemented on the shared pipeline. The current active work is Download Manager hardening followed by SFTP completion and final provider/search cleanup.
 2. **Reader AI persistence** — **COMPLETE** for the requested scope: every current-sentence explanation uses versioned SQLite history first, Regenerate appends immutable versions, Older/Newer browse saved versions without inference, configurable look-ahead pre-generation writes every successful result immediately, and history uses stable Library book identity when available.
 
-RESOURCE-002 is **COMPLETE**. RESOURCE-004 is the current active Resource milestone.
+RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone, temporarily interrupted by a Reader regression hotfix.
+
+### Active regression hotfix
+
+**READER-EPUB-SCROLL-STABILITY — Stabilize mouse-wheel scrolling and reading-position persistence**
+
+Status: **IN_PROGRESS**
+
+Intended scope:
+
+- stop EPUB `continuous + scrolled-doc` mouse-wheel scrolling from snapping across section/chapter boundaries because of browser scroll anchoring;
+- keep resume-from-last-position behavior instead of removing it;
+- reduce automatic EPUB reading-position persistence churn so rapid relocation events do not queue redundant/stale database writes;
+- preserve explicit Contents/bookmark/progress navigation behavior.
+
+Dependencies / risks:
+
+- EPUB rendering uses epub.js 0.3.93 continuous management, which dynamically inserts/removes section iframes;
+- Chromium scroll anchoring can fight those layout changes and produce visible snap-back;
+- the fix must not disable ordinary scrolling or explicit `rendition.display()` navigation.
 
 ## Most recently completed product work
 
@@ -145,6 +164,12 @@ Network-resource batch priorities:
 | 2026-10-05 | READER-AI-HISTORY — Versioned sentence explanations | COMPLETE | SQLite `sentence_ai_versions`, stable book-id association, DB-first lookup, Regenerate/new immutable version, Older/Newer browsing, configurable look-ahead pre-generation, PDF cross-page prefetch, and removal of retired automatic difficult-term code. | RESOURCE-004 |
 
 ## Next selected task
+
+**READER-EPUB-SCROLL-STABILITY — EPUB scroll stability hotfix**
+
+Status: **IN_PROGRESS**
+
+After this regression is validated, resume:
 
 **RESOURCE-004 — Download Manager hardening**
 
