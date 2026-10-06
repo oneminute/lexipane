@@ -84,6 +84,18 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 ### Active regression hotfix
 
+**DB-SCHEMA-REPAIR — Repair v12/v13 sentence AI schema upgrade ordering**
+
+Status: **IN_PROGRESS**
+
+Scope:
+
+- migrate existing SQLite tables before creating latest-version indexes that may reference newly added columns;
+- repair the known `sentence_ai_versions.book_id` schema drift without deleting user data;
+- keep startup idempotent for both already-upgraded databases and older v12 databases;
+- add regression coverage for migration ordering where practical;
+- clean the two Rust warnings currently visible during Windows startup.
+
 **BUILD-WINDOWS-OPENSSL — Remove unintended Perl/OpenSSL build dependency on Windows**
 
 Status: **VERIFYING**
