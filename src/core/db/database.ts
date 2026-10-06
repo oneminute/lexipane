@@ -47,6 +47,12 @@ async function hasSentenceAnalysisTable(db: Database): Promise<boolean> {
   return rows.length > 0;
 }
 
+function isDuplicateColumnError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("duplicate column name");
+}
+
 async function repairKnownSchemaDrift(db: Database): Promise<void> {
   if (!(await hasSentenceAnalysisTable(db))) {
     return;
@@ -57,29 +63,24 @@ async function repairKnownSchemaDrift(db: Database): Promise<void> {
   );
   const hasBookId = columns.some((column) => column.name === "book_id");
 
-  if (hasBookId) {
-    return;
-  }
-
-  // Some development databases were stamped at schema v13 while their
-  // sentence_ai_versions table still had the v12 shape. Repair that state
-  // in place rather than requiring users to delete their local database.
-  await db.execute("BEGIN IMMEDIATE");
-  try {
+  if (!hasBookId) {
+    // plugin-sql executes through a sqlx connection pool. Do not span a
+    // frontend BEGIN/COMMIT across separate execute() calls: those calls can
+    // be assigned different pooled connections and deadlock each other.
     await db.execute(
       "ALTER TABLE sentence_ai_versions ADD COLUMN book_id TEXT",
     );
-    await db.execute(
-      "UPDATE sentence_ai_versions SET book_id = " +
-        "(SELECT id FROM books " +
-        "WHERE books.file_path = sentence_ai_versions.book_path LIMIT 1) " +
-        "WHERE book_id IS NULL",
-    );
-    await db.execute("COMMIT");
-  } catch (error) {
-    await db.execute("ROLLBACK");
-    throw error;
   }
+
+  // Always run the backfill. If an earlier application launch stopped after
+  // adding the column but before populating it, the next launch finishes the
+  // repair safely.
+  await db.execute(
+    "UPDATE sentence_ai_versions SET book_id = " +
+      "(SELECT id FROM books " +
+      "WHERE books.file_path = sentence_ai_versions.book_path LIMIT 1) " +
+      "WHERE book_id IS NULL",
+  );
 }
 
 async function writeSchemaVersion(
@@ -101,18 +102,28 @@ async function runMigrations(
     .sort((a, b) => a.version - b.version);
 
   for (const migration of pending) {
-    await db.execute("BEGIN IMMEDIATE");
-    try {
-      for (const statement of migration.statements) {
+    for (const statement of migration.statements) {
+      try {
         await db.execute(statement);
+      } catch (error) {
+        // ALTER TABLE ADD COLUMN is not idempotent in the SQLite versions
+        // supported by the desktop runtime. If a previous launch applied the
+        // ALTER but stopped before advancing app_meta, continue the migration
+        // instead of forcing the user to delete the database.
+        if (
+          statement.trimStart().toUpperCase().startsWith("ALTER TABLE") &&
+          isDuplicateColumnError(error)
+        ) {
+          continue;
+        }
+        throw error;
       }
-
-      await writeSchemaVersion(db, migration.version);
-      await db.execute("COMMIT");
-    } catch (error) {
-      await db.execute("ROLLBACK");
-      throw error;
     }
+
+    // Version stamping happens only after every statement has completed.
+    // Individual migration statements are autocommitted so no pooled
+    // connection can retain a frontend-created transaction lock.
+    await writeSchemaVersion(db, migration.version);
   }
 }
 
