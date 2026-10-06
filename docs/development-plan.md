@@ -86,19 +86,24 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **BUILD-WINDOWS-OPENSSL — Remove unintended Perl/OpenSSL build dependency on Windows**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Intended scope:
+Implementation summary:
 
-- stop the SFTP dependency from forcing vendored OpenSSL on Windows;
-- use libssh2's native WinCNG crypto backend on Windows while preserving system OpenSSL on Unix;
-- add a Windows Rust compile gate so platform-specific dependency regressions are caught in CI.
+- changed `ssh2` back to its default feature set, removing the global `vendored-openssl` feature;
+- Windows therefore uses libssh2's WinCNG backend instead of compiling vendored OpenSSL with Perl;
+- Unix continues to use the platform OpenSSL dependency path already covered by Linux CI;
+- added a dedicated `windows-latest` Rust `cargo check` + library-test job to CI.
 
-Root cause / risk:
+Validation / evidence:
 
-- `ssh2 = { version = "0.9", features = ["vendored-openssl"] }` enables `openssl-sys/vendored` globally;
-- vendored OpenSSL requires Perl and a native build toolchain, causing the current Windows Tauri startup failure before LexiPane launches;
-- SFTP behavior must continue compiling after switching Windows to WinCNG.
+- manifest-level root cause is removed in commit `0a886e4`;
+- Windows CI coverage was added in commit `d36d812`;
+- latest cross-platform CI run is executing the new Windows Rust gate; frontend and Linux/Rust validation remain in the same workflow.
+
+Known limitation:
+
+- the new Windows job must finish successfully, followed by one local `start-lexipane.cmd` smoke test, before marking this regression COMPLETE.
 
 **READER-EPUB-SCROLL-STABILITY — Stabilize mouse-wheel scrolling and reading-position persistence**
 
@@ -194,7 +199,7 @@ Network-resource batch priorities:
 
 **BUILD-WINDOWS-OPENSSL — Windows startup dependency hotfix**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 After this build regression is fixed, resume:
 
