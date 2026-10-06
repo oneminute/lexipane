@@ -247,6 +247,35 @@ function currentContext(rendition: Rendition): string {
   ).slice(0, 9000);
 }
 
+function disableScrollAnchoring(rendition: Rendition) {
+  const manager = (
+    rendition as Rendition & {
+      manager?: {
+        container?: HTMLElement;
+      };
+    }
+  ).manager;
+
+  manager?.container?.style.setProperty(
+    "overflow-anchor",
+    "none",
+    "important",
+  );
+
+  for (const contents of renderedContents(rendition)) {
+    contents.document.documentElement.style.setProperty(
+      "overflow-anchor",
+      "none",
+      "important",
+    );
+    contents.document.body?.style.setProperty(
+      "overflow-anchor",
+      "none",
+      "important",
+    );
+  }
+}
+
 function findExactRange(
   contents: Contents,
   exact: string,
@@ -758,6 +787,8 @@ export function EpubDocumentView({
         spread: "none",
       });
       renditionRef.current = rendition;
+      host.style.setProperty("overflow-anchor", "none", "important");
+      disableScrollAnchoring(rendition);
 
       rendition.themes.default(themeRules(theme));
 
@@ -780,6 +811,7 @@ export function EpubDocumentView({
           window.setTimeout(() => {
             if (cancelled || !rendition) return;
 
+            disableScrollAnchoring(rendition);
             const context = currentContext(rendition);
             if (context) {
               onContextReady?.(cfi, context);
@@ -803,6 +835,7 @@ export function EpubDocumentView({
       rendition.on("rendered", () => {
         window.setTimeout(() => {
           if (!cancelled && rendition) {
+            disableScrollAnchoring(rendition);
             syncImageZoom(rendition, onImageOpen);
             for (const contents of renderedContents(rendition)) {
               wireReadingInteractions(contents);
@@ -856,6 +889,7 @@ export function EpubDocumentView({
 
       if (cancelled) return;
 
+      disableScrollAnchoring(rendition);
       syncUserHighlights(
         rendition,
         annotations,
