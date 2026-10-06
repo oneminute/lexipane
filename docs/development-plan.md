@@ -86,40 +86,33 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **RESOURCE-006N — Native ED2K search engine**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-User decision: replace aMule as the default ED2K backend with a LexiPane-native Rust implementation. The existing aMule adapter remains an optional fallback/compatibility backend.
+User decision: aMule is no longer the default ED2K backend. LexiPane now contains a native Rust ED2K Server Search implementation; the existing aMule adapter remains only as an optional compatibility/download fallback until native transfer support is implemented.
 
-Current implementation batch:
+Implementation summary:
 
-- add a native ED2K protocol codec (TCP frame + tags + search-result decoding);
-- fetch/cache and parse server.met;
-- connect directly to ED2K servers over TCP;
-- send a minimal ED2K login and keyword OP_SEARCHREQUEST;
-- parse OP_SEARCHRESULT into filename, size, ED2K hash, source count and server metadata;
-- query several servers with bounded timeouts, deduplicate by ED2K hash, and sort useful Reader formats first/by availability;
-- expose native search through Tauri and make it the default Resource Hub ED2K search path;
-- keep aMule search available only as fallback while native download/Kad are not yet implemented.
+- added a native ED2K TCP protocol module with bounded packet decoding, zlib-packed packet support, old/new ED2K tag decoding, login framing, prefix-tree keyword search encoding, and search-result parsing;
+- added current server.met download + six-hour app-data cache with stale-cache fallback and parser support for IP/dynamic-host entries, preference/failure/user/file metadata;
+- native search connects directly to several ED2K servers with bounded connect/login/search timeouts, sends OP_LOGINREQUEST + OP_SEARCHREQUEST, waits for OP_IDCHANGE / OP_SEARCHRESULT, and tolerates partial server failures;
+- results expose filename, size, ED2K hash/link, sources, complete sources and responding servers; duplicate hash+size results are merged and Reader formats are ranked ahead of non-book results;
+- Reader-format detection covers PDF, EPUB, MOBI, AZW and AZW3;
+- Resource Hub Browse now presents **LexiPane Native ED2K** as the default search UI with no aMule setup requirement;
+- Resource Hub federated Search also always queries the native ED2K source, independent of configured accounts;
+- aMule search/configuration remains behind a compatibility/fallback section, and can temporarily download a native search result by ED2K link while the native downloader is not yet implemented.
 
-Out of scope for this small batch:
+Validation / evidence:
 
-- Kad routing/search;
-- peer/source discovery and native file transfer;
-- LowID/HighID optimization, upload queue, source exchange, part/block downloading;
-- removing the existing aMule fallback.
+- native protocol commit CI has passed Linux `cargo check` and `cargo test --lib`, including unit coverage for TCP framing, multi-word search expression encoding, server.met parsing, search-result tag parsing and cross-server deduplication;
+- final frontend commit CI run 37413251250 passed `npm run typecheck`, `npm test`, and `npm run build`;
+- Windows Rust validation is still running across the final commits;
+- a local Windows/Tauri live-search smoke test is still required to verify public server.met retrieval, real ED2K server login, and OP_SEARCHRESULT compatibility.
 
-Protocol reference basis:
+Known limitations / next phases:
 
-- current aMule/eMule ED2K opcodes and packet layouts;
-- server.met v0xE0/MET_HEADER layout used by current aMule;
-- current ED2K file tags (filename, filesize, filesize-hi, sources).
-
-Validation target:
-
-- unit tests for frame/tag/server.met/result parsing;
-- frontend typecheck/tests/build;
-- Linux + Windows Rust check/tests;
-- local Windows live-search smoke test remains required before COMPLETE.
+- this batch implements direct ED2K Server Search, not Kad;
+- native file/source download is not implemented yet, so Download can temporarily hand an ED2K link to the optional aMule fallback; without aMule the result link can be copied;
+- next native phases are Global Search hardening, Kad bootstrap/keyword search, then native source lookup and part/block download.
 
 
 ### Active regression hotfix
@@ -274,7 +267,7 @@ Network-resource batch priorities:
 
 **RESOURCE-006N — Native ED2K Server Search**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 This supersedes the aMule-first setup flow. After a live native server search is verified, continue with native Global Search, then Kad, then native source/download transport.
 
