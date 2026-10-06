@@ -2,6 +2,7 @@ pub mod cloud;
 pub mod ed2k;
 pub mod http;
 pub mod s3;
+pub mod sftp;
 pub mod torrent;
 pub mod webdav;
 
@@ -99,6 +100,7 @@ pub struct LiveTransportCapabilities {
     pub cloud: bool,
     pub webdav: bool,
     pub s3: bool,
+    pub sftp: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -138,6 +140,7 @@ pub fn resource_runtime_capabilities() -> ResourceRuntimeCapabilities {
             cloud: true,
             webdav: true,
             s3: true,
+            sftp: true,
         },
     }
 }
@@ -169,5 +172,6 @@ mod tests {
         assert!(capabilities.live_transports.cloud);
         assert!(capabilities.live_transports.webdav);
         assert!(capabilities.live_transports.s3);
+        assert!(capabilities.live_transports.sftp);
     }
 }
