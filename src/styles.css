@@ -4853,3 +4853,35 @@ button { cursor: pointer; }
     flex-direction: column;
   }
 }
+
+
+.download-manager-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.download-manager-controls label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 9px;
+  color: #707684;
+}
+
+.download-manager-controls select {
+  min-width: 54px;
+  padding: 6px 8px;
+  color: #3e4350;
+  background: #fafbfc;
+  border: 1px solid #dfe2e8;
+  border-radius: 8px;
+}
+
+@media (max-width: 620px) {
+  .download-manager-controls {
+    justify-content: flex-start;
+  }
+}
