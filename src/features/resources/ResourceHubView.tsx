@@ -4565,6 +4565,163 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
           <div className="ed2k-account-card">
             <div>
+              <span className="eyebrow">SFTP</span>
+              <strong>Connect SSH file storage</strong>
+              <small>
+                Use password authentication or a local private-key file.
+                Secrets stay in the operating-system credential store.
+              </small>
+            </div>
+
+            <input
+              value={sftpDisplayName}
+              disabled={sftpBusy}
+              placeholder="Account label (optional)"
+              onChange={(event) =>
+                setSftpDisplayName(event.target.value)
+              }
+            />
+
+            <div className="cloud-token-grid">
+              <input
+                value={sftpHost}
+                disabled={sftpBusy}
+                placeholder="Host"
+                onChange={(event) =>
+                  setSftpHost(event.target.value)
+                }
+              />
+              <input
+                value={sftpPort}
+                disabled={sftpBusy}
+                inputMode="numeric"
+                placeholder="22"
+                onChange={(event) =>
+                  setSftpPort(event.target.value)
+                }
+              />
+            </div>
+
+            <input
+              value={sftpUsername}
+              disabled={sftpBusy}
+              placeholder="Username"
+              onChange={(event) =>
+                setSftpUsername(event.target.value)
+              }
+            />
+
+            <input
+              value={sftpRootPath}
+              disabled={sftpBusy}
+              placeholder="Root path, e.g. /books"
+              onChange={(event) =>
+                setSftpRootPath(event.target.value)
+              }
+            />
+
+            <input
+              value={sftpPassword}
+              disabled={sftpBusy}
+              type="password"
+              autoComplete="off"
+              placeholder="Password (leave blank when using a private key)"
+              onChange={(event) =>
+                setSftpPassword(event.target.value)
+              }
+            />
+
+            <details className="cloud-oauth-advanced">
+              <summary>Private-key authentication</summary>
+              <p>
+                Enter the local private-key path. Add a passphrase only if the
+                key is encrypted.
+              </p>
+              <input
+                value={sftpPrivateKeyPath}
+                disabled={sftpBusy}
+                placeholder="Private key path, e.g. C:\Users\me\.ssh\id_ed25519"
+                onChange={(event) =>
+                  setSftpPrivateKeyPath(event.target.value)
+                }
+              />
+              <input
+                value={sftpPrivateKeyPassphrase}
+                disabled={sftpBusy}
+                type="password"
+                autoComplete="off"
+                placeholder="Private key passphrase (optional)"
+                onChange={(event) =>
+                  setSftpPrivateKeyPassphrase(event.target.value)
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void connectSftp();
+                  }
+                }}
+              />
+            </details>
+
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                sftpBusy ||
+                !sftpHost.trim() ||
+                !sftpUsername.trim() ||
+                (!sftpPassword && !sftpPrivateKeyPath.trim())
+              }
+              onClick={() => void connectSftp()}
+            >
+              {sftpBusy ? "Connecting…" : "Connect SFTP"}
+            </button>
+          </div>
+
+          {sftpAccounts.length > 0 && (
+            <div className="cloud-account-list">
+              {sftpAccounts.map((account) => (
+                <article key={account.id}>
+                  <div>
+                    <span className="resource-kind-badge">SFTP</span>
+                    <strong>{account.displayName || "SFTP"}</strong>
+                    <small>
+                      {String(account.metadata.username ?? "")}
+                      {"@"}
+                      {String(account.metadata.host ?? "")}
+                      {":"}
+                      {String(account.metadata.port ?? 22)}
+                      {" · "}
+                      {String(account.metadata.authMode ?? "password")}
+                    </small>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={sftpBusy}
+                      onClick={() => {
+                        setTab("browse");
+                        void openSftpRoot(account);
+                      }}
+                    >
+                      Browse
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={sftpBusy}
+                      onClick={() => void disconnectSftp(account)}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+
+          <div className="ed2k-account-card">
+            <div>
               <span className="eyebrow">WebDAV / Nextcloud</span>
               <strong>Connect WebDAV storage</strong>
               <small>
