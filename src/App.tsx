@@ -14,6 +14,7 @@ import { ReaderErrorBoundary } from "./features/reader/ReaderErrorBoundary";
 import { ReaderView } from "./features/reader/ReaderView";
 import { ResourceHubView } from "./features/resources/ResourceHubView";
 import { initializeResourceTransferRuntime } from "./core/resources/runtime";
+import { initializeResourceTransferConcurrency } from "./core/resources/preferences";
 import { AiSettingsView } from "./features/settings/AiSettingsView";
 
 export default function App() {
@@ -31,16 +32,31 @@ export default function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
-    void initializeResourceTransferRuntime({
-      onLibraryChanged: () => {
-        setLibraryRevision((revision) => revision + 1);
-      },
-    }).then((dispose) => {
-      unlisten = dispose;
-    });
+    void (async () => {
+      await initializeResourceTransferConcurrency().catch((error) => {
+        console.error(
+          "Unable to apply resource transfer concurrency",
+          error,
+        );
+      });
+
+      const dispose = await initializeResourceTransferRuntime({
+        onLibraryChanged: () => {
+          setLibraryRevision((revision) => revision + 1);
+        },
+      });
+
+      if (cancelled) {
+        dispose();
+      } else {
+        unlisten = dispose;
+      }
+    })();
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, []);
