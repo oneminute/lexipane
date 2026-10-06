@@ -181,6 +181,25 @@ export const BUILTIN_RESOURCE_PROVIDERS: ResourceProviderDescriptor[] = [
     },
   },
   {
+    id: "sftp",
+    name: "SFTP",
+    kind: "storage",
+    description:
+      "SSH/SFTP storage with password or private-key authentication.",
+    builtin: true,
+    live: true,
+    capabilities: {
+      search: true,
+      browse: true,
+      resolve: true,
+      preview: true,
+      previewLevels: [0, 1],
+      fileList: true,
+      download: true,
+      authentication: true,
+    },
+  },
+  {
     id: "bittorrent",
     name: "BitTorrent",
     kind: "p2p",
