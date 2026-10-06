@@ -21,6 +21,14 @@ import {
   type ConnectedS3Account,
 } from "./s3Accounts";
 import {
+  searchSftpAccount,
+  type ConnectedSftpAccount,
+} from "./sftpAccounts";
+import {
+  sftpEntryIsBook,
+  type SftpEntry,
+} from "./sftpTransport";
+import {
   s3EntryIsBook,
   type S3Entry,
 } from "./s3Transport";
@@ -58,6 +66,7 @@ export type FederatedResourceKind =
   | "cloud"
   | "webdav"
   | "s3"
+  | "sftp"
   | "arxiv"
   | "internet-archive"
   | "ed2k"
@@ -74,6 +83,7 @@ export interface FederatedResourceSource {
   cloud?: FederatedResourceResult["cloud"];
   webdav?: FederatedResourceResult["webdav"];
   s3?: FederatedResourceResult["s3"];
+  sftp?: FederatedResourceResult["sftp"];
   arxiv?: FederatedResourceResult["arxiv"];
   internetArchive?: FederatedResourceResult["internetArchive"];
   ed2k?: FederatedResourceResult["ed2k"];
@@ -109,6 +119,10 @@ export interface FederatedResourceResult {
   s3?: {
     accountId: string;
     entry: S3Entry;
+  };
+  sftp?: {
+    accountId: string;
+    entry: SftpEntry;
   };
   arxiv?: ArxivResult;
   internetArchive?: InternetArchiveResult;
@@ -277,6 +291,27 @@ function s3Results(
     }));
 }
 
+function sftpResults(
+  account: ConnectedSftpAccount,
+  entries: SftpEntry[],
+): FederatedResourceResult[] {
+  return entries
+    .filter(sftpEntryIsBook)
+    .map((entry) => ({
+      key: "sftp:" + account.id + ":" + entry.path,
+      kind: "sftp" as const,
+      providerId: "sftp",
+      sourceLabel: account.displayName || "SFTP",
+      title: stripSupportedBookExtension(entry.name),
+      authors: [],
+      size: entry.size,
+      sftp: {
+        accountId: account.id,
+        entry,
+      },
+    }));
+}
+
 function torrentResults(
   catalog: ResourceCatalog,
   entries: TorrentCatalogResult[],
@@ -336,6 +371,7 @@ export async function federatedResourceSearch(
   ed2kEngines: Ed2kEngineAccount[] = [],
   webDavAccounts: ConnectedWebDavAccount[] = [],
   s3Accounts: ConnectedS3Account[] = [],
+  sftpAccounts: ConnectedSftpAccount[] = [],
 ): Promise<FederatedSearchResponse> {
   const normalizedQuery = query.trim();
   if (!normalizedQuery) {
@@ -520,6 +556,24 @@ export async function federatedResourceSearch(
     );
   }
 
+  for (const account of sftpAccounts) {
+    tasks.push(
+      searchSftpAccount(account, normalizedQuery)
+        .then((response) => {
+          results.push(...sftpResults(account, response.entries));
+        })
+        .catch((error) => {
+          errors.push(
+            (account.displayName || "SFTP") +
+              ": " +
+              (error instanceof Error
+                ? error.message
+                : String(error)),
+          );
+        }),
+    );
+  }
+
   for (const account of s3Accounts) {
     tasks.push(
       searchS3Account(account, normalizedQuery)
@@ -596,7 +650,8 @@ export async function federatedResourceSearch(
       cloud: 1,
       webdav: 2,
       s3: 3,
-      arxiv: 4,
+      sftp: 4,
+      arxiv: 5,
       "internet-archive": 5,
       opds: 6,
       ed2k: 7,
@@ -628,6 +683,7 @@ export async function federatedResourceSearch(
       cloud: result.cloud,
       webdav: result.webdav,
       s3: result.s3,
+      sftp: result.sftp,
       arxiv: result.arxiv,
       internetArchive: result.internetArchive,
       ed2k: result.ed2k,
@@ -683,6 +739,7 @@ export async function federatedResourceSearch(
       ed2kEngines.length +
       webDavAccounts.length +
       s3Accounts.length +
+      sftpAccounts.length +
       4,
   };
 }
