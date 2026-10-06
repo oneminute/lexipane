@@ -234,7 +234,7 @@ fn list_directory(
 
         let path_string = path
             .to_str()
-            .map(normalize_remote_path)
+            .map(|value| normalize_remote_path(Some(value)))
             .unwrap_or_else(|| join_remote_path(&normalized, &name));
 
         entries.push(SftpEntry {
