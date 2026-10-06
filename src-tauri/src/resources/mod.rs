@@ -1,5 +1,6 @@
 pub mod cloud;
 pub mod ed2k;
+pub mod ed2k_native;
 pub mod http;
 pub mod s3;
 pub mod sftp;
