@@ -835,6 +835,7 @@ async fn run_download(
 pub async fn resource_s3_start_download(
     app: AppHandle,
     manager: State<'_, S3TransferManager>,
+    limiter: State<'_, crate::resources::ResourceTransferLimiter>,
     job_id: String,
     endpoint: String,
     region: String,
@@ -847,12 +848,14 @@ pub async fn resource_s3_start_download(
 ) -> Result<bool, String> {
     let credentials = credentials(&access_key, &secret_key, session_token)?;
     let manager = manager.inner().clone();
+    let limiter = limiter.inner().clone();
     let control = manager.register(&job_id).await?;
     let spawned_manager = manager.clone();
     let spawned_job_id = job_id.clone();
     let spawned_app = app.clone();
 
     tauri::async_runtime::spawn(async move {
+        let _permit = limiter.acquire().await;
         if let Err(error) = run_download(
             spawned_app.clone(),
             spawned_manager.clone(),
