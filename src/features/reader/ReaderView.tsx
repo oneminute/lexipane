@@ -22,7 +22,6 @@ import {
   type EpubTextAnnotation,
 } from "../../core/annotations/epubAnnotations";
 import {
-  createAutoPdfHighlight,
   createUserPdfHighlight,
   listPdfTextAnnotations,
   removePdfTextAnnotation,
@@ -36,10 +35,6 @@ import {
   resolveSentenceAnalysis,
   type SentenceAnalysisVersion,
 } from "../../core/ai/sentenceAnalysisHistory";
-import {
-  detectDifficultTerms,
-  type DifficultTerm,
-} from "../../core/ai/difficultyService";
 import { loadOllamaConfig } from "../../core/ai/ollamaConfig";
 import { analyzeRegionImage } from "../../core/ai/regionService";
 import type { AiPrivacyMode } from "../../core/ai/privacy";
@@ -85,10 +80,7 @@ import type {
   PdfMetadataSummary,
   PdfOutlineEntry,
 } from "../../core/documents/pdf/pdfInfo";
-import {
-  recordTermFeedback,
-  normalizeTerm,
-} from "../../core/reading/knownTerms";
+import { recordTermFeedback } from "../../core/reading/knownTerms";
 import {
   loadReadingLevel,
   loadSentencePrefetchCount,
@@ -301,11 +293,6 @@ export function ReaderView({
     APP_DEFAULTS.reading.level,
   );
   const [pageTexts, setPageTexts] = useState<Record<number, string>>({});
-  const [autoTermsByPage, setAutoTermsByPage] =
-    useState<Record<number, DifficultTerm[]>>({});
-  const [difficultyBusyPage, setDifficultyBusyPage] =
-    useState<number | null>(null);
-  const [difficultyError, setDifficultyError] = useState<string | null>(null);
   const [pdfMetadata, setPdfMetadata] = useState<PdfMetadataSummary>({
     title: null,
     author: null,
@@ -333,13 +320,6 @@ export function ReaderView({
     useState<EpubTextAnnotation[]>([]);
   const [epubSelectionCfi, setEpubSelectionCfi] =
     useState<string | null>(null);
-  const [epubContext, setEpubContext] = useState("");
-  const [epubContextKey, setEpubContextKey] = useState("");
-  const [epubAnalyzedContextKey, setEpubAnalyzedContextKey] = useState("");
-  const [epubAutoTerms, setEpubAutoTerms] = useState<DifficultTerm[]>([]);
-  const [epubDifficultyBusy, setEpubDifficultyBusy] = useState(false);
-  const [epubDifficultyError, setEpubDifficultyError] =
-    useState<string | null>(null);
   const [kindleInitialChapterId, setKindleInitialChapterId] =
     useState<string | null>(null);
   const [kindleCurrentChapterId, setKindleCurrentChapterId] =
@@ -357,15 +337,6 @@ export function ReaderView({
   const [kindleAnnotations, setKindleAnnotations] =
     useState<KindleTextAnnotation[]>([]);
   const [kindleSelectionChapterId, setKindleSelectionChapterId] =
-    useState<string | null>(null);
-  const [kindleContext, setKindleContext] = useState("");
-  const [kindleContextKey, setKindleContextKey] = useState("");
-  const [kindleAnalyzedContextKey, setKindleAnalyzedContextKey] =
-    useState("");
-  const [kindleAutoTerms, setKindleAutoTerms] =
-    useState<DifficultTerm[]>([]);
-  const [kindleDifficultyBusy, setKindleDifficultyBusy] = useState(false);
-  const [kindleDifficultyError, setKindleDifficultyError] =
     useState<string | null>(null);
 
   const isPdf = isPdfPath(bookPath);
@@ -428,9 +399,6 @@ export function ReaderView({
     setNoteStatus("idle");
     setHighlightStatus("idle");
     setPageTexts({});
-    setAutoTermsByPage({});
-    setDifficultyBusyPage(null);
-    setDifficultyError(null);
     setPdfMetadata({ title: null, author: null });
     setOutline([]);
     setTocOpen(false);
@@ -446,12 +414,6 @@ export function ReaderView({
     setEpubNavigationTarget(null);
     setEpubAnnotations([]);
     setEpubSelectionCfi(null);
-    setEpubContext("");
-    setEpubContextKey("");
-    setEpubAnalyzedContextKey("");
-    setEpubAutoTerms([]);
-    setEpubDifficultyBusy(false);
-    setEpubDifficultyError(null);
     setKindleInitialChapterId(null);
     setKindleCurrentChapterId(null);
     setKindleProgress(null);
@@ -460,12 +422,6 @@ export function ReaderView({
     setKindleNavigationChapterId(null);
     setKindleAnnotations([]);
     setKindleSelectionChapterId(null);
-    setKindleContext("");
-    setKindleContextKey("");
-    setKindleAnalyzedContextKey("");
-    setKindleAutoTerms([]);
-    setKindleDifficultyBusy(false);
-    setKindleDifficultyError(null);
     setBookPrivacyMode(null);
 
     if (!bookPath) {
@@ -670,12 +626,6 @@ export function ReaderView({
       ),
     [annotations, currentPage],
   );
-
-  const currentAutoTerms = isEpub
-    ? epubAutoTerms
-    : isKindle
-      ? kindleAutoTerms
-      : autoTermsByPage[currentPage] ?? [];
 
   const currentPdfText = isPdf
     ? pageTexts[currentPage] || getPdfPageText(currentPage)
@@ -889,22 +839,6 @@ export function ReaderView({
     [bookPath],
   );
 
-  const handleEpubContextReady = useCallback(
-    (_cfi: string, context: string) => {
-      const normalized = normalizedText(context).slice(0, 9000);
-      if (!normalized) return;
-
-      const key = stableHash(normalized);
-      setEpubContext((current) =>
-        current === normalized ? current : normalized,
-      );
-      setEpubContextKey((current) =>
-        current === key ? current : key,
-      );
-    },
-    [],
-  );
-
   const handleEpubSelection = useCallback(
     (selected: EpubSelection) => {
       setEpubSelectionCfi(selected.cfi);
@@ -1021,22 +955,6 @@ export function ReaderView({
       });
     },
     [bookPath],
-  );
-
-  const handleKindleContextReady = useCallback(
-    (_chapterId: string, context: string) => {
-      const normalized = normalizedText(context).slice(0, 9000);
-      if (!normalized) return;
-
-      const key = stableHash(normalized);
-      setKindleContext((current) =>
-        current === normalized ? current : normalized,
-      );
-      setKindleContextKey((current) =>
-        current === key ? current : key,
-      );
-    },
-    [],
   );
 
   const handleKindleSelection = useCallback(
@@ -1297,11 +1215,6 @@ export function ReaderView({
           ...current,
           [capture.page]: text,
         }));
-        setAutoTermsByPage((current) => {
-          const next = { ...current };
-          delete next[capture.page];
-          return next;
-        });
       }
 
       setAiResult({
@@ -2231,109 +2144,6 @@ export function ReaderView({
     }
   }
 
-  async function setAutoTermFeedback(
-    term: DifficultTerm,
-    status: "known" | "suppressed",
-  ) {
-    await recordTermFeedback(term.text, status);
-
-    const normalized = normalizeTerm(term.text);
-
-    if (isEpub) {
-      setEpubAutoTerms((items) =>
-        items.filter(
-          (item) => normalizeTerm(item.text) !== normalized,
-        ),
-      );
-      return;
-    }
-
-    if (isKindle) {
-      setKindleAutoTerms((items) =>
-        items.filter(
-          (item) => normalizeTerm(item.text) !== normalized,
-        ),
-      );
-      return;
-    }
-    const matching = annotations.filter(
-      (annotation) =>
-        annotation.source === "auto" &&
-        annotation.anchor.page === currentPage &&
-        normalizeTerm(annotation.selectedText) === normalized,
-    );
-
-    for (const annotation of matching) {
-      await removePdfTextAnnotation(annotation.id);
-    }
-
-    setAnnotations((items) =>
-      items.filter(
-        (annotation) =>
-          !(
-            annotation.source === "auto" &&
-            annotation.anchor.page === currentPage &&
-            normalizeTerm(annotation.selectedText) === normalized
-          ),
-      ),
-    );
-
-    setAutoTermsByPage((current) => ({
-      ...current,
-      [currentPage]: (current[currentPage] ?? []).filter(
-        (item) => normalizeTerm(item.text) !== normalized,
-      ),
-    }));
-  }
-
-  function explainAutoTerm(term: DifficultTerm) {
-    if (isEpub) {
-      const nextSelection: ActiveReaderSelection = {
-        text: term.text,
-        context: epubContext,
-        page: 0,
-        rects: [],
-      };
-
-      setEpubSelectionCfi(null);
-      setSelection(nextSelection);
-      setAiResult(null);
-      setAiError(null);
-      void runAi("explain", undefined, nextSelection);
-      return;
-    }
-
-    if (isKindle) {
-      const nextSelection: ActiveReaderSelection = {
-        text: term.text,
-        context: kindleContext,
-        page: 0,
-        rects: [],
-      };
-
-      setKindleSelectionChapterId(null);
-      setSelection(nextSelection);
-      setAiResult(null);
-      setAiError(null);
-      void runAi("explain", undefined, nextSelection);
-      return;
-    }
-
-    const pageText = pageTexts[currentPage] || getPdfPageText(currentPage);
-    const rects = locatePdfTextRects(currentPage, term.text);
-    const nextSelection: ActiveReaderSelection = {
-      text: term.text,
-      context: pageText,
-      page: currentPage,
-      rects,
-    };
-
-    setSelection(nextSelection);
-    setAiResult(null);
-    setAiError(null);
-    void runAi("explain", undefined, nextSelection);
-  }
-
   async function saveCurrentNote() {
     if (!bookPath || !selection || noteStatus === "saving") return;
 
@@ -2373,11 +2183,6 @@ export function ReaderView({
   }
 
   function resetAiPolicyState() {
-    setAutoTermsByPage({});
-    setEpubAutoTerms([]);
-    setEpubAnalyzedContextKey("");
-    setKindleAutoTerms([]);
-    setKindleAnalyzedContextKey("");
     setAiResult(null);
     setAiError(null);
   }
