@@ -177,5 +177,6 @@ export interface ResourceNativeCapabilities {
     cloud: boolean;
     webdav: boolean;
     s3: boolean;
+    sftp: boolean;
   };
 }
