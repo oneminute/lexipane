@@ -252,8 +252,8 @@ fn read_tag(cursor: &mut ByteCursor<'_>) -> Result<ParsedTag, String> {
 }
 
 fn tag_integer(tag: &ParsedTag) -> Option<u64> {
-    match tag.value {
-        TagValue::Integer(value) => Some(value),
+    match &tag.value {
+        TagValue::Integer(value) => Some(*value),
         _ => None,
     }
 }
