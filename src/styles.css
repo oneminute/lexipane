@@ -4955,3 +4955,34 @@ button { cursor: pointer; }
     margin-left: 0;
   }
 }
+
+
+.download-manager-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(90px, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.download-manager-summary span {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  background: #f7f8fa;
+  border: 1px solid #e6e8ed;
+  border-radius: 9px;
+  font-size: 8px;
+  color: #858b98;
+}
+
+.download-manager-summary strong {
+  font-size: 11px;
+  color: #414653;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 680px) {
+  .download-manager-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
