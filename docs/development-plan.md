@@ -84,6 +84,22 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 ### Active regression hotfix
 
+**BUILD-WINDOWS-OPENSSL — Remove unintended Perl/OpenSSL build dependency on Windows**
+
+Status: **IN_PROGRESS**
+
+Intended scope:
+
+- stop the SFTP dependency from forcing vendored OpenSSL on Windows;
+- use libssh2's native WinCNG crypto backend on Windows while preserving system OpenSSL on Unix;
+- add a Windows Rust compile gate so platform-specific dependency regressions are caught in CI.
+
+Root cause / risk:
+
+- `ssh2 = { version = "0.9", features = ["vendored-openssl"] }` enables `openssl-sys/vendored` globally;
+- vendored OpenSSL requires Perl and a native build toolchain, causing the current Windows Tauri startup failure before LexiPane launches;
+- SFTP behavior must continue compiling after switching Windows to WinCNG.
+
 **READER-EPUB-SCROLL-STABILITY — Stabilize mouse-wheel scrolling and reading-position persistence**
 
 Status: **VERIFYING**
@@ -175,6 +191,12 @@ Network-resource batch priorities:
 | 2026-10-05 | READER-EPUB-SCROLL-STABILITY — Mouse-wheel snap-back regression | VERIFYING | Disabled scroll anchoring across the epub.js continuous rendition; debounced automatic reading-position writes to 600 ms; CI run 37405995032 passed frontend typecheck/tests/build and Rust check/tests. Local Windows/Tauri mouse-wheel smoke test remains. | READER-EPUB-SCROLL-STABILITY |
 
 ## Next selected task
+
+**BUILD-WINDOWS-OPENSSL — Windows startup dependency hotfix**
+
+Status: **IN_PROGRESS**
+
+After this build regression is fixed, resume:
 
 **READER-EPUB-SCROLL-STABILITY — EPUB scroll stability hotfix**
 
