@@ -856,18 +856,21 @@ async fn run_http_download(
 pub async fn resource_http_start_download(
     app: AppHandle,
     manager: State<'_, HttpTransferManager>,
+    limiter: State<'_, crate::resources::ResourceTransferLimiter>,
     job_id: String,
     url: String,
     file_name_hint: Option<String>,
 ) -> Result<HttpTransferStartResult, String> {
     let url = validate_http_url(&url)?;
     let manager = manager.inner().clone();
+    let limiter = limiter.inner().clone();
     let control = manager.register(&job_id).await?;
     let spawned_manager = manager.clone();
     let spawned_job_id = job_id.clone();
     let spawned_app = app.clone();
 
     tauri::async_runtime::spawn(async move {
+        let _permit = limiter.acquire().await;
         if let Err(error) = run_http_download(
             spawned_app.clone(),
             spawned_manager.clone(),
