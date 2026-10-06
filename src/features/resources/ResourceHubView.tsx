@@ -1167,8 +1167,32 @@ export function ResourceHubView({ onOpenBook }: Props) {
     }
 
     if (result.ed2k) {
+      if (result.ed2k.nativeResult) {
+        const nativeResult = result.ed2k.nativeResult;
+        const engine =
+          activeEd2kEngine() ?? ed2kEngines[0] ?? null;
+
+        if (!engine) {
+          await copyNativeEd2kLink(nativeResult);
+          setMessage(
+            "Native ED2K search works without aMule. The ED2K link was copied because the native download engine is the next implementation phase.",
+          );
+          return;
+        }
+
+        await acquireNativeEd2kThroughFallback(nativeResult);
+        return;
+      }
+
+      const fallbackResult = result.ed2k.result;
+      const accountId = result.ed2k.accountId;
+      if (!fallbackResult || !accountId) {
+        setMessage("This ED2K result has no downloadable source metadata.");
+        return;
+      }
+
       const engine = ed2kEngines.find(
-        (item) => item.id === result.ed2k?.accountId,
+        (item) => item.id === accountId,
       );
       if (!engine) {
         setMessage("The aMule ED2K engine is no longer configured.");
@@ -1182,7 +1206,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
         await startEd2kSearchResultAcquisition(
           engine,
           result.ed2k.query,
-          result.ed2k.result,
+          fallbackResult,
         );
         setTab("downloads");
         await refreshResourceCore();
