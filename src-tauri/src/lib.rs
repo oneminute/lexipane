@@ -41,6 +41,8 @@ pub fn run() {
             resources::cloud::resource_cloud_pause,
             resources::cloud::resource_cloud_cancel,
             resources::cloud::resource_cloud_cleanup,
+            resources::ed2k::resource_ed2k_detect,
+            resources::ed2k::resource_ed2k_auto_configure,
             resources::ed2k::resource_ed2k_status,
             resources::ed2k::resource_ed2k_search,
             resources::ed2k::resource_ed2k_add_link,
