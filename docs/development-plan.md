@@ -86,26 +86,33 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **RESOURCE-006 — ED2K search zero-config Windows experience**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 User priority: ED2K resource search is currently the highest-priority Resource Hub function.
 
-Intended scope:
+Implementation summary:
 
-- make ED2K search immediately visible and usable from Resource Hub rather than burying it behind manual account setup;
-- auto-detect aMule/aMuled/amulecmd on Windows, including official 3.x default install locations;
-- auto-detect the user's aMule configuration and Incoming directory;
-- provide a local-only External Connections configuration using 127.0.0.1 and port 4712 with a generated credential stored through LexiPane's secure credential store;
-- provide one-click automatic setup for an installed aMule and actionable install guidance when aMule is absent;
-- preserve explicit server/Kad/local search selection and result download into the shared Resource/Download Manager pipeline;
-- do not ship or hard-code piracy-specific indexes/catalogs; search uses the user's configured ED2K/Kad network client.
+- ED2K/Kad search remains the first section in Resource Hub Browse and now exposes one-click **Auto setup ED2K** when a local aMule installation is detected;
+- native detection covers PATH plus official Windows aMule 3.x all-users/per-user install locations and discovers `amulecmd`, `amuled`, `%APPDATA%\\aMule\\amule.conf`, and Incoming;
+- automatic setup preserves unrelated INI settings, creates a one-time backup, enables ED2K + Kad + autoconnect/reconnect, configures the current server/Kad bootstrap URLs, prepares `server.met` / `nodes.dat` when absent, and creates the Incoming directory;
+- External Connections is configured **loopback-only** on `127.0.0.1:4712`; a random control credential is generated, only its MD5 form is written to aMule configuration, and the plaintext credential is stored through LexiPane's OS secure credential store;
+- LexiPane attempts to start the local `amuled` core and requests connection to enabled ED2K/Kad networks; if an already-running core still has old EC settings, the UI reports that one aMule restart is required;
+- manual executable/host/port/password/Incoming fields remain available as an advanced path for remote/custom cores;
+- ED2K search now requests network connection before searching and waits/polls for results rather than swallowing a failed Search command;
+- search-result downloads now execute `Results` and `Download <index>` in the same `amulecmd` session, fixing the CLI result-index lifetime issue;
+- native Reader-format recognition is aligned with PDF/EPUB/MOBI/AZW/AZW3.
 
-Dependencies / risks:
+Validation / evidence:
 
-- LexiPane controls ED2K through aMule's supported External Connections/amulecmd interface;
-- aMule may need to be restarted after External Connections settings change;
-- automatic configuration must not expose EC beyond loopback or overwrite unrelated user settings;
-- aMule installation itself is an external executable and should use the official upstream Windows package, not an embedded unofficial binary.
+- frontend typecheck, tests, and production build pass on the final UI commit's CI run 37411497463;
+- Linux and Windows Rust `cargo check` / library tests are still running on the final commit after the new native dependency and ED2K commands;
+- local Windows validation must confirm aMule detection, one-click setup, ED2K/Kad connection, a real search result list, and one result entering the Download Manager.
+
+Known limitations / next slice:
+
+- if aMule is not installed, this slice links to the official upstream release rather than silently installing a third-party executable;
+- the next small ED2K slice can add an explicit **Install official aMule** bootstrap action so a fresh Windows machine can go from LexiPane to searchable ED2K with one user-approved install action;
+- LexiPane does not add piracy-specific catalogs or indexes; discovery is performed by the user's ED2K/Kad client.
 
 ### Active regression hotfix
 
@@ -259,9 +266,9 @@ Network-resource batch priorities:
 
 **RESOURCE-006 — ED2K search zero-config Windows experience**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-This user-prioritized task temporarily supersedes Download Manager hardening and remaining verification hotfixes. After ED2K search is usable locally, return to the prior verification queue.
+Current implementation is ready for Windows/aMule smoke testing. If aMule is absent, the next selected ED2K slice is an explicit user-approved installer/bootstrap for the official upstream Windows package.
 
 **BUILD-WINDOWS-OPENSSL — Windows startup dependency hotfix**
 
