@@ -169,6 +169,7 @@ export interface ResourceInputClassification {
 export interface ResourceNativeCapabilities {
   coreVersion: number;
   persistentJobs: boolean;
+  directTransferConcurrency: number;
   liveTransports: {
     http: boolean;
     torrent: boolean;
