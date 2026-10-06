@@ -138,9 +138,11 @@ import {
   RESOURCE_TRANSFER_UPDATED_EVENT,
 } from "../../core/resources/runtime";
 import {
+  autoConfigureLocalEd2kEngine,
   cancelEd2kTransfer,
   connectEd2kEngine,
   disconnectEd2kEngine,
+  inspectLocalEd2kEnvironment,
   listEd2kEngines,
   parseEd2kLink,
   pauseEd2kTransfer,
@@ -151,6 +153,7 @@ import {
   type Ed2kEngineAccount,
 } from "../../core/resources/ed2kAdapter";
 import type {
+  Ed2kEnvironment,
   Ed2kLinkMetadata,
   Ed2kSearchResult,
 } from "../../core/resources/ed2kTransport";
@@ -491,6 +494,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [sftpRootPath, setSftpRootPath] = useState("/");
   const [ed2kEngines, setEd2kEngines] =
     useState<Ed2kEngineAccount[]>([]);
+  const [ed2kEnvironment, setEd2kEnvironment] =
+    useState<Ed2kEnvironment | null>(null);
   const [activeEd2kEngineId, setActiveEd2kEngineId] =
     useState<string | null>(null);
   const [ed2kExecutable, setEd2kExecutable] = useState("");
@@ -668,6 +673,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       savedCatalogs,
       connectedCloudAccounts,
       connectedEd2kEngines,
+      detectedEd2kEnvironment,
       connectedWebDavAccounts,
       connectedS3Accounts,
       connectedSftpAccounts,
@@ -680,6 +686,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       listResourceCatalogs(),
       listConnectedCloudAccounts(),
       listEd2kEngines(),
+      inspectLocalEd2kEnvironment().catch(() => null),
       listWebDavAccounts(),
       listS3Accounts(),
       listSftpAccounts(),
@@ -701,6 +708,21 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setSftpAccounts(connectedSftpAccounts);
     setTransferConcurrency(configuredConcurrency);
     setEd2kEngines(connectedEd2kEngines);
+    setEd2kEnvironment(detectedEd2kEnvironment);
+    if (detectedEd2kEnvironment) {
+      setEd2kExecutable((current) =>
+        current || detectedEd2kEnvironment.executable || "",
+      );
+      setEd2kHost((current) =>
+        current || detectedEd2kEnvironment.host || "127.0.0.1",
+      );
+      setEd2kPort((current) =>
+        current || String(detectedEd2kEnvironment.port || 4712),
+      );
+      setEd2kIncomingDir((current) =>
+        current || detectedEd2kEnvironment.incomingDir || "",
+      );
+    }
     setActiveEd2kEngineId((current) =>
       current &&
       connectedEd2kEngines.some((engine) => engine.id === current)
@@ -2408,6 +2430,47 @@ export function ResourceHubView({ onOpenBook }: Props) {
     );
   }
 
+  async function autoSetupEd2k() {
+    setEd2kBusy(true);
+    setMessage("");
+
+    try {
+      const { engine, setup } =
+        await autoConfigureLocalEd2kEngine();
+      setEd2kEnvironment(setup.environment);
+      setActiveEd2kEngineId(engine.id);
+      await refreshResourceCore();
+
+      const warningText =
+        setup.warnings.length > 0
+          ? " " + setup.warnings.join(" ")
+          : "";
+
+      if (setup.available) {
+        setMessage(
+          "ED2K is ready. aMule is configured for local-only control and is connecting to ED2K/Kad." +
+            warningText,
+        );
+        setTab("browse");
+      } else if (setup.restartRequired) {
+        setMessage(
+          "ED2K settings were configured. Restart aMule once so it loads the new External Connections settings, then search again." +
+            warningText,
+        );
+      } else {
+        setMessage(setup.status + warningText);
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to auto-configure ED2K.",
+      );
+    } finally {
+      setEd2kBusy(false);
+    }
+  }
+
   async function connectEd2k() {
     if (!ed2kIncomingDir.trim()) return;
 
@@ -3312,18 +3375,65 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
             {ed2kEngines.length === 0 ? (
               <div className="resource-empty">
-                <strong>aMule sidecar is not configured.</strong>
-                <p>
-                  Configure amulecmd, External Connections, and the Incoming
-                  directory from Accounts.
-                </p>
-                <button
-                  type="button"
-                  className="primary-button compact"
-                  onClick={() => setTab("accounts")}
-                >
-                  Configure ED2K
-                </button>
+                {ed2kEnvironment?.installed ? (
+                  <>
+                    <strong>aMule detected — ED2K can be configured automatically.</strong>
+                    <p>
+                      LexiPane found{" "}
+                      <code>{ed2kEnvironment.executable}</code>. Auto setup
+                      enables local-only External Connections on 127.0.0.1:4712,
+                      enables ED2K + Kad auto-connect, prepares bootstrap data,
+                      and uses{" "}
+                      <code>
+                        {ed2kEnvironment.incomingDir || "the default Incoming folder"}
+                      </code>.
+                    </p>
+                    <div className="resource-inline-actions">
+                      <button
+                        type="button"
+                        className="primary-button compact"
+                        disabled={ed2kBusy}
+                        onClick={() => void autoSetupEd2k()}
+                      >
+                        {ed2kBusy ? "Setting up…" : "Auto setup ED2K"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={ed2kBusy}
+                        onClick={() => setTab("accounts")}
+                      >
+                        Advanced manual setup
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <strong>aMule 3.x was not found.</strong>
+                    <p>
+                      Install the official Windows aMule package first. It
+                      includes amuled and amulecmd; LexiPane will configure the
+                      ED2K/Kad sidecar automatically after installation.
+                    </p>
+                    <div className="resource-inline-actions">
+                      <a
+                        className="primary-button compact"
+                        href="https://github.com/amule-project/amule/releases/latest"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Official aMule releases
+                      </a>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => setTab("accounts")}
+                      >
+                        Manual setup
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <>
@@ -4571,9 +4681,28 @@ export function ResourceHubView({ onOpenBook }: Props) {
               <span className="eyebrow">aMule / aMuled sidecar</span>
               <strong>ED2K engine</strong>
               <small>
-                Enable External Connections in aMule. Incoming directory is
-                required so LexiPane can detect completed books.
+                Auto setup is recommended. It detects the official aMule
+                installation, keeps External Connections on loopback only,
+                prepares ED2K/Kad defaults, and stores the generated control
+                credential in the operating-system credential store.
               </small>
+            </div>
+
+            <button
+              type="button"
+              className="primary-button"
+              disabled={ed2kBusy || !ed2kEnvironment?.installed}
+              onClick={() => void autoSetupEd2k()}
+            >
+              {ed2kBusy ? "Setting up…" : "Auto setup local ED2K"}
+            </button>
+
+            <div className="resource-safety-note">
+              <strong>Advanced manual setup</strong>
+              <p>
+                Use the fields below only for a custom aMule location, port,
+                remote core, or existing External Connections password.
+              </p>
             </div>
 
             <input
