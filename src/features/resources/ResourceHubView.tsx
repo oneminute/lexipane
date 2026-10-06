@@ -550,6 +550,50 @@ export function ResourceHubView({ onOpenBook }: Props) {
     resourceSourceFilter,
   ]);
 
+  const transferSummary = useMemo(() => {
+    let running = 0;
+    let queued = 0;
+    let paused = 0;
+    let totalRate = 0;
+
+    for (const job of transfers) {
+      if (job.state === "running") {
+        running += 1;
+        totalRate += job.downloadRate ?? 0;
+      } else if (job.state === "queued") {
+        queued += 1;
+      } else if (job.state === "paused") {
+        paused += 1;
+      }
+    }
+
+    return { running, queued, paused, totalRate };
+  }, [transfers]);
+
+  async function pauseAllActiveTransfers() {
+    const active = transfers.filter(
+      (job) => job.state === "running",
+    );
+    if (active.length === 0) return;
+
+    const results = await Promise.allSettled(
+      active.map((job) =>
+        handleTransferAction(job, "pause"),
+      ),
+    );
+    const failures = results.filter(
+      (result) => result.status === "rejected",
+    ).length;
+
+    if (failures > 0) {
+      setMessage(
+        "Paused active transfers with " +
+          failures +
+          " provider error(s).",
+      );
+    }
+  }
+
   const visibleTransfers = useMemo(() => {
     if (transferFilter === "all") return transfers;
 
@@ -4284,6 +4328,27 @@ export function ResourceHubView({ onOpenBook }: Props) {
             </small>
           </header>
 
+          <div className="download-manager-summary">
+            <span>
+              <strong>{transferSummary.running}</strong>
+              Running
+            </span>
+            <span>
+              <strong>{transferSummary.queued}</strong>
+              Queued
+            </span>
+            <span>
+              <strong>{transferSummary.paused}</strong>
+              Paused
+            </span>
+            <span>
+              <strong>
+                {formatBytes(transferSummary.totalRate)}/s
+              </strong>
+              Total rate
+            </span>
+          </div>
+
           <div className="download-manager-toolbar">
             <div className="resource-tabs compact-tabs">
               {(["active", "completed", "failed", "all"] as const).map(
@@ -4321,6 +4386,14 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   )}
                 </select>
               </label>
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={transferSummary.running === 0}
+                onClick={() => void pauseAllActiveTransfers()}
+              >
+                Pause all
+              </button>
               <button
                 type="button"
                 className="ghost-button"
