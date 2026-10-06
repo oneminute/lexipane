@@ -2462,6 +2462,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       const ed2k = job.providerId === "ed2k";
       const webdav = job.providerId === "webdav";
       const s3 = job.providerId === "s3";
+      const sftp = job.providerId === "sftp";
 
       if (action === "pause") {
         if (torrent) {
@@ -2474,6 +2475,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
           await pauseWebDavDownload(job.id);
         } else if (s3) {
           await pauseS3Download(job.id);
+        } else if (sftp) {
+          await pauseSftpDownload(job.id);
         } else {
           await pauseHttpDownload(job.id);
         }
@@ -2488,6 +2491,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
           await cancelWebDavDownload(job.id);
         } else if (s3) {
           await cancelS3Download(job.id);
+        } else if (sftp) {
+          await cancelSftpDownload(job.id);
         } else {
           await cancelHttpDownload(job.id);
         }
@@ -2502,6 +2507,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
           await discardWebDavTransfer(job);
         } else if (s3) {
           await discardS3Transfer(job);
+        } else if (sftp) {
+          await discardSftpTransfer(job);
         } else {
           await discardHttpTransfer(job);
         }
@@ -2516,6 +2523,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
         await resumeWebDavTransfer(job);
       } else if (s3) {
         await resumeS3Transfer(job);
+      } else if (sftp) {
+        await resumeSftpTransfer(job);
       } else {
         await resumeHttpTransfer(job);
       }
@@ -2681,6 +2690,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                                       cloudBusy ||
                                       webDavBusy ||
                                       s3Busy ||
+                                      sftpBusy ||
                                       ed2kBusy
                                     }
                                     onClick={() =>
@@ -4061,6 +4071,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         job.providerId === "onedrive" ||
                         job.providerId === "webdav" ||
                         job.providerId === "s3" ||
+                        job.providerId === "sftp" ||
                         job.providerId === "ed2k") && (
                       <>
                         <button
@@ -4093,6 +4104,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         job.providerId === "onedrive" ||
                         job.providerId === "webdav" ||
                         job.providerId === "s3" ||
+                        job.providerId === "sftp" ||
                         job.providerId === "ed2k") && (
                         <>
                           <button
