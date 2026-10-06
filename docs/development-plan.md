@@ -86,7 +86,7 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **DB-SCHEMA-REPAIR — Repair v12/v13 sentence AI schema upgrade ordering**
 
-Status: **VERIFYING**
+Status: **IN_PROGRESS**
 
 Implementation summary:
 
@@ -97,9 +97,15 @@ Implementation summary:
 
 Validation / evidence:
 
-- frontend typecheck and tests pass in the current CI runs; frontend production build has also passed on the warning-cleanup predecessor commit;
-- Linux and Windows Rust checks are running on the final warning-cleanup commit;
-- one local Windows/Tauri smoke test against the user's existing database is still required to confirm the reported `no such column: book_id` failure is repaired in place.
+- the original `no such column: book_id` error is no longer reported on the user's existing database;
+- the local Windows smoke test now exposes a second regression: SQLite `code: 5 database is locked` during Ollama model discovery/Test LLM;
+- current investigation focuses on manual multi-call `BEGIN IMMEDIATE` transactions executed through the plugin-sql/sqlx connection pool.
+
+Current scope:
+
+- remove connection-pool-unsafe manual transaction sequences from frontend SQLite access;
+- keep schema repair and sentence-history writes safe and idempotent without leaving a pooled connection holding a write lock;
+- add SQLite busy timeout/WAL initialization where appropriate and validate startup + AI settings again.
 
 **BUILD-WINDOWS-OPENSSL — Remove unintended Perl/OpenSSL build dependency on Windows**
 
