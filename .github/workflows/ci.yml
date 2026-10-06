@@ -47,6 +47,17 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Create CI-only Windows icon when repository icon is absent
+        shell: pwsh
+        run: |
+          $icon = "src-tauri/icons/icon.ico"
+          if (-not (Test-Path $icon)) {
+            New-Item -ItemType Directory -Force (Split-Path $icon) | Out-Null
+            $bytes = [Convert]::FromBase64String(
+              "AAABAAEAAQEAAAEAIAAwAAAAFgAAACgAAAABAAAAAgAAAAEAIAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAD/////AAAAAA=="
+            )
+            [IO.File]::WriteAllBytes($icon, $bytes)
+          }
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo check --manifest-path src-tauri/Cargo.toml
       - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
