@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelHttpDownload,
   discardHttpTransfer,
@@ -391,6 +391,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<string[]>([]);
   const [resourceSearchSourceCount, setResourceSearchSourceCount] =
     useState(0);
+  const resourceSearchTokenRef = useRef(0);
 
   const [catalogName, setCatalogName] = useState("");
   const [catalogUrl, setCatalogUrl] = useState("");
@@ -688,6 +689,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
   async function runFederatedSearch() {
     if (!resourceQuery.trim()) return;
 
+    const requestToken = ++resourceSearchTokenRef.current;
     setResourceSearchBusy(true);
     setResourceSearchErrors([]);
     setMessage("");
@@ -702,18 +704,33 @@ export function ResourceHubView({ onOpenBook }: Props) {
         s3Accounts,
         sftpAccounts,
       );
+
+      if (resourceSearchTokenRef.current !== requestToken) return;
+
       setResourceSearchResults(response.results);
       setResourceSearchErrors(response.errors);
       setResourceSearchSourceCount(response.searchedSources);
     } catch (error) {
+      if (resourceSearchTokenRef.current !== requestToken) return;
+
       setMessage(
         error instanceof Error
           ? error.message
           : "Federated resource search failed.",
       );
     } finally {
-      setResourceSearchBusy(false);
+      if (resourceSearchTokenRef.current === requestToken) {
+        setResourceSearchBusy(false);
+      }
     }
+  }
+
+  function cancelFederatedSearch() {
+    resourceSearchTokenRef.current += 1;
+    setResourceSearchBusy(false);
+    setMessage(
+      "Search canceled. Any provider requests already in flight will be ignored when they finish.",
+    );
   }
 
   function alternativeAsResult(
@@ -2599,8 +2616,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 <h2>Search all connected reading sources</h2>
               </div>
               <small>
-                Searches saved OPDS catalogs, connected cloud accounts, and
-                local Resource history in one pass.
+                Searches the local Library, public/open catalogs, saved OPDS
+                and torrent catalogs, cloud accounts, WebDAV, S3, SFTP, and
+                configured ED2K sources in one pass.
               </small>
             </header>
 
@@ -2627,6 +2645,15 @@ export function ResourceHubView({ onOpenBook }: Props) {
               >
                 {resourceSearchBusy ? "Searching…" : "Search all"}
               </button>
+              {resourceSearchBusy && (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={cancelFederatedSearch}
+                >
+                  Cancel
+                </button>
+              )}
             </div>
 
             {(resourceSearchResults.length > 0 ||
@@ -2733,6 +2760,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
                           networkBusy ||
                           cloudBusy ||
                           webDavBusy ||
+                          s3Busy ||
+                          sftpBusy ||
                           ed2kBusy
                         }
                         onClick={() =>
