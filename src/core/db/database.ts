@@ -17,6 +17,10 @@ interface TableRow {
   name: string;
 }
 
+interface ColumnRow {
+  name: string;
+}
+
 const APP_META_STATEMENT =
   "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)";
 
@@ -33,6 +37,49 @@ async function hasExistingLibrarySchema(db: Database): Promise<boolean> {
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'books' LIMIT 1",
   );
   return rows.length > 0;
+}
+
+async function hasSentenceAnalysisTable(db: Database): Promise<boolean> {
+  const rows = await db.select<TableRow[]>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' " +
+      "AND name = 'sentence_ai_versions' LIMIT 1",
+  );
+  return rows.length > 0;
+}
+
+async function repairKnownSchemaDrift(db: Database): Promise<void> {
+  if (!(await hasSentenceAnalysisTable(db))) {
+    return;
+  }
+
+  const columns = await db.select<ColumnRow[]>(
+    "PRAGMA table_info(sentence_ai_versions)",
+  );
+  const hasBookId = columns.some((column) => column.name === "book_id");
+
+  if (hasBookId) {
+    return;
+  }
+
+  // Some development databases were stamped at schema v13 while their
+  // sentence_ai_versions table still had the v12 shape. Repair that state
+  // in place rather than requiring users to delete their local database.
+  await db.execute("BEGIN IMMEDIATE");
+  try {
+    await db.execute(
+      "ALTER TABLE sentence_ai_versions ADD COLUMN book_id TEXT",
+    );
+    await db.execute(
+      "UPDATE sentence_ai_versions SET book_id = " +
+        "(SELECT id FROM books " +
+        "WHERE books.file_path = sentence_ai_versions.book_path LIMIT 1) " +
+        "WHERE book_id IS NULL",
+    );
+    await db.execute("COMMIT");
+  } catch (error) {
+    await db.execute("ROLLBACK");
+    throw error;
+  }
 }
 
 async function writeSchemaVersion(
@@ -110,13 +157,23 @@ export async function initializeDatabase(): Promise<Database | null> {
     } else {
       const currentVersion = await readSchemaVersion(db);
 
-      // CREATE IF NOT EXISTS also ensures tables introduced outside the
-      // earliest schema exist before incremental migrations are applied.
+      // Existing tables must be migrated before latest-version indexes are
+      // created. In particular, schema v13 adds sentence_ai_versions.book_id;
+      // creating the latest book_id index first prevents that migration from
+      // ever running on a v12 database.
+      await runMigrations(db, currentVersion);
+
+      // Repair known development-schema drift where app_meta was already
+      // stamped at v13 but sentence_ai_versions still retained its v12 shape.
+      await repairKnownSchemaDrift(db);
+
+      // Once migrations/repairs have brought old tables to their latest shape,
+      // CREATE IF NOT EXISTS safely fills in any tables or indexes that are
+      // absent from otherwise valid databases.
       for (const statement of schemaStatements) {
         await db.execute(statement);
       }
 
-      await runMigrations(db, currentVersion);
       await writeSchemaVersion(db, SCHEMA_VERSION);
     }
 
