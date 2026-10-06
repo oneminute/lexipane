@@ -84,35 +84,43 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 ### Active product priority
 
-**RESOURCE-006 — ED2K search zero-config Windows experience**
+**RESOURCE-006N — Native ED2K search engine**
 
-Status: **VERIFYING**
+Status: **IN_PROGRESS**
 
-User priority: ED2K resource search is currently the highest-priority Resource Hub function.
+User decision: replace aMule as the default ED2K backend with a LexiPane-native Rust implementation. The existing aMule adapter remains an optional fallback/compatibility backend.
 
-Implementation summary:
+Current implementation batch:
 
-- ED2K/Kad search remains the first section in Resource Hub Browse and now exposes one-click **Auto setup ED2K** when a local aMule installation is detected;
-- native detection covers PATH plus official Windows aMule 3.x all-users/per-user install locations and discovers `amulecmd`, `amuled`, `%APPDATA%\\aMule\\amule.conf`, and Incoming;
-- automatic setup preserves unrelated INI settings, creates a one-time backup, enables ED2K + Kad + autoconnect/reconnect, configures the current server/Kad bootstrap URLs, prepares `server.met` / `nodes.dat` when absent, and creates the Incoming directory;
-- External Connections is configured **loopback-only** on `127.0.0.1:4712`; a random control credential is generated, only its MD5 form is written to aMule configuration, and the plaintext credential is stored through LexiPane's OS secure credential store;
-- LexiPane attempts to start the local `amuled` core and requests connection to enabled ED2K/Kad networks; if an already-running core still has old EC settings, the UI reports that one aMule restart is required;
-- manual executable/host/port/password/Incoming fields remain available as an advanced path for remote/custom cores;
-- ED2K search now requests network connection before searching and waits/polls for results rather than swallowing a failed Search command;
-- search-result downloads now execute `Results` and `Download <index>` in the same `amulecmd` session, fixing the CLI result-index lifetime issue;
-- native Reader-format recognition is aligned with PDF/EPUB/MOBI/AZW/AZW3.
+- add a native ED2K protocol codec (TCP frame + tags + search-result decoding);
+- fetch/cache and parse server.met;
+- connect directly to ED2K servers over TCP;
+- send a minimal ED2K login and keyword OP_SEARCHREQUEST;
+- parse OP_SEARCHRESULT into filename, size, ED2K hash, source count and server metadata;
+- query several servers with bounded timeouts, deduplicate by ED2K hash, and sort useful Reader formats first/by availability;
+- expose native search through Tauri and make it the default Resource Hub ED2K search path;
+- keep aMule search available only as fallback while native download/Kad are not yet implemented.
 
-Validation / evidence:
+Out of scope for this small batch:
 
-- frontend typecheck, tests, and production build pass on the final UI commit's CI run 37411497463;
-- Linux and Windows Rust `cargo check` / library tests are still running on the final commit after the new native dependency and ED2K commands;
-- local Windows validation must confirm aMule detection, one-click setup, ED2K/Kad connection, a real search result list, and one result entering the Download Manager.
+- Kad routing/search;
+- peer/source discovery and native file transfer;
+- LowID/HighID optimization, upload queue, source exchange, part/block downloading;
+- removing the existing aMule fallback.
 
-Known limitations / next slice:
+Protocol reference basis:
 
-- if aMule is not installed, this slice links to the official upstream release rather than silently installing a third-party executable;
-- the next small ED2K slice can add an explicit **Install official aMule** bootstrap action so a fresh Windows machine can go from LexiPane to searchable ED2K with one user-approved install action;
-- LexiPane does not add piracy-specific catalogs or indexes; discovery is performed by the user's ED2K/Kad client.
+- current aMule/eMule ED2K opcodes and packet layouts;
+- server.met v0xE0/MET_HEADER layout used by current aMule;
+- current ED2K file tags (filename, filesize, filesize-hi, sources).
+
+Validation target:
+
+- unit tests for frame/tag/server.met/result parsing;
+- frontend typecheck/tests/build;
+- Linux + Windows Rust check/tests;
+- local Windows live-search smoke test remains required before COMPLETE.
+
 
 ### Active regression hotfix
 
@@ -264,15 +272,11 @@ Network-resource batch priorities:
 
 ## Next selected task
 
-**RESOURCE-006 — ED2K search zero-config Windows experience**
+**RESOURCE-006N — Native ED2K Server Search**
 
-Status: **VERIFYING**
+Status: **IN_PROGRESS**
 
-Current implementation is ready for Windows/aMule smoke testing. If aMule is absent, the next selected ED2K slice is an explicit user-approved installer/bootstrap for the official upstream Windows package.
-
-**BUILD-WINDOWS-OPENSSL — Windows startup dependency hotfix**
-
-Status: **VERIFYING**
+This supersedes the aMule-first setup flow. After a live native server search is verified, continue with native Global Search, then Kad, then native source/download transport.
 
 After this build regression is fixed, resume:
 
