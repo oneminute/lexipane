@@ -69,6 +69,23 @@ import {
   type S3Entry,
 } from "../../core/resources/s3Transport";
 import {
+  browseSftpAccount,
+  cancelSftpDownload,
+  connectSftpAccount,
+  disconnectSftpAccount,
+  discardSftpTransfer,
+  listSftpAccounts,
+  pauseSftpDownload,
+  resumeSftpTransfer,
+  searchSftpAccount,
+  startSftpEntryAcquisition,
+  type ConnectedSftpAccount,
+} from "../../core/resources/sftpAccounts";
+import {
+  sftpEntryIsBook,
+  type SftpEntry,
+} from "../../core/resources/sftpTransport";
+import {
   cancelTorrentDownload,
   discardTorrentTransfer,
   inspectTorrent,
@@ -441,6 +458,28 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [s3AccessKey, setS3AccessKey] = useState("");
   const [s3SecretKey, setS3SecretKey] = useState("");
   const [s3SessionToken, setS3SessionToken] = useState("");
+  const [sftpAccounts, setSftpAccounts] =
+    useState<ConnectedSftpAccount[]>([]);
+  const [activeSftpAccountId, setActiveSftpAccountId] =
+    useState<string | null>(null);
+  const [sftpEntries, setSftpEntries] = useState<SftpEntry[]>([]);
+  const [sftpPath, setSftpPath] = useState<string | undefined>(
+    undefined,
+  );
+  const [sftpFolderStack, setSftpFolderStack] = useState<
+    Array<{ label: string; path?: string }>
+  >([{ label: "Root" }]);
+  const [sftpQuery, setSftpQuery] = useState("");
+  const [sftpBusy, setSftpBusy] = useState(false);
+  const [sftpDisplayName, setSftpDisplayName] = useState("");
+  const [sftpHost, setSftpHost] = useState("");
+  const [sftpPort, setSftpPort] = useState("22");
+  const [sftpUsername, setSftpUsername] = useState("");
+  const [sftpPassword, setSftpPassword] = useState("");
+  const [sftpPrivateKeyPath, setSftpPrivateKeyPath] = useState("");
+  const [sftpPrivateKeyPassphrase, setSftpPrivateKeyPassphrase] =
+    useState("");
+  const [sftpRootPath, setSftpRootPath] = useState("/");
   const [ed2kEngines, setEd2kEngines] =
     useState<Ed2kEngineAccount[]>([]);
   const [activeEd2kEngineId, setActiveEd2kEngineId] =
@@ -535,6 +574,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       connectedEd2kEngines,
       connectedWebDavAccounts,
       connectedS3Accounts,
+      connectedSftpAccounts,
       configuredConcurrency,
     ] = await Promise.all([
       getResourceNativeCapabilities(),
@@ -546,6 +586,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       listEd2kEngines(),
       listWebDavAccounts(),
       listS3Accounts(),
+      listSftpAccounts(),
       loadResourceTransferConcurrency(),
     ]);
 
@@ -561,6 +602,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setCloudAccounts(connectedCloudAccounts);
     setWebDavAccounts(connectedWebDavAccounts);
     setS3Accounts(connectedS3Accounts);
+    setSftpAccounts(connectedSftpAccounts);
     setTransferConcurrency(configuredConcurrency);
     setEd2kEngines(connectedEd2kEngines);
     setActiveEd2kEngineId((current) =>
@@ -586,6 +628,12 @@ export function ResourceHubView({ onOpenBook }: Props) {
       connectedS3Accounts.some((account) => account.id === current)
         ? current
         : connectedS3Accounts[0]?.id ?? null,
+    );
+    setActiveSftpAccountId((current) =>
+      current &&
+      connectedSftpAccounts.some((account) => account.id === current)
+        ? current
+        : connectedSftpAccounts[0]?.id ?? null,
     );
   }
 
@@ -652,6 +700,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
         ed2kEngines,
         webDavAccounts,
         s3Accounts,
+        sftpAccounts,
       );
       setResourceSearchResults(response.results);
       setResourceSearchErrors(response.errors);
@@ -683,6 +732,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       cloud: source.cloud,
       webdav: source.webdav,
       s3: source.s3,
+      sftp: source.sftp,
       arxiv: source.arxiv,
       internetArchive: source.internetArchive,
       ed2k: source.ed2k,
