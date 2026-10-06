@@ -13,6 +13,27 @@ export interface Ed2kStatusResult {
   output: string;
 }
 
+export interface Ed2kEnvironment {
+  installed: boolean;
+  executable?: string;
+  coreExecutable?: string;
+  configPath?: string;
+  configExists: boolean;
+  incomingDir?: string;
+  host: string;
+  port: number;
+  externalConnectionsEnabled: boolean;
+}
+
+export interface Ed2kAutoConfigureResult {
+  environment: Ed2kEnvironment;
+  available: boolean;
+  started: boolean;
+  restartRequired: boolean;
+  status: string;
+  warnings: string[];
+}
+
 export interface Ed2kLinkMetadata {
   name: string;
   size: number;
@@ -47,6 +68,20 @@ function requireDesktop() {
   if (!isTauri()) {
     throw new Error("ED2K sidecar control requires the desktop application.");
   }
+}
+
+export async function detectEd2kEnvironment(): Promise<Ed2kEnvironment> {
+  requireDesktop();
+  return invoke<Ed2kEnvironment>("resource_ed2k_detect");
+}
+
+export async function autoConfigureEd2k(
+  password: string,
+): Promise<Ed2kAutoConfigureResult> {
+  requireDesktop();
+  return invoke<Ed2kAutoConfigureResult>("resource_ed2k_auto_configure", {
+    password,
+  });
 }
 
 export async function getEd2kStatus(
