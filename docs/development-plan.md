@@ -86,7 +86,7 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **DB-SCHEMA-REPAIR — Repair v12/v13 sentence AI schema upgrade ordering**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 Implementation summary:
 
@@ -101,11 +101,23 @@ Validation / evidence:
 - the local Windows smoke test now exposes a second regression: SQLite `code: 5 database is locked` during Ollama model discovery/Test LLM;
 - current investigation focuses on manual multi-call `BEGIN IMMEDIATE` transactions executed through the plugin-sql/sqlx connection pool.
 
-Current scope:
+Implementation summary:
 
-- remove connection-pool-unsafe manual transaction sequences from frontend SQLite access;
-- keep schema repair and sentence-history writes safe and idempotent without leaving a pooled connection holding a write lock;
-- add SQLite busy timeout/WAL initialization where appropriate and validate startup + AI settings again.
+- removed every frontend `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK` sequence from database migrations, sentence AI history, and Resource Hub bundle persistence;
+- migrations now autocommit statement-by-statement, tolerate an already-applied `ALTER TABLE ... ADD COLUMN`, and stamp the schema version only after all migration statements complete;
+- schema drift repair always finishes the `book_id` backfill, including after an interrupted earlier launch;
+- sentence AI version allocation and insertion now happen in one SQLite `INSERT ... SELECT COALESCE(MAX(version_no), 0) + 1` statement;
+- Resource Hub bundle writes remain retry-safe through idempotent upserts without holding a cross-call transaction lock.
+
+Validation / evidence:
+
+- final CI run 37409103606 has passed frontend typecheck, tests, and production build;
+- Linux and Windows Rust checks are still running on that final commit;
+- local Windows/Tauri verification is required after fully closing the pre-fix LexiPane process so its previously acquired SQLite lock is released.
+
+Known limitation:
+
+- if an old LexiPane process is still running with the pre-fix code, its OS-level SQLite lock persists until that process exits; the new code cannot release a lock owned by an already-running old process.
 
 **BUILD-WINDOWS-OPENSSL — Remove unintended Perl/OpenSSL build dependency on Windows**
 
