@@ -274,72 +274,69 @@ async function appendSentenceAnalysisVersion(
     throw new Error("Database is unavailable for sentence AI history.");
   }
 
-  await db.execute("BEGIN IMMEDIATE");
+  const id = createId();
 
-  try {
-    const versionRows = await db.select<Array<{ next_version: number }>>(
-      "SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version " +
-        "FROM sentence_ai_versions " +
-        "WHERE ((book_id IS NOT NULL AND book_id = $1) OR " +
-        "(book_id IS NULL AND book_path = $2)) " +
-        "AND sentence_key = $3 AND mode = 'grammar'",
-      [bookId, request.bookPath, request.sentenceKey],
-    );
-    const versionNo = Math.max(1, versionRows[0]?.next_version ?? 1);
-    const id = createId();
-
-    await db.execute(
-      "INSERT INTO sentence_ai_versions " +
-        "(id, book_id, book_path, sentence_key, sentence_text, context_hash, mode, " +
-        "version_no, model_id, source, analysis_json, text, raw_response, " +
-        "request_json, imported_legacy_cache, created_at) " +
-        "VALUES ($1,$2,$3,$4,$5,$6,'grammar',$7,$8,$9,$10,$11,$12,$13,$14,$15)",
-      [
-        id,
-        bookId,
-        request.bookPath,
-        request.sentenceKey,
-        request.selection.text,
-        contextHash,
-        versionNo,
-        result.model,
-        result.source ?? null,
-        JSON.stringify(result.analysis),
-        result.text,
-        result.rawResponse ?? null,
-        JSON.stringify(result.requestDebug),
-        result.cached ? 1 : 0,
-        createdAt,
-      ],
-    );
-
-    await db.execute("COMMIT");
-    versionCache.delete(
-      versionCacheKey(request.bookPath, request.sentenceKey),
-    );
-
-    return {
+  // Keep version allocation and insertion in one SQLite statement. The
+  // plugin-sql API is backed by a connection pool, so a frontend
+  // BEGIN/SELECT/INSERT/COMMIT sequence is not guaranteed to stay on one
+  // connection and can leave the database locked.
+  await db.execute(
+    "INSERT INTO sentence_ai_versions " +
+      "(id, book_id, book_path, sentence_key, sentence_text, context_hash, mode, " +
+      "version_no, model_id, source, analysis_json, text, raw_response, " +
+      "request_json, imported_legacy_cache, created_at) " +
+      "SELECT $1,$2,$3,$4,$5,$6,'grammar'," +
+      "COALESCE(MAX(version_no), 0) + 1,$7,$8,$9,$10,$11,$12,$13,$14 " +
+      "FROM sentence_ai_versions " +
+      "WHERE ((book_id IS NOT NULL AND book_id = $2) OR " +
+      "(book_id IS NULL AND book_path = $3)) " +
+      "AND sentence_key = $4 AND mode = 'grammar'",
+    [
       id,
-      bookPath: request.bookPath,
-      bookId: bookId ?? undefined,
-      sentenceKey: request.sentenceKey,
-      sentenceText: request.selection.text,
+      bookId,
+      request.bookPath,
+      request.sentenceKey,
+      request.selection.text,
       contextHash,
-      mode: "grammar",
-      versionNo,
-      model: result.model,
-      source: result.source,
-      analysis: result.analysis,
-      text: result.text,
-      rawResponse: result.rawResponse,
-      requestDebug: result.requestDebug,
-      importedLegacyCache: Boolean(result.cached),
+      result.model,
+      result.source ?? null,
+      JSON.stringify(result.analysis),
+      result.text,
+      result.rawResponse ?? null,
+      JSON.stringify(result.requestDebug),
+      result.cached ? 1 : 0,
       createdAt,
-    };
-  } catch (error) {
-    await db.execute("ROLLBACK");
-    throw error;
-  }
+    ],
+  );
+
+  const insertedRows = await db.select<Array<{ version_no: number }>>(
+    "SELECT version_no FROM sentence_ai_versions WHERE id = $1 LIMIT 1",
+    [id],
+  );
+  const versionNo = Math.max(1, insertedRows[0]?.version_no ?? 1);
+
+  versionCache.delete(
+    versionCacheKey(request.bookPath, request.sentenceKey),
+  );
+
+  return {
+    id,
+    bookPath: request.bookPath,
+    bookId: bookId ?? undefined,
+    sentenceKey: request.sentenceKey,
+    sentenceText: request.selection.text,
+    contextHash,
+    mode: "grammar",
+    versionNo,
+    model: result.model,
+    source: result.source,
+    analysis: result.analysis,
+    text: result.text,
+    rawResponse: result.rawResponse,
+    requestDebug: result.requestDebug,
+    importedLegacyCache: Boolean(result.cached),
+    createdAt,
+  };
 }
 
 async function generate(
