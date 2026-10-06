@@ -131,6 +131,7 @@ import {
 import {
   federatedResourceSearch,
   type FederatedResourceResult,
+  type FederatedSourceStatus,
 } from "../../core/resources/federatedSearch";
 import {
   RESOURCE_TRANSFER_UPDATED_EVENT,
@@ -391,6 +392,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<string[]>([]);
   const [resourceSearchSourceCount, setResourceSearchSourceCount] =
     useState(0);
+  const [resourceSearchSources, setResourceSearchSources] =
+    useState<FederatedSourceStatus[]>([]);
   const resourceSearchTokenRef = useRef(0);
 
   const [catalogName, setCatalogName] = useState("");
@@ -692,6 +695,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
     const requestToken = ++resourceSearchTokenRef.current;
     setResourceSearchBusy(true);
     setResourceSearchErrors([]);
+    setResourceSearchSources([]);
     setMessage("");
 
     try {
@@ -710,6 +714,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       setResourceSearchResults(response.results);
       setResourceSearchErrors(response.errors);
       setResourceSearchSourceCount(response.searchedSources);
+      setResourceSearchSources(response.sources);
     } catch (error) {
       if (resourceSearchTokenRef.current !== requestToken) return;
 
@@ -2669,6 +2674,30 @@ export function ResourceHubView({ onOpenBook }: Props) {
                     {resourceSearchSourceCount === 1 ? "" : "s"} queried
                   </small>
                 </div>
+
+                {resourceSearchSources.length > 0 && (
+                  <details className="federated-source-status">
+                    <summary>Source health & latency</summary>
+                    <div>
+                      {resourceSearchSources.map((source) => (
+                        <span
+                          key={source.id}
+                          className={"status-" + source.status}
+                          title={source.error}
+                        >
+                          <strong>{source.label}</strong>
+                          {" · "}
+                          {source.status === "ok" ? "OK" : "Error"}
+                          {" · "}
+                          {source.durationMs} ms
+                          {" · "}
+                          {source.resultCount} result
+                          {source.resultCount === 1 ? "" : "s"}
+                        </span>
+                      ))}
+                    </div>
+                  </details>
+                )}
 
                 {resourceSearchResults.map((result) => (
                   <article key={result.key}>
