@@ -848,6 +848,7 @@ async fn run_cloud_download(
 pub async fn resource_cloud_start_download(
     app: AppHandle,
     manager: State<'_, CloudTransferManager>,
+    limiter: State<'_, crate::resources::ResourceTransferLimiter>,
     job_id: String,
     provider: String,
     access_token: String,
@@ -857,12 +858,14 @@ pub async fn resource_cloud_start_download(
 ) -> Result<bool, String> {
     let provider = provider_id(&provider)?.to_string();
     let manager = manager.inner().clone();
+    let limiter = limiter.inner().clone();
     let control = manager.register(&job_id).await?;
     let spawned_manager = manager.clone();
     let spawned_app = app.clone();
     let spawned_job = job_id.clone();
 
     tauri::async_runtime::spawn(async move {
+        let _permit = limiter.acquire().await;
         if let Err(error) = run_cloud_download(
             spawned_app.clone(),
             spawned_manager.clone(),
