@@ -86,15 +86,20 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **DB-SCHEMA-REPAIR — Repair v12/v13 sentence AI schema upgrade ordering**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Scope:
+Implementation summary:
 
-- migrate existing SQLite tables before creating latest-version indexes that may reference newly added columns;
-- repair the known `sentence_ai_versions.book_id` schema drift without deleting user data;
-- keep startup idempotent for both already-upgraded databases and older v12 databases;
-- add regression coverage for migration ordering where practical;
-- clean the two Rust warnings currently visible during Windows startup.
+- existing databases now run versioned migrations before latest-schema indexes are created;
+- a targeted idempotent repair detects a v12-shaped `sentence_ai_versions` table that was already stamped v13, adds `book_id`, and backfills it from `books.file_path` without deleting user data;
+- latest schema tables/indexes are applied only after migrations and repair complete;
+- removed the unused S3 initial assignment and unused torrent runtime `file_index` field that produced the two Windows compiler warnings.
+
+Validation / evidence:
+
+- frontend typecheck and tests pass in the current CI runs; frontend production build has also passed on the warning-cleanup predecessor commit;
+- Linux and Windows Rust checks are running on the final warning-cleanup commit;
+- one local Windows/Tauri smoke test against the user's existing database is still required to confirm the reported `no such column: book_id` failure is repaired in place.
 
 **BUILD-WINDOWS-OPENSSL — Remove unintended Perl/OpenSSL build dependency on Windows**
 
