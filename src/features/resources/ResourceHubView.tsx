@@ -152,10 +152,13 @@ import {
   startEd2kSearchResultAcquisition,
   type Ed2kEngineAccount,
 } from "../../core/resources/ed2kAdapter";
-import type {
-  Ed2kEnvironment,
-  Ed2kLinkMetadata,
-  Ed2kSearchResult,
+import {
+  searchNativeEd2k,
+  type Ed2kEnvironment,
+  type Ed2kLinkMetadata,
+  type Ed2kSearchResult,
+  type NativeEd2kSearchResponse,
+  type NativeEd2kSearchResult,
 } from "../../core/resources/ed2kTransport";
 import type {
   ResourceInputClassification,
@@ -504,7 +507,12 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [ed2kPassword, setEd2kPassword] = useState("");
   const [ed2kIncomingDir, setEd2kIncomingDir] = useState("");
   const [ed2kBusy, setEd2kBusy] = useState(false);
+  const [nativeEd2kBusy, setNativeEd2kBusy] = useState(false);
   const [ed2kQuery, setEd2kQuery] = useState("");
+  const [nativeEd2kResponse, setNativeEd2kResponse] =
+    useState<NativeEd2kSearchResponse | null>(null);
+  const [nativeEd2kResults, setNativeEd2kResults] =
+    useState<NativeEd2kSearchResult[]>([]);
   const [ed2kSearchType, setEd2kSearchType] =
     useState<"global" | "kad" | "local">("global");
   const [ed2kResults, setEd2kResults] =
@@ -2530,6 +2538,88 @@ export function ResourceHubView({ onOpenBook }: Props) {
     }
   }
 
+  async function runNativeEd2kSearch() {
+    if (!ed2kQuery.trim()) return;
+
+    setNativeEd2kBusy(true);
+    setMessage("");
+    setNativeEd2kResponse(null);
+
+    try {
+      const response = await searchNativeEd2k(ed2kQuery, 6);
+      setNativeEd2kResponse(response);
+      setNativeEd2kResults(response.results);
+
+      const partial =
+        response.errors.length > 0
+          ? " " + response.errors.length + " server(s) failed or timed out."
+          : "";
+      setMessage(
+        response.results.length +
+          " native ED2K result" +
+          (response.results.length === 1 ? "" : "s") +
+          " returned from " +
+          response.serversSucceeded +
+          "/" +
+          response.serversQueried +
+          " server(s)." +
+          partial,
+      );
+    } catch (error) {
+      setNativeEd2kResults([]);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Native ED2K search failed.",
+      );
+    } finally {
+      setNativeEd2kBusy(false);
+    }
+  }
+
+  async function copyNativeEd2kLink(result: NativeEd2kSearchResult) {
+    try {
+      await navigator.clipboard.writeText(result.ed2kLink);
+      setMessage("ED2K link copied.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? "Unable to copy ED2K link: " + error.message
+          : "Unable to copy ED2K link.",
+      );
+    }
+  }
+
+  async function acquireNativeEd2kThroughFallback(
+    result: NativeEd2kSearchResult,
+  ) {
+    const engine = activeEd2kEngine();
+    if (!engine) {
+      await copyNativeEd2kLink(result);
+      return;
+    }
+
+    setEd2kBusy(true);
+    setMessage("");
+
+    try {
+      await startEd2kLinkAcquisition(engine, result.ed2kLink);
+      setMessage(
+        "Native search result passed to the configured aMule fallback for downloading.",
+      );
+      setTab("downloads");
+      await refreshResourceCore();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to pass the ED2K result to the download fallback.",
+      );
+    } finally {
+      setEd2kBusy(false);
+    }
+  }
+
   async function runEd2kSearch() {
     const engine = activeEd2kEngine();
     if (!engine || !ed2kQuery.trim()) return;
@@ -3363,181 +3453,225 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <section className="resource-section">
             <header>
               <div>
-                <span className="eyebrow">ED2K / Kad</span>
-                <h2>Search through aMule</h2>
+                <span className="eyebrow">Native ED2K · Phase 1</span>
+                <h2>Search ED2K directly from LexiPane</h2>
               </div>
               <small>
-                LexiPane controls your configured aMule/aMuled instance through
-                amulecmd and imports completed PDF/EPUB files from its Incoming
-                directory.
+                No aMule is required for search. LexiPane downloads and caches
+                server.met, connects directly to several ED2K servers, merges
+                duplicate hashes, and ranks Reader formats by availability.
               </small>
             </header>
 
-            {ed2kEngines.length === 0 ? (
-              <div className="resource-empty">
-                {ed2kEnvironment?.installed ? (
-                  <>
-                    <strong>aMule detected — ED2K can be configured automatically.</strong>
-                    <p>
-                      LexiPane found{" "}
-                      <code>{ed2kEnvironment.executable}</code>. Auto setup
-                      enables local-only External Connections on 127.0.0.1:4712,
-                      enables ED2K + Kad auto-connect, prepares bootstrap data,
-                      and uses{" "}
-                      <code>
-                        {ed2kEnvironment.incomingDir || "the default Incoming folder"}
-                      </code>.
-                    </p>
-                    <div className="resource-inline-actions">
-                      <button
-                        type="button"
-                        className="primary-button compact"
-                        disabled={ed2kBusy}
-                        onClick={() => void autoSetupEd2k()}
-                      >
-                        {ed2kBusy ? "Setting up…" : "Auto setup ED2K"}
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        disabled={ed2kBusy}
-                        onClick={() => setTab("accounts")}
-                      >
-                        Advanced manual setup
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <strong>aMule 3.x was not found.</strong>
-                    <p>
-                      Install the official Windows aMule package first. It
-                      includes amuled and amulecmd; LexiPane will configure the
-                      ED2K/Kad sidecar automatically after installation.
-                    </p>
-                    <div className="resource-inline-actions">
-                      <a
-                        className="primary-button compact"
-                        href="https://github.com/amule-project/amule/releases/latest"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Official aMule releases
-                      </a>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => setTab("accounts")}
-                      >
-                        Manual setup
-                      </button>
-                    </div>
-                  </>
-                )}
+            <div className="ed2k-search-row">
+              <input
+                value={ed2kQuery}
+                placeholder="Search ED2K servers…"
+                onChange={(event) => setEd2kQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void runNativeEd2kSearch();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="primary-button compact"
+                disabled={nativeEd2kBusy || !ed2kQuery.trim()}
+                onClick={() => void runNativeEd2kSearch()}
+              >
+                {nativeEd2kBusy ? "Searching servers…" : "Native search"}
+              </button>
+            </div>
+
+            {nativeEd2kResponse && (
+              <div className="resource-safety-note">
+                <strong>
+                  {nativeEd2kResponse.serversSucceeded}/
+                  {nativeEd2kResponse.serversQueried} servers responded
+                </strong>
+                <p>
+                  {nativeEd2kResponse.results.length} unique result(s) ·{" "}
+                  {nativeEd2kResponse.serversLoaded} servers loaded ·
+                  server.met: {nativeEd2kResponse.serverListSource}
+                  {nativeEd2kResponse.errors.length > 0
+                    ? " · " +
+                      nativeEd2kResponse.errors.length +
+                      " timeout/error(s)"
+                    : ""}
+                </p>
               </div>
-            ) : (
-              <>
-                <div className="cloud-account-switcher">
-                  {ed2kEngines.map((engine) => (
-                    <button
-                      key={engine.id}
-                      type="button"
-                      className={
-                        activeEd2kEngineId === engine.id
-                          ? "selected"
-                          : ""
-                      }
-                      onClick={() =>
-                        setActiveEd2kEngineId(engine.id)
-                      }
-                    >
-                      <strong>
-                        {engine.displayName || "aMule ED2K"}
-                      </strong>
+            )}
+
+            {nativeEd2kResults.length > 0 ? (
+              <div className="ed2k-results">
+                {nativeEd2kResults.map((result) => (
+                  <article key={result.hash + ":" + result.size}>
+                    <div>
+                      <span className="resource-kind-badge">
+                        {result.bookCandidate ? "BOOK" : "ED2K"}
+                      </span>
+                      <strong>{result.name}</strong>
                       <small>
-                        {String(engine.metadata.host ?? "127.0.0.1")}:
-                        {String(engine.metadata.port ?? 4712)}
+                        {formatBytes(result.size)}
+                        {" · "}
+                        {result.sources} source
+                        {result.sources === 1 ? "" : "s"}
+                        {result.completeSources > 0
+                          ? " · " +
+                            result.completeSources +
+                            " complete"
+                          : ""}
+                        {" · "}
+                        {result.servers.length} server
+                        {result.servers.length === 1 ? "" : "s"}
                       </small>
-                    </button>
-                  ))}
-                </div>
+                      <small>
+                        ED2K {result.hash.slice(0, 12)}…
+                      </small>
+                    </div>
 
-                <div className="ed2k-search-row">
-                  <select
-                    value={ed2kSearchType}
-                    disabled={ed2kBusy}
-                    onChange={(event) =>
-                      setEd2kSearchType(
-                        event.target.value as
-                          | "global"
-                          | "kad"
-                          | "local",
-                      )
-                    }
-                  >
-                    <option value="global">Global</option>
-                    <option value="kad">Kad</option>
-                    <option value="local">Local</option>
-                  </select>
-                  <input
-                    value={ed2kQuery}
-                    placeholder="Search the ED2K network…"
-                    onChange={(event) =>
-                      setEd2kQuery(event.target.value)
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        void runEd2kSearch();
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="primary-button compact"
-                    disabled={ed2kBusy || !ed2kQuery.trim()}
-                    onClick={() => void runEd2kSearch()}
-                  >
-                    {ed2kBusy ? "Searching…" : "Search"}
-                  </button>
-                </div>
-
-                {ed2kResults.length > 0 && (
-                  <div className="ed2k-results">
-                    {ed2kResults.map((result) => (
-                      <article key={result.index + ":" + result.name}>
-                        <div>
-                          <span className="resource-kind-badge">
-                            #{result.index}
-                          </span>
-                          <strong>{result.name}</strong>
-                          <small>
-                            {formatBytes(result.size)}
-                            {result.sources !== undefined
-                              ? " · " + result.sources + " source(s)"
-                              : ""}
-                          </small>
-                        </div>
-
+                    <div className="resource-inline-actions">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => void copyNativeEd2kLink(result)}
+                      >
+                        Copy ED2K link
+                      </button>
+                      {result.bookCandidate && ed2kEngines.length > 0 && (
                         <button
                           type="button"
                           className="primary-button compact"
-                          disabled={
-                            ed2kBusy || !result.bookCandidate
-                          }
+                          disabled={ed2kBusy}
                           onClick={() =>
-                            void acquireEd2kResult(result)
+                            void acquireNativeEd2kThroughFallback(result)
                           }
                         >
-                          {result.bookCandidate
-                            ? "Download"
-                            : "Not a book"}
+                          Download via aMule fallback
                         </button>
-                      </article>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              !nativeEd2kBusy &&
+              nativeEd2kResponse && (
+                <div className="resource-empty compact">
+                  <strong>No results returned by the responding servers.</strong>
+                  <p>
+                    Try fewer or broader English keywords. Native Global Search
+                    and Kad search are the next ED2K phases.
+                  </p>
+                </div>
+              )
+            )}
+
+            <details className="resource-safety-note">
+              <summary>aMule fallback / compatibility backend</summary>
+              {ed2kEngines.length === 0 ? (
+                <div>
+                  <p>
+                    Native ED2K search does not need aMule. Configure it only
+                    if you want to hand a search result to aMule while the
+                    native download engine is still under development.
+                  </p>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setTab("accounts")}
+                  >
+                    Configure optional aMule fallback
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="cloud-account-switcher">
+                    {ed2kEngines.map((engine) => (
+                      <button
+                        key={engine.id}
+                        type="button"
+                        className={
+                          activeEd2kEngineId === engine.id ? "selected" : ""
+                        }
+                        onClick={() => setActiveEd2kEngineId(engine.id)}
+                      >
+                        <strong>
+                          {engine.displayName || "aMule ED2K"}
+                        </strong>
+                        <small>
+                          {String(engine.metadata.host ?? "127.0.0.1")}:
+                          {String(engine.metadata.port ?? 4712)}
+                        </small>
+                      </button>
                     ))}
                   </div>
-                )}
-              </>
-            )}
+
+                  <div className="ed2k-search-row">
+                    <select
+                      value={ed2kSearchType}
+                      disabled={ed2kBusy}
+                      onChange={(event) =>
+                        setEd2kSearchType(
+                          event.target.value as
+                            | "global"
+                            | "kad"
+                            | "local",
+                        )
+                      }
+                    >
+                      <option value="global">Global</option>
+                      <option value="kad">Kad</option>
+                      <option value="local">Local</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={ed2kBusy || !ed2kQuery.trim()}
+                      onClick={() => void runEd2kSearch()}
+                    >
+                      {ed2kBusy ? "Searching…" : "Search with aMule"}
+                    </button>
+                  </div>
+
+                  {ed2kResults.length > 0 && (
+                    <div className="ed2k-results">
+                      {ed2kResults.map((result) => (
+                        <article key={result.index + ":" + result.name}>
+                          <div>
+                            <span className="resource-kind-badge">
+                              #{result.index}
+                            </span>
+                            <strong>{result.name}</strong>
+                            <small>
+                              {formatBytes(result.size)}
+                              {result.sources !== undefined
+                                ? " · " +
+                                  result.sources +
+                                  " source(s)"
+                                : ""}
+                            </small>
+                          </div>
+                          <button
+                            type="button"
+                            className="primary-button compact"
+                            disabled={
+                              ed2kBusy || !result.bookCandidate
+                            }
+                            onClick={() => void acquireEd2kResult(result)}
+                          >
+                            {result.bookCandidate
+                              ? "Download"
+                              : "Not a Reader format"}
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </details>
           </section>
 
           <section className="resource-section">
