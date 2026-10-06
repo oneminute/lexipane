@@ -411,7 +411,7 @@ async fn list_objects(
     let mut continuation: Option<String> = None;
     let mut entries = Vec::new();
     let normalized_query = query_filter.map(|value| value.to_lowercase());
-    let mut truncated = false;
+    let mut truncated: bool;
 
     loop {
         let mut query = vec![
