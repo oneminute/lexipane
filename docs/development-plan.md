@@ -75,12 +75,12 @@ Status: **IN_PROGRESS**
 
 This is a continuous implementation batch authorized to proceed without per-feature confirmation.
 
-Two workstreams are active:
+Two workstreams are tracked in this batch:
 
-1. **Resource Acquisition Platform** — finish RESOURCE-002 verification, then advance as far as practical through durable Download Manager behavior, cloud/shared-storage providers, BitTorrent, ED2K adapter work, extended providers, federated discovery, and source aggregation.
-2. **Reader AI persistence** — persist every successful sentence explanation as a versioned database record; load database results before invoking AI; support regenerate/new-version, previous/next version browsing, and background pre-generation of the next sentences.
+1. **Resource Acquisition Platform** — HTTP/OPDS is complete; cloud, BitTorrent, ED2K, WebDAV, S3, public/open discovery, and federated search are implemented on the shared pipeline. The current active work is Download Manager hardening followed by SFTP completion and final provider/search cleanup.
+2. **Reader AI persistence** — **COMPLETE** for the requested scope: every current-sentence explanation uses versioned SQLite history first, Regenerate appends immutable versions, Older/Newer browse saved versions without inference, configurable look-ahead pre-generation writes every successful result immediately, and history uses stable Library book identity when available.
 
-RESOURCE-002 remains **VERIFYING** until its final native test gate passes. Subsequent Resource milestones may be advanced within this batch when their dependencies are satisfied.
+RESOURCE-002 is **COMPLETE**. RESOURCE-004 is the current active Resource milestone.
 
 ## Most recently completed product work
 
@@ -141,56 +141,36 @@ Network-resource batch priorities:
 | --- | --- | --- | --- | --- |
 | 2026-10-04 | PLAN-001 — Establish authoritative development plan and Resource Hub roadmap | COMPLETE | Added `docs/development-plan.md`, root `AGENTS.md`, README workflow entry, and Resource Hub roadmap summary. Documentation-only change; no runtime validation required. | RESOURCE-001 |
 | 2026-10-04 | RESOURCE-001 — Resource Core | COMPLETE | Resource contracts, provider registry, resolver, identity, SQLite v10 persistence, draft jobs, native boundary, Resources UI shell. `npm run typecheck`, `npm test`, `npm run build`, and `cargo check --manifest-path src-tauri/Cargo.toml` all passed in CI run 37220879280. | RESOURCE-002 |
+| 2026-10-05 | RESOURCE-002 — HTTP + OPDS vertical slice | COMPLETE | Native resumable HTTP, OPDS browse/search/navigation, persistent jobs, verified ingestion, duplicate detection, Reader-format validation, restart recovery. Repeated full CI passes include frontend typecheck/tests/build plus Rust check/tests; latest pre-cleanup full main validation passed before LONGRUN continuation. | RESOURCE-004 |
+| 2026-10-05 | READER-AI-HISTORY — Versioned sentence explanations | COMPLETE | SQLite `sentence_ai_versions`, stable book-id association, DB-first lookup, Regenerate/new immutable version, Older/Newer browsing, configurable look-ahead pre-generation, PDF cross-page prefetch, and removal of retired automatic difficult-term code. | RESOURCE-004 |
 
 ## Next selected task
 
-**RESOURCE-002 — HTTP + OPDS vertical slice**
+**RESOURCE-004 — Download Manager hardening**
 
-Status: **VERIFYING**
+Status: **IN_PROGRESS**
 
-Implementation completed in this pass:
+Current implementation already includes:
 
-- native Rust HTTP/HTTPS transport using reqwest/rustls, independent of React component lifecycle;
-- explicit HTTP metadata probing with redirect checks, content type/length, filename, byte-range capability, and Content-Range totals;
-- HTTPS downgrade prevention and rejection of embedded credentials;
-- identity encoding for resumable binary transfers;
-- isolated per-job temporary directories, 2 GiB transfer ceiling, disk-space checks, path-safe filenames, pause/cancel/resume/retry, and temp discard;
-- restart recovery for queued/running jobs, complete partial files, and already-finalized-but-not-yet-persisted downloads;
-- streamed size limits for OPDS/text inspection;
-- PDF magic validation and EPUB container validation before Library ingestion;
-- global App-level transfer runtime with persistent job state/events, so downloads continue when leaving Resources;
-- SHA-256 duplicate detection, Resource Core content identity persistence, provenance history, and managed-Library ingestion;
-- safe restoration when a matching Library record exists but its file is missing;
-- OPDS 1 Atom and OPDS 2 JSON normalization;
-- persistent OPDS catalog list, browse, search/OpenSearch support, nested section navigation, covers, metadata, and normalized PDF/EPUB acquisition links;
-- OPDS acquisition routed through the same HTTP transfer and ingestion pipeline;
-- Resource Hub UI for Probe metadata, Download, OPDS Browse/Search, transfer progress, Pause/Resume/Retry/Cancel/Discard, and Open after completion;
-- SQLite schema v11 for persistent resource catalogs;
-- targeted OPDS, schema, Resource Core, and native HTTP validation tests.
+- persistent `TransferJob` records and native transfer events;
+- native transfers continuing outside the Resources React lifecycle;
+- pause/resume/cancel/retry for HTTP, cloud, WebDAV, S3, BitTorrent, and ED2K where supported by the engine;
+- restart recovery to paused/recoverable state;
+- provider-specific temporary storage cleanup;
+- unified verified ingestion into the existing managed Library;
+- SHA-256 duplicate detection and provenance recording;
+- Active / Completed / Failed / All Download Manager filters and finished-history cleanup;
+- transfer progress, byte counts, rate display, and Open after Library ingestion.
 
-Validation evidence:
+Current hardening scope:
 
-- an earlier full RESOURCE-002 code snapshot passed `npm run typecheck`, `npm test`, `npm run build`, and `cargo check --manifest-path src-tauri/Cargo.toml` in CI run 37223461687;
-- latest HEAD contains additional restart-safety, provenance, and HTTP-hardening changes and is currently undergoing the final CI pass.
+- finish queue/concurrency behavior and transfer summary/ETA presentation;
+- normalize cleanup/retry semantics across providers;
+- finish SFTP as the remaining started extended-storage vertical slice;
+- keep all existing transfer engines on the same ingestion/runtime path;
+- update milestone ledger to match the already implemented cloud/P2P/federated work.
 
-Known intentional limitations:
-
-- RESOURCE-002 accepts live acquisitions only for validated PDF/EPUB content;
-- HTTP jobs are single-transfer native tasks; concurrency policy/scheduling/notifications remain RESOURCE-004;
-- OPDS Basic/Digest/custom authenticated catalogs are not yet implemented; account/credential work belongs to later provider milestones;
-- cloud OAuth, BitTorrent, and ED2K networking remain disabled;
-- progressive reading before completion remains RESOURCE-007.
-
-Acceptance criteria under verification:
-
-- acquire a legal/open PDF or EPUB from a direct HTTP URL or OPDS acquisition link;
-- pause/cancel/retry/resume;
-- preserve restart-safe job state and partial files;
-- ingest verified content into the existing managed Library;
-- open completed content in Reader;
-- detect SHA-256 duplicates without creating a second Library book.
-
-Do not mark RESOURCE-002 complete until the final frontend and Rust validation gates pass.
+Reader AI persistence requested in LONGRUN-001 is complete and remains covered by schema/tests.
 ---
 
 # Product direction
@@ -802,7 +782,7 @@ Acceptance criteria:
 
 ## RESOURCE-002 — HTTP + OPDS vertical slice
 
-Status: **VERIFYING**
+Status: **COMPLETE**
 
 Goal: prove discovery → preview → download → ingestion → Library with comparatively simple protocols.
 
@@ -825,7 +805,7 @@ Acceptance criteria:
 
 ## RESOURCE-003 — Cloud accounts
 
-Status: **PLANNED**
+Status: **VERIFYING**
 
 Goal: connect user-owned cloud storage.
 
@@ -853,7 +833,7 @@ Acceptance criteria:
 
 ## RESOURCE-004 — Download Manager hardening
 
-Status: **PLANNED**
+Status: **IN_PROGRESS**
 
 Goal: make transfers a durable native subsystem.
 
@@ -872,7 +852,7 @@ Scope:
 
 ## RESOURCE-005 — BitTorrent
 
-Status: **PLANNED**
+Status: **VERIFYING**
 
 Goal: add native P2P transport after the common transfer layer is stable.
 
@@ -893,7 +873,7 @@ Explicit non-goal:
 
 ## RESOURCE-006 — ED2K
 
-Status: **PLANNED**
+Status: **VERIFYING**
 
 Goal: add ED2K search/acquisition using an adapter before considering native protocol work.
 
@@ -921,7 +901,7 @@ Scope:
 
 ## RESOURCE-008 — Federated Resource Search
 
-Status: **PLANNED**
+Status: **VERIFYING**
 
 Scope:
 
@@ -937,7 +917,7 @@ Scope:
 
 ## RESOURCE-009 — Extended Providers
 
-Status: **PLANNED**
+Status: **IN_PROGRESS**
 
 Candidates:
 
