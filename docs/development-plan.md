@@ -82,6 +82,31 @@ Two workstreams are tracked in this batch:
 
 RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone, temporarily interrupted by a Reader regression hotfix.
 
+### Active product priority
+
+**RESOURCE-006 — ED2K search zero-config Windows experience**
+
+Status: **IN_PROGRESS**
+
+User priority: ED2K resource search is currently the highest-priority Resource Hub function.
+
+Intended scope:
+
+- make ED2K search immediately visible and usable from Resource Hub rather than burying it behind manual account setup;
+- auto-detect aMule/aMuled/amulecmd on Windows, including official 3.x default install locations;
+- auto-detect the user's aMule configuration and Incoming directory;
+- provide a local-only External Connections configuration using 127.0.0.1 and port 4712 with a generated credential stored through LexiPane's secure credential store;
+- provide one-click automatic setup for an installed aMule and actionable install guidance when aMule is absent;
+- preserve explicit server/Kad/local search selection and result download into the shared Resource/Download Manager pipeline;
+- do not ship or hard-code piracy-specific indexes/catalogs; search uses the user's configured ED2K/Kad network client.
+
+Dependencies / risks:
+
+- LexiPane controls ED2K through aMule's supported External Connections/amulecmd interface;
+- aMule may need to be restarted after External Connections settings change;
+- automatic configuration must not expose EC beyond loopback or overwrite unrelated user settings;
+- aMule installation itself is an external executable and should use the official upstream Windows package, not an embedded unofficial binary.
+
 ### Active regression hotfix
 
 **DB-SCHEMA-REPAIR — Repair v12/v13 sentence AI schema upgrade ordering**
@@ -231,6 +256,12 @@ Network-resource batch priorities:
 | 2026-10-05 | READER-EPUB-SCROLL-STABILITY — Mouse-wheel snap-back regression | VERIFYING | Disabled scroll anchoring across the epub.js continuous rendition; debounced automatic reading-position writes to 600 ms; CI run 37405995032 passed frontend typecheck/tests/build and Rust check/tests. Local Windows/Tauri mouse-wheel smoke test remains. | READER-EPUB-SCROLL-STABILITY |
 
 ## Next selected task
+
+**RESOURCE-006 — ED2K search zero-config Windows experience**
+
+Status: **IN_PROGRESS**
+
+This user-prioritized task temporarily supersedes Download Manager hardening and remaining verification hotfixes. After ED2K search is usable locally, return to the prior verification queue.
 
 **BUILD-WINDOWS-OPENSSL — Windows startup dependency hotfix**
 
