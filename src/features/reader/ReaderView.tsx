@@ -320,6 +320,12 @@ export function ReaderView({
     useState<EpubTextAnnotation[]>([]);
   const [epubSelectionCfi, setEpubSelectionCfi] =
     useState<string | null>(null);
+  const epubPositionSaveTimerRef = useRef<number | null>(null);
+  const pendingEpubPositionRef = useRef<{
+    path: string;
+    cfi: string;
+    progress: number | null;
+  } | null>(null);
   const [kindleInitialChapterId, setKindleInitialChapterId] =
     useState<string | null>(null);
   const [kindleCurrentChapterId, setKindleCurrentChapterId] =
@@ -511,6 +517,27 @@ export function ReaderView({
   useEffect(() => {
     annotationsRef.current = annotations;
   }, [annotations]);
+
+  useEffect(() => {
+    return () => {
+      if (epubPositionSaveTimerRef.current !== null) {
+        window.clearTimeout(epubPositionSaveTimerRef.current);
+        epubPositionSaveTimerRef.current = null;
+      }
+
+      const pending = pendingEpubPositionRef.current;
+      pendingEpubPositionRef.current = null;
+      if (!pending) return;
+
+      void saveEpubReadingPosition(
+        pending.path,
+        pending.cfi,
+        pending.progress,
+      ).catch((error) => {
+        console.error("Unable to flush EPUB reading position", error);
+      });
+    };
+  }, [bookPath]);
 
   useEffect(() => {
     let cancelled = false;
@@ -823,6 +850,37 @@ export function ReaderView({
     [],
   );
 
+  const scheduleEpubReadingPositionSave = useCallback(
+    (path: string, cfi: string, progress: number | null) => {
+      pendingEpubPositionRef.current = {
+        path,
+        cfi,
+        progress,
+      };
+
+      if (epubPositionSaveTimerRef.current !== null) {
+        window.clearTimeout(epubPositionSaveTimerRef.current);
+      }
+
+      epubPositionSaveTimerRef.current = window.setTimeout(() => {
+        epubPositionSaveTimerRef.current = null;
+        const pending = pendingEpubPositionRef.current;
+        pendingEpubPositionRef.current = null;
+
+        if (!pending || peekOriginRef.current) return;
+
+        void saveEpubReadingPosition(
+          pending.path,
+          pending.cfi,
+          pending.progress,
+        ).catch((error) => {
+          console.error("Unable to save EPUB reading position", error);
+        });
+      }, 600);
+    },
+    [],
+  );
+
   const handleEpubRelocated = useCallback(
     (cfi: string, progress: number | null) => {
       setEpubCurrentCfi(cfi);
@@ -830,13 +888,9 @@ export function ReaderView({
       setProgressDraft(null);
       if (!bookPath || peekOriginRef.current) return;
 
-      void saveEpubReadingPosition(bookPath, cfi, progress).catch(
-        (error) => {
-          console.error("Unable to save EPUB reading position", error);
-        },
-      );
+      scheduleEpubReadingPositionSave(bookPath, cfi, progress);
     },
-    [bookPath],
+    [bookPath, scheduleEpubReadingPositionSave],
   );
 
   const handleEpubSelection = useCallback(
