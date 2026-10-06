@@ -49,6 +49,27 @@ export interface Ed2kSearchResult {
   bookCandidate: boolean;
 }
 
+export interface NativeEd2kSearchResult {
+  hash: string;
+  name: string;
+  size: number;
+  sources: number;
+  completeSources: number;
+  bookCandidate: boolean;
+  ed2kLink: string;
+  servers: string[];
+}
+
+export interface NativeEd2kSearchResponse {
+  query: string;
+  serverListSource: string;
+  serversLoaded: number;
+  serversQueried: number;
+  serversSucceeded: number;
+  results: NativeEd2kSearchResult[];
+  errors: string[];
+}
+
 export interface Ed2kSearchResponse {
   query: string;
   searchType: string;
@@ -82,6 +103,20 @@ export async function autoConfigureEd2k(
   return invoke<Ed2kAutoConfigureResult>("resource_ed2k_auto_configure", {
     password,
   });
+}
+
+export async function searchNativeEd2k(
+  query: string,
+  maxServers = 6,
+): Promise<NativeEd2kSearchResponse> {
+  requireDesktop();
+  return invoke<NativeEd2kSearchResponse>(
+    "resource_ed2k_native_search",
+    {
+      query,
+      maxServers,
+    },
+  );
 }
 
 export async function getEd2kStatus(
