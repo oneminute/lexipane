@@ -86,14 +86,24 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **READER-EPUB-SCROLL-STABILITY — Stabilize mouse-wheel scrolling and reading-position persistence**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Intended scope:
+Implementation summary:
 
-- stop EPUB `continuous + scrolled-doc` mouse-wheel scrolling from snapping across section/chapter boundaries because of browser scroll anchoring;
-- keep resume-from-last-position behavior instead of removing it;
-- reduce automatic EPUB reading-position persistence churn so rapid relocation events do not queue redundant/stale database writes;
-- preserve explicit Contents/bookmark/progress navigation behavior.
+- disabled Chromium scroll anchoring on the EPUB host, epub.js manager container, and rendered section documents so continuous `scrolled-doc` layout changes do not pull the viewport back toward an earlier section;
+- kept resume-from-last-position behavior and explicit Bookmarks/Contents/progress navigation intact;
+- changed automatic EPUB reading-position persistence from one SQLite write per relocation event to a 600 ms trailing debounce, while keeping the visible current position/progress synchronous;
+- flushes the latest pending reading position when the active book changes or the Reader unmounts.
+
+Validation / evidence:
+
+- GitHub Actions CI run 37405995032 passed frontend `npm run typecheck`, `npm test`, and `npm run build`;
+- the same run passed `cargo check --manifest-path src-tauri/Cargo.toml` and `cargo test --manifest-path src-tauri/Cargo.toml --lib`;
+- no schema or native-code changes were required.
+
+Known limitation:
+
+- CI cannot reproduce a physical mouse-wheel interaction inside the Windows Tauri WebView with the affected EPUB; one local smoke test of rapid upward/downward scrolling across a chapter boundary remains before marking the regression fully COMPLETE.
 
 Dependencies / risks:
 
@@ -162,12 +172,15 @@ Network-resource batch priorities:
 | 2026-10-04 | RESOURCE-001 — Resource Core | COMPLETE | Resource contracts, provider registry, resolver, identity, SQLite v10 persistence, draft jobs, native boundary, Resources UI shell. `npm run typecheck`, `npm test`, `npm run build`, and `cargo check --manifest-path src-tauri/Cargo.toml` all passed in CI run 37220879280. | RESOURCE-002 |
 | 2026-10-05 | RESOURCE-002 — HTTP + OPDS vertical slice | COMPLETE | Native resumable HTTP, OPDS browse/search/navigation, persistent jobs, verified ingestion, duplicate detection, Reader-format validation, restart recovery. Repeated full CI passes include frontend typecheck/tests/build plus Rust check/tests; latest pre-cleanup full main validation passed before LONGRUN continuation. | RESOURCE-004 |
 | 2026-10-05 | READER-AI-HISTORY — Versioned sentence explanations | COMPLETE | SQLite `sentence_ai_versions`, stable book-id association, DB-first lookup, Regenerate/new immutable version, Older/Newer browsing, configurable look-ahead pre-generation, PDF cross-page prefetch, and removal of retired automatic difficult-term code. | RESOURCE-004 |
+| 2026-10-05 | READER-EPUB-SCROLL-STABILITY — Mouse-wheel snap-back regression | VERIFYING | Disabled scroll anchoring across the epub.js continuous rendition; debounced automatic reading-position writes to 600 ms; CI run 37405995032 passed frontend typecheck/tests/build and Rust check/tests. Local Windows/Tauri mouse-wheel smoke test remains. | READER-EPUB-SCROLL-STABILITY |
 
 ## Next selected task
 
 **READER-EPUB-SCROLL-STABILITY — EPUB scroll stability hotfix**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
+
+Implementation and baseline CI are complete. Remaining validation is a local Windows/Tauri mouse-wheel smoke test across EPUB section boundaries.
 
 After this regression is validated, resume:
 
