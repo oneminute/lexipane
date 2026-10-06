@@ -453,86 +453,82 @@ export async function saveResourceBundle(
   const db = await initializeDatabase();
   if (!db) return;
 
-  await db.execute("BEGIN IMMEDIATE");
+  const { item } = bundle;
 
-  try {
-    const { item } = bundle;
+  // These upserts are intentionally autocommitted one statement at a time.
+  // plugin-sql uses a connection pool, so a frontend BEGIN/COMMIT sequence
+  // across multiple execute() calls can switch connections and retain a
+  // SQLite write lock. Every statement here is idempotent, so a retry after
+  // interruption safely completes a partially persisted bundle.
+  await db.execute(
+    "INSERT INTO resource_items " +
+      "(id, title, authors_json, description, identifiers_json, availability_json, metadata_json, rights_status, created_at, updated_at) " +
+      "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) " +
+      "ON CONFLICT(id) DO UPDATE SET " +
+      "title=excluded.title, authors_json=excluded.authors_json, description=excluded.description, " +
+      "identifiers_json=excluded.identifiers_json, availability_json=excluded.availability_json, " +
+      "metadata_json=excluded.metadata_json, rights_status=excluded.rights_status, updated_at=excluded.updated_at",
+    [
+      item.id,
+      item.title,
+      JSON.stringify(item.authors),
+      item.description ?? null,
+      JSON.stringify(item.identifiers ?? {}),
+      JSON.stringify(item.availability ?? {}),
+      JSON.stringify(item.metadata ?? {}),
+      item.rightsStatus,
+      item.createdAt,
+      item.updatedAt,
+    ],
+  );
 
+  for (const source of bundle.sources) {
     await db.execute(
-      "INSERT INTO resource_items " +
-        "(id, title, authors_json, description, identifiers_json, availability_json, metadata_json, rights_status, created_at, updated_at) " +
+      "INSERT INTO resource_sources " +
+        "(id, resource_item_id, provider_id, source_key, source_type, uri, metadata_json, availability_json, created_at, updated_at) " +
         "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) " +
         "ON CONFLICT(id) DO UPDATE SET " +
-        "title=excluded.title, authors_json=excluded.authors_json, description=excluded.description, " +
-        "identifiers_json=excluded.identifiers_json, availability_json=excluded.availability_json, " +
-        "metadata_json=excluded.metadata_json, rights_status=excluded.rights_status, updated_at=excluded.updated_at",
+        "resource_item_id=excluded.resource_item_id, provider_id=excluded.provider_id, source_key=excluded.source_key, " +
+        "source_type=excluded.source_type, uri=excluded.uri, metadata_json=excluded.metadata_json, " +
+        "availability_json=excluded.availability_json, updated_at=excluded.updated_at",
       [
-        item.id,
-        item.title,
-        JSON.stringify(item.authors),
-        item.description ?? null,
-        JSON.stringify(item.identifiers ?? {}),
-        JSON.stringify(item.availability ?? {}),
-        JSON.stringify(item.metadata ?? {}),
-        item.rightsStatus,
-        item.createdAt,
-        item.updatedAt,
+        source.id,
+        source.resourceItemId,
+        source.providerId,
+        source.sourceKey,
+        source.sourceType,
+        source.uri ?? null,
+        JSON.stringify(source.metadata ?? {}),
+        JSON.stringify(source.availability ?? {}),
+        source.createdAt,
+        source.updatedAt,
       ],
     );
+  }
 
-    for (const source of bundle.sources) {
-      await db.execute(
-        "INSERT INTO resource_sources " +
-          "(id, resource_item_id, provider_id, source_key, source_type, uri, metadata_json, availability_json, created_at, updated_at) " +
-          "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) " +
-          "ON CONFLICT(id) DO UPDATE SET " +
-          "resource_item_id=excluded.resource_item_id, provider_id=excluded.provider_id, source_key=excluded.source_key, " +
-          "source_type=excluded.source_type, uri=excluded.uri, metadata_json=excluded.metadata_json, " +
-          "availability_json=excluded.availability_json, updated_at=excluded.updated_at",
-        [
-          source.id,
-          source.resourceItemId,
-          source.providerId,
-          source.sourceKey,
-          source.sourceType,
-          source.uri ?? null,
-          JSON.stringify(source.metadata ?? {}),
-          JSON.stringify(source.availability ?? {}),
-          source.createdAt,
-          source.updatedAt,
-        ],
-      );
-    }
-
-    for (const file of bundle.files) {
-      await db.execute(
-        "INSERT INTO resource_files " +
-          "(id, resource_item_id, source_id, name, relative_path, size_bytes, mime_type, extension, identifiers_json, metadata_json, created_at) " +
-          "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) " +
-          "ON CONFLICT(id) DO UPDATE SET " +
-          "resource_item_id=excluded.resource_item_id, source_id=excluded.source_id, name=excluded.name, " +
-          "relative_path=excluded.relative_path, size_bytes=excluded.size_bytes, mime_type=excluded.mime_type, " +
-          "extension=excluded.extension, identifiers_json=excluded.identifiers_json, metadata_json=excluded.metadata_json",
-        [
-          file.id,
-          file.resourceItemId,
-          file.sourceId ?? null,
-          file.name,
-          file.relativePath ?? null,
-          file.sizeBytes ?? null,
-          file.mimeType ?? null,
-          file.extension ?? null,
-          JSON.stringify(file.identifiers ?? {}),
-          JSON.stringify(file.metadata ?? {}),
-          file.createdAt,
-        ],
-      );
-    }
-
-    await db.execute("COMMIT");
-  } catch (error) {
-    await db.execute("ROLLBACK");
-    throw error;
+  for (const file of bundle.files) {
+    await db.execute(
+      "INSERT INTO resource_files " +
+        "(id, resource_item_id, source_id, name, relative_path, size_bytes, mime_type, extension, identifiers_json, metadata_json, created_at) " +
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) " +
+        "ON CONFLICT(id) DO UPDATE SET " +
+        "resource_item_id=excluded.resource_item_id, source_id=excluded.source_id, name=excluded.name, " +
+        "relative_path=excluded.relative_path, size_bytes=excluded.size_bytes, mime_type=excluded.mime_type, " +
+        "extension=excluded.extension, identifiers_json=excluded.identifiers_json, metadata_json=excluded.metadata_json",
+      [
+        file.id,
+        file.resourceItemId,
+        file.sourceId ?? null,
+        file.name,
+        file.relativePath ?? null,
+        file.sizeBytes ?? null,
+        file.mimeType ?? null,
+        file.extension ?? null,
+        JSON.stringify(file.identifiers ?? {}),
+        JSON.stringify(file.metadata ?? {}),
+        file.createdAt,
+      ],
+    );
   }
 }
 
