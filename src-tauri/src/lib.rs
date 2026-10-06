@@ -7,6 +7,7 @@ mod secrets;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(resources::ResourceTransferLimiter::default())
         .manage(resources::cloud::CloudTransferManager::default())
         .manage(resources::ed2k::Ed2kManager::default())
         .manage(resources::http::HttpTransferManager::default())
@@ -30,6 +31,8 @@ pub fn run() {
             ocr::local_ocr_status,
             ocr::ocr_image,
             resources::resource_runtime_capabilities,
+            resources::resource_transfer_set_concurrency,
+            resources::resource_transfer_concurrency,
             resources::cloud::resource_cloud_refresh_token,
             resources::cloud::resource_cloud_list,
             resources::cloud::resource_cloud_search,
