@@ -138,10 +138,20 @@ export interface FederatedResourceResult {
   alternatives?: FederatedResourceSource[];
 }
 
+export interface FederatedSourceStatus {
+  id: string;
+  label: string;
+  status: "ok" | "error";
+  durationMs: number;
+  resultCount: number;
+  error?: string;
+}
+
 export interface FederatedSearchResponse {
   results: FederatedResourceResult[];
   errors: string[];
   searchedSources: number;
+  sources: FederatedSourceStatus[];
 }
 
 const PROJECT_GUTENBERG_CATALOG: ResourceCatalog = {
@@ -379,11 +389,14 @@ export async function federatedResourceSearch(
       results: [],
       errors: [],
       searchedSources: 0,
+      sources: [],
     };
   }
 
   const errors: string[] = [];
   const results: FederatedResourceResult[] = [];
+  const sources: FederatedSourceStatus[] = [];
+  const localStarted = Date.now();
   const localBooks = await listLibraryBooks();
 
   for (const book of localBooks) {
@@ -419,220 +432,194 @@ export async function federatedResourceSearch(
     });
   }
 
+  sources.push({
+    id: "local-library",
+    label: "Local Library",
+    status: "ok",
+    durationMs: Date.now() - localStarted,
+    resultCount: results.filter((item) => item.kind === "local").length,
+  });
+
   const tasks: Array<Promise<void>> = [];
 
-  tasks.push(
-    searchArxiv(normalizedQuery)
-      .then((items) => {
-        results.push(
-          ...items.map((item) => ({
-            key: "arxiv:" + item.id,
-            kind: "arxiv" as const,
-            providerId: "arxiv",
-            sourceLabel: "arXiv",
-            title: item.title,
-            authors: item.authors,
-            description: item.summary,
-            mimeType: "application/pdf",
-            arxiv: item,
-          })),
-        );
-      })
-      .catch((error) => {
-        errors.push(
-          "arXiv: " +
-            (error instanceof Error
-              ? error.message
-              : String(error)),
-        );
-      }),
+  function scheduleSource(
+    id: string,
+    label: string,
+    work: () => Promise<FederatedResourceResult[]>,
+  ) {
+    const started = Date.now();
+
+    tasks.push(
+      work()
+        .then((items) => {
+          results.push(...items);
+          sources.push({
+            id,
+            label,
+            status: "ok",
+            durationMs: Date.now() - started,
+            resultCount: items.length,
+          });
+        })
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          errors.push(label + ": " + message);
+          sources.push({
+            id,
+            label,
+            status: "error",
+            durationMs: Date.now() - started,
+            resultCount: 0,
+            error: message,
+          });
+        }),
+    );
+  }
+
+  scheduleSource("arxiv", "arXiv", async () =>
+    (await searchArxiv(normalizedQuery)).map((item) => ({
+      key: "arxiv:" + item.id,
+      kind: "arxiv" as const,
+      providerId: "arxiv",
+      sourceLabel: "arXiv",
+      title: item.title,
+      authors: item.authors,
+      description: item.summary,
+      mimeType: "application/pdf",
+      arxiv: item,
+    })),
   );
 
-  tasks.push(
-    searchInternetArchive(normalizedQuery)
-      .then((items) => {
-        results.push(
-          ...items.map((item) => ({
-            key: "internet-archive:" + item.identifier,
-            kind: "internet-archive" as const,
-            providerId: "internet-archive",
-            sourceLabel: "Internet Archive",
-            title: item.title,
-            authors: item.authors,
-            description: item.description,
-            internetArchive: item,
-          })),
-        );
-      })
-      .catch((error) => {
-        errors.push(
-          "Internet Archive: " +
-            (error instanceof Error
-              ? error.message
-              : String(error)),
-        );
-      }),
+  scheduleSource(
+    "internet-archive",
+    "Internet Archive",
+    async () =>
+      (await searchInternetArchive(normalizedQuery)).map((item) => ({
+        key: "internet-archive:" + item.identifier,
+        kind: "internet-archive" as const,
+        providerId: "internet-archive",
+        sourceLabel: "Internet Archive",
+        title: item.title,
+        authors: item.authors,
+        description: item.description,
+        internetArchive: item,
+      })),
   );
 
-  tasks.push(
-    searchOpdsCatalog(
-      PROJECT_GUTENBERG_CATALOG.url,
-      normalizedQuery,
-    )
-      .then((feed) => {
-        results.push(
-          ...opdsResults(
-            PROJECT_GUTENBERG_CATALOG,
-            feed.entries,
-          ),
-        );
-      })
-      .catch((error) => {
-        errors.push(
-          "Project Gutenberg: " +
-            (error instanceof Error
-              ? error.message
-              : String(error)),
-        );
-      }),
+  scheduleSource(
+    PROJECT_GUTENBERG_CATALOG.id,
+    PROJECT_GUTENBERG_CATALOG.name,
+    async () => {
+      const feed = await searchOpdsCatalog(
+        PROJECT_GUTENBERG_CATALOG.url,
+        normalizedQuery,
+      );
+      return opdsResults(
+        PROJECT_GUTENBERG_CATALOG,
+        feed.entries,
+      );
+    },
   );
 
   for (const catalog of catalogs) {
     if (catalog.providerId === "torrent-catalog") {
-      tasks.push(
-        searchTorrentCatalog(catalog, normalizedQuery)
-          .then((entries) => {
-            results.push(...torrentResults(catalog, entries));
-          })
-          .catch((error) => {
-            errors.push(
-              catalog.name +
-                ": " +
-                (error instanceof Error
-                  ? error.message
-                  : String(error)),
-            );
-          }),
+      scheduleSource(
+        "catalog:" + catalog.id,
+        catalog.name,
+        async () =>
+          torrentResults(
+            catalog,
+            await searchTorrentCatalog(catalog, normalizedQuery),
+          ),
       );
       continue;
     }
 
     if (catalog.providerId === "opds") {
-      tasks.push(
-        searchOpdsCatalog(catalog.url, normalizedQuery)
-          .then((feed) => {
-            results.push(...opdsResults(catalog, feed.entries));
-          })
-          .catch((error) => {
-            errors.push(
-              catalog.name +
-                ": " +
-                (error instanceof Error
-                  ? error.message
-                  : String(error)),
-            );
-          }),
+      scheduleSource(
+        "catalog:" + catalog.id,
+        catalog.name,
+        async () => {
+          const feed = await searchOpdsCatalog(
+            catalog.url,
+            normalizedQuery,
+          );
+          return opdsResults(catalog, feed.entries);
+        },
       );
     }
   }
 
   for (const account of cloudAccounts) {
-    tasks.push(
-      searchCloudAccount(account, normalizedQuery)
-        .then((response) => {
-          results.push(
-            ...cloudResults(account, response.entries),
-          );
-        })
-        .catch((error) => {
-          errors.push(
-            (account.displayName || account.providerId) +
-              ": " +
-              (error instanceof Error
-                ? error.message
-                : String(error)),
-          );
-        }),
+    const label = account.displayName || account.providerId;
+    scheduleSource(
+      "cloud:" + account.id,
+      label,
+      async () =>
+        cloudResults(
+          account,
+          (await searchCloudAccount(account, normalizedQuery)).entries,
+        ),
     );
   }
 
   for (const account of sftpAccounts) {
-    tasks.push(
-      searchSftpAccount(account, normalizedQuery)
-        .then((response) => {
-          results.push(...sftpResults(account, response.entries));
-        })
-        .catch((error) => {
-          errors.push(
-            (account.displayName || "SFTP") +
-              ": " +
-              (error instanceof Error
-                ? error.message
-                : String(error)),
-          );
-        }),
+    const label = account.displayName || "SFTP";
+    scheduleSource(
+      "sftp:" + account.id,
+      label,
+      async () =>
+        sftpResults(
+          account,
+          (await searchSftpAccount(account, normalizedQuery)).entries,
+        ),
     );
   }
 
   for (const account of s3Accounts) {
-    tasks.push(
-      searchS3Account(account, normalizedQuery)
-        .then((response) => {
-          results.push(...s3Results(account, response.entries));
-        })
-        .catch((error) => {
-          errors.push(
-            (account.displayName || "S3") +
-              ": " +
-              (error instanceof Error
-                ? error.message
-                : String(error)),
-          );
-        }),
+    const label = account.displayName || "S3";
+    scheduleSource(
+      "s3:" + account.id,
+      label,
+      async () =>
+        s3Results(
+          account,
+          (await searchS3Account(account, normalizedQuery)).entries,
+        ),
     );
   }
 
   for (const account of webDavAccounts) {
-    tasks.push(
-      searchWebDavAccount(account, normalizedQuery)
-        .then((response) => {
-          results.push(
-            ...webDavResults(account, response.entries),
-          );
-        })
-        .catch((error) => {
-          errors.push(
-            (account.displayName || "WebDAV") +
-              ": " +
-              (error instanceof Error
-                ? error.message
-                : String(error)),
-          );
-        }),
+    const label = account.displayName || "WebDAV";
+    scheduleSource(
+      "webdav:" + account.id,
+      label,
+      async () =>
+        webDavResults(
+          account,
+          (await searchWebDavAccount(account, normalizedQuery)).entries,
+        ),
     );
   }
 
   for (const engine of ed2kEngines) {
-    tasks.push(
-      searchEd2kEngine(engine, normalizedQuery, "global")
-        .then((response) => {
-          results.push(
-            ...ed2kResults(
+    const label = engine.displayName || "aMule ED2K";
+    scheduleSource(
+      "ed2k:" + engine.id,
+      label,
+      async () =>
+        ed2kResults(
+          engine,
+          normalizedQuery,
+          (
+            await searchEd2kEngine(
               engine,
               normalizedQuery,
-              response.results,
-            ),
-          );
-        })
-        .catch((error) => {
-          errors.push(
-            (engine.displayName || "aMule ED2K") +
-              ": " +
-              (error instanceof Error
-                ? error.message
-                : String(error)),
-          );
-        }),
+              "global",
+            )
+          ).results,
+        ),
     );
   }
 
@@ -733,13 +720,11 @@ export async function federatedResourceSearch(
   return {
     results: unique,
     errors,
-    searchedSources:
-      catalogs.length +
-      cloudAccounts.length +
-      ed2kEngines.length +
-      webDavAccounts.length +
-      s3Accounts.length +
-      sftpAccounts.length +
-      4,
+    searchedSources: sources.length,
+    sources: sources.sort(
+      (left, right) =>
+        left.status.localeCompare(right.status) ||
+        left.durationMs - right.durationMs,
+    ),
   };
 }
