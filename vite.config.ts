@@ -1,7 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-const host = process.env.TAURI_DEV_HOST;
+const explicitHost = process.env.TAURI_DEV_HOST;
+const host = explicitHost || "127.0.0.1";
 
 export default defineConfig({
   plugins: [react()],
@@ -9,8 +10,8 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
-    hmr: host
+    host,
+    hmr: explicitHost
       ? {
           protocol: "ws",
           host,
