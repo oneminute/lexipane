@@ -838,11 +838,10 @@ fn parse_found_sources(
 
 fn source_identity(source: &NativeEd2kSource) -> String {
     if let Some(address) = source.address.as_deref() {
-        return format!(
-            "direct:{address}:{}:{}",
-            source.tcp_port,
-            source.udp_port.unwrap_or(0)
-        );
+        return format!("direct:{address}:{}", source.tcp_port);
+    }
+    if let Some(source_id) = source.source_id.as_deref() {
+        return format!("kad-id:{source_id}");
     }
 
     format!(
@@ -862,8 +861,31 @@ fn merge_sources(
         for source in batch {
             let key = source_identity(&source);
             if let Some(existing) = merged.get_mut(&key) {
+                if existing.origin != source.origin
+                    && !existing.origin.split('+').any(|part| part == source.origin)
+                {
+                    existing.origin = format!("{}+{}", existing.origin, source.origin);
+                }
                 if existing.udp_port.is_none() {
                     existing.udp_port = source.udp_port;
+                }
+                if existing.client_id.is_none() {
+                    existing.client_id = source.client_id;
+                }
+                if existing.source_id.is_none() {
+                    existing.source_id = source.source_id;
+                }
+                if existing.server.is_none() {
+                    existing.server = source.server;
+                }
+                if existing.buddy_address.is_none() {
+                    existing.buddy_address = source.buddy_address;
+                }
+                if existing.buddy_port.is_none() {
+                    existing.buddy_port = source.buddy_port;
+                }
+                if existing.buddy_id.is_none() {
+                    existing.buddy_id = source.buddy_id;
                 }
                 if existing.source_type.is_none() {
                     existing.source_type = source.source_type;
@@ -871,10 +893,8 @@ fn merge_sources(
                 if existing.encryption.is_none() {
                     existing.encryption = source.encryption;
                 }
-                if existing.server.is_none() {
-                    existing.server = source.server;
-                }
                 existing.direct |= source.direct;
+                existing.low_id &= source.low_id;
             } else {
                 merged.insert(key, source);
             }
@@ -1313,11 +1333,20 @@ pub async fn resource_ed2k_native_discover_sources(
     let hash_bytes = parse_ed2k_hash(&hash)?;
     let normalized_hash = hash_hex(&hash_bytes);
 
-    let (server_met, server_list_source) = load_server_met(&app).await?;
-    let servers = parse_server_met(&server_met)?;
-    if servers.is_empty() {
-        return Err("server.met contains no usable ED2K servers.".to_string());
-    }
+    let mut errors = Vec::new();
+    let (servers, server_list_source) = match load_server_met(&app).await {
+        Ok((server_met, source)) => match parse_server_met(&server_met) {
+            Ok(servers) => (servers, source),
+            Err(error) => {
+                errors.push("Server list: ".to_string() + &error);
+                (Vec::new(), "unavailable".to_string())
+            }
+        },
+        Err(error) => {
+            errors.push("Server list: ".to_string() + &error);
+            (Vec::new(), "unavailable".to_string())
+        }
+    };
 
     let limit = max_servers
         .unwrap_or(DEFAULT_QUERY_SERVERS.saturating_add(2))
@@ -1328,33 +1357,77 @@ pub async fn resource_ed2k_native_discover_sources(
         .take(limit)
         .cloned()
         .collect::<Vec<_>>();
-
-    if selected.is_empty() {
-        return Err("No usable ED2K servers are available for source discovery.".to_string());
-    }
-
     let servers_queried = selected.len();
+    let server_hash = hash_bytes;
     let tasks = selected
         .into_iter()
-        .map(|server| discover_sources_one_server(server, hash_bytes));
-    let responses = join_all(tasks).await;
+        .map(|server| discover_sources_one_server(server, server_hash));
+
+    let app_for_kad = app.clone();
+    let (responses, kad_response) = tokio::join!(
+        join_all(tasks),
+        super::ed2k_kad::discover_sources_kad(
+            &app_for_kad,
+            &hash_bytes,
+            size,
+        ),
+    );
 
     let mut batches = Vec::new();
-    let mut errors = Vec::new();
     let mut servers_responded = 0usize;
     for response in responses {
         match response {
             Ok(sources) => {
                 servers_responded += 1;
-                batches.push(sources);
+                if !sources.is_empty() {
+                    batches.push(sources);
+                }
             }
             Err(error) => errors.push("TCP source lookup: ".to_string() + &error),
         }
     }
 
-    if errors.len() > 32 {
-        errors.truncate(32);
-        errors.push("Additional ED2K source lookup errors were suppressed.".to_string());
+    let mut kad_nodes_source = None;
+    let mut kad_contacts_loaded = 0usize;
+    let mut kad_contacts_discovered = 0usize;
+    let mut kad_bootstrap_queried = 0usize;
+    let mut kad_bootstrap_responded = 0usize;
+    let mut kad_lookup_queried = 0usize;
+    let mut kad_lookup_responded = 0usize;
+    let mut kad_source_queried = 0usize;
+    let mut kad_source_responded = 0usize;
+
+    match kad_response {
+        Ok(outcome) => {
+            kad_nodes_source = Some(outcome.nodes_source);
+            kad_contacts_loaded = outcome.contacts_loaded;
+            kad_contacts_discovered = outcome.contacts_discovered;
+            kad_bootstrap_queried = outcome.bootstrap_queried;
+            kad_bootstrap_responded = outcome.bootstrap_responded;
+            kad_lookup_queried = outcome.lookup_queried;
+            kad_lookup_responded = outcome.lookup_responded;
+            kad_source_queried = outcome.source_queried;
+            kad_source_responded = outcome.source_responded;
+            if !outcome.sources.is_empty() {
+                batches.push(outcome.sources);
+            }
+            errors.extend(
+                outcome
+                    .errors
+                    .into_iter()
+                    .map(|error| "KAD source lookup: ".to_string() + &error),
+            );
+        }
+        Err(error) => {
+            errors.push("KAD source lookup: ".to_string() + &error);
+        }
+    }
+
+    if errors.len() > 64 {
+        errors.truncate(64);
+        errors.push(
+            "Additional ED2K/Kad source lookup errors were suppressed.".to_string(),
+        );
     }
 
     Ok(NativeEd2kSourceDiscoveryResponse {
@@ -1364,16 +1437,16 @@ pub async fn resource_ed2k_native_discover_sources(
         servers_loaded: servers.len(),
         servers_queried,
         servers_responded,
-        kad_nodes_source: None,
-        kad_contacts_loaded: 0,
-        kad_contacts_discovered: 0,
-        kad_bootstrap_queried: 0,
-        kad_bootstrap_responded: 0,
-        kad_lookup_queried: 0,
-        kad_lookup_responded: 0,
-        kad_source_queried: 0,
-        kad_source_responded: 0,
-        search_phase: "server-source-lookup".to_string(),
+        kad_nodes_source,
+        kad_contacts_loaded,
+        kad_contacts_discovered,
+        kad_bootstrap_queried,
+        kad_bootstrap_responded,
+        kad_lookup_queried,
+        kad_lookup_responded,
+        kad_source_queried,
+        kad_source_responded,
+        search_phase: "server+kad-source-lookup".to_string(),
         sources: merge_sources(batches),
         errors,
     })
