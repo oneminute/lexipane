@@ -86,30 +86,43 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **RESOURCE-006K — Native Kad bootstrap and keyword search**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Scope for this batch:
+Implementation summary:
 
-- add a native Kad bootstrap cache based on nodes.dat, with bounded download/cache/parse behavior;
-- create an ephemeral local Kad node identity and routing-table seed model from bootstrap contacts;
-- implement the minimum Kad UDP request/response framing required for bootstrap contact discovery and keyword search;
-- compute Kad keyword hashes locally and perform a bounded iterative keyword lookup against discovered contacts;
-- normalize Kad keyword results into the existing NativeEd2kSearchResult model and merge them with Server/Global Search results;
-- expose Kad contact/result statistics in Resource Hub;
-- add targeted Rust tests for nodes.dat parsing, Kad hash/framing, bounded contact deduplication, and result parsing.
+- added a native Rust Kad2 search module with no aMule runtime dependency;
+- downloads and caches a current `nodes.dat` bootstrap list under the same Resource ED2K app-data area, with six-hour freshness, stale-cache fallback, bounded size/contact counts, and support for modern nodes.dat v1/v2/v3 formats including v3 bootstrap edition;
+- parses Kad contacts with correct little-endian IPv4 encoding, deduplicates UDP endpoints, prefers newer contact records, and rejects loopback/private/link-local/documentation/multicast/broadcast destinations learned from bootstrap/routing data;
+- creates an ephemeral local Kad identity for each search session rather than joining/publishing as a long-lived node;
+- implements Kad UInt128 wire conversion, XOR-distance ordering, aMule-compatible first-keyword MD4 targeting, bounded keyword tokenization, and ED2K hash reconstruction from Kad result identities;
+- implements Kad2 UDP framing for `KADEMLIA2_BOOTSTRAP_REQ/RES`, `KADEMLIA2_REQ/RES`, and `KADEMLIA2_SEARCH_KEY_REQ/SEARCH_RES`;
+- implements current v6+ NodeID-based Kad UDP obfuscation using MD5-derived RC4 framing, plus plaintext and zlib-packed Kad2 response decoding;
+- performs bounded bootstrap discovery, three iterative FIND_VALUE routing rounds, then keyword requests against the closest known contacts to the keyword target;
+- parses Kad keyword tag lists into the existing `NativeEd2kSearchResult` model, builds canonical `ed2k://` links, and locally enforces all search terms against returned filenames;
+- runs Kad search in parallel with existing TCP seed + UDP Global Search; Kad failure remains a partial failure and does not break Server/Global results, while a Kad-only responding path can still return results if ED2K servers are unavailable;
+- merges Kad + TCP + UDP Global results by ED2K hash + file size using the existing result merger;
+- Resource Hub is now Native ED2K Phase 3 and displays TCP, UDP Global, Kad bootstrap, Kad lookup, Kad keyword, contacts loaded/discovered, and nodes.dat source diagnostics.
 
-Out of scope:
+Validation / evidence:
 
-- source lookup for a selected ED2K hash;
-- peer TCP transfer, part maps, AICH, credit/queue behavior, or native downloading;
-- long-lived background Kad participation or publishing;
-- replacing existing Server/Global Search fallback behavior.
+- module-compilation CI run `37558089320` passed frontend checks, Linux `cargo check` + `cargo test --lib`, and Windows `cargo check` + `cargo test --lib`;
+- integration/UI runs have already passed frontend `npm run typecheck`, `npm test`, and `npm run build`, and Linux Kad-integrated `cargo check/test` on intermediate final-equivalent code;
+- the final address-filter/UI commits are still completing cross-platform Rust validation;
+- targeted Rust tests cover nodes.dat v3 bootstrap parsing, Kad MD4 keyword hash, UInt128/NodeID encryption round-trip, Kad lookup-contact parsing, Kad keyword result -> ED2K identity conversion, contact deduplication, and local/private-address rejection.
 
-Dependencies / risks:
+Remaining verification:
 
-- Kad2 UDP packets and nodes.dat variants differ across client generations; parsers must be version-bounded and reject malformed packets safely;
-- many Kad contacts may be stale or filtered by NAT/firewalls, so bootstrap/search must tolerate partial or zero response without breaking Server/Global Search;
-- the implementation is intentionally search-only and ephemeral in this phase.
+- finish the final Linux/Windows CI run for the last code commit;
+- perform one local Windows/Tauri live search to verify current nodes.dat retrieval plus real Kad bootstrap/lookup/keyword responses under the user's network/firewall environment.
+
+Known limitations / next phase:
+
+- this is ephemeral search-only Kad participation: no publishing, persistent routing table, background keepalive, source publishing, or firewall-state participation;
+- selected-file source discovery is not implemented yet;
+- native part/block transfer is not implemented yet;
+- aMule remains optional only as a temporary download fallback after native discovery;
+- next ED2K milestone after live-search verification is `RESOURCE-006S — Native ED2K/Kad source discovery`.
+
 
 **RESOURCE-006G — Native ED2K Global Search**
 
