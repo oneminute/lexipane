@@ -2569,13 +2569,13 @@ export function ResourceHubView({ onOpenBook }: Props) {
   }
 
   async function runNativeEd2kSearch() {
-    if (!ed2kQuery.trim()) return;
+    if (!ed2kQuery.trim() || nativeEd2kSourceBusyKey !== null) return;
 
     setNativeEd2kBusy(true);
     setMessage("");
     setNativeEd2kResponse(null);
+    setNativeEd2kResults([]);
     setNativeEd2kSourceResponses({});
-    setNativeEd2kSourceBusyKey(null);
 
     try {
       const response = await searchNativeEd2k(ed2kQuery, 6);
@@ -2624,6 +2624,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
   async function runNativeEd2kSourceDiscovery(
     result: NativeEd2kSearchResult,
   ) {
+    if (nativeEd2kBusy || nativeEd2kSourceBusyKey !== null) return;
     const key = nativeEd2kSourceKey(result);
     setNativeEd2kSourceBusyKey(key);
     setMessage("");
@@ -3565,7 +3566,11 @@ export function ResourceHubView({ onOpenBook }: Props) {
               <button
                 type="button"
                 className="primary-button compact"
-                disabled={nativeEd2kBusy || !ed2kQuery.trim()}
+                disabled={
+                  nativeEd2kBusy ||
+                  nativeEd2kSourceBusyKey !== null ||
+                  !ed2kQuery.trim()
+                }
                 onClick={() => void runNativeEd2kSearch()}
               >
                 {nativeEd2kBusy
@@ -3641,8 +3646,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
                           void runNativeEd2kSourceDiscovery(result)
                         }
                         disabled={
-                          nativeEd2kSourceBusyKey ===
-                          nativeEd2kSourceKey(result)
+                          nativeEd2kBusy ||
+                          nativeEd2kSourceBusyKey !== null
                         }
                       >
                         {nativeEd2kSourceBusyKey ===
