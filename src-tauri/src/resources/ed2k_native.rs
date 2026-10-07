@@ -14,14 +14,19 @@ use tauri::{AppHandle, Manager};
 use tokio::{
     fs,
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
+    net::{TcpStream, UdpSocket},
     time::{timeout, Instant},
 };
 
 const SERVER_MET_URL: &str = "https://upd.emule-security.org/server.met";
 const SERVER_MET_CACHE_SECONDS: u64 = 6 * 60 * 60;
-const DEFAULT_QUERY_SERVERS: usize = 6;
+const DEFAULT_QUERY_SERVERS: usize = 4;
 const MAX_QUERY_SERVERS: usize = 10;
+const DEFAULT_GLOBAL_SERVERS: usize = 24;
+const MAX_GLOBAL_SERVERS: usize = 48;
+const GLOBAL_UDP_TIMEOUT: Duration = Duration::from_millis(2800);
+const GLOBAL_UDP_IDLE_AFTER_RESPONSE: Duration = Duration::from_millis(450);
+const MAX_UDP_DATAGRAM_SIZE: usize = 65_507;
 const MAX_SERVER_COUNT: usize = 10_000;
 const MAX_PACKET_SIZE: usize = 8 * 1024 * 1024;
 const MAX_RESULTS_PER_PACKET: usize = 20_000;
@@ -34,6 +39,11 @@ const OP_REJECT: u8 = 0x05;
 const OP_SEARCHREQUEST: u8 = 0x16;
 const OP_SEARCHRESULT: u8 = 0x33;
 const OP_IDCHANGE: u8 = 0x40;
+const OP_GLOBSEARCHREQ2: u8 = 0x92;
+const OP_GLOBSEARCHREQ: u8 = 0x98;
+const OP_GLOBSEARCHRES: u8 = 0x99;
+
+const SRV_UDPFLG_EXT_GETFILES: u64 = 0x0000_0002;
 
 const CT_NAME: u8 = 0x01;
 const CT_VERSION: u8 = 0x11;
@@ -53,6 +63,7 @@ const ST_SERVERNAME: u8 = 0x01;
 const ST_FAIL: u8 = 0x0D;
 const ST_PREFERENCE: u8 = 0x0E;
 const ST_DYNIP: u8 = 0x85;
+const ST_UDPFLAGS: u8 = 0x92;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +75,7 @@ pub struct NativeEd2kServer {
     pub files: Option<u64>,
     pub failed_count: u64,
     pub preference: u64,
+    pub udp_flags: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -87,6 +99,11 @@ pub struct NativeEd2kSearchResponse {
     pub servers_loaded: usize,
     pub servers_queried: usize,
     pub servers_succeeded: usize,
+    pub tcp_servers_queried: usize,
+    pub tcp_servers_succeeded: usize,
+    pub global_servers_queried: usize,
+    pub global_servers_responded: usize,
+    pub search_phase: String,
     pub results: Vec<NativeEd2kSearchResult>,
     pub errors: Vec<String>,
 }
@@ -299,6 +316,7 @@ pub fn parse_server_met(data: &[u8]) -> Result<Vec<NativeEd2kServer>, String> {
         let mut files = None;
         let mut failed_count = 0;
         let mut preference = 0;
+        let mut udp_flags = 0;
 
         for _ in 0..tag_count {
             let tag = read_tag(&mut cursor)?;
@@ -318,6 +336,9 @@ pub fn parse_server_met(data: &[u8]) -> Result<Vec<NativeEd2kServer>, String> {
                 }
                 Some(ST_PREFERENCE) => {
                     preference = tag_integer(&tag).unwrap_or(0);
+                }
+                Some(ST_UDPFLAGS) => {
+                    udp_flags = tag_integer(&tag).unwrap_or(0);
                 }
                 _ => {
                     if let Some(tag_name) = tag.name.as_deref() {
@@ -353,6 +374,7 @@ pub fn parse_server_met(data: &[u8]) -> Result<Vec<NativeEd2kServer>, String> {
             files,
             failed_count,
             preference,
+            udp_flags,
         });
     }
 
