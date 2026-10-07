@@ -200,7 +200,7 @@ Next:
 
 ## Phase 8 — Resource Acquisition Platform / Resource Hub
 
-Status: **RESOURCE-001 complete — RESOURCE-002 ready**
+Status: **active — RESOURCE-006S native ED2K/Kad source discovery in progress**
 
 Purpose:
 
@@ -214,15 +214,15 @@ Purpose:
 Milestones:
 
 - **RESOURCE-001 — Resource Core:** **complete** — shared domain model, provider capabilities, resolver/classification, SQLite persistence, Resources UI shell, Rust/Tauri resource boundary.
-- **RESOURCE-002 — HTTP + OPDS:** **ready** — first complete discovery/download/ingestion vertical slice.
-- **RESOURCE-003 — Cloud accounts:** Google Drive, Dropbox, OneDrive/SharePoint.
-- **RESOURCE-004 — Download Manager hardening:** persistent queue, pause/resume/cancel, restart recovery, disk/temp lifecycle.
-- **RESOURCE-005 — BitTorrent:** magnet/torrent metadata, file selection, native transfer engine, explicit P2P settings.
-- **RESOURCE-006 — ED2K:** normalized search/acquisition through an adapter/sidecar before any native ED2K rewrite.
-- **RESOURCE-007 — Advanced Preview:** progressive/partial preview where technically safe and supported.
-- **RESOURCE-008 — Federated Search:** parallel provider search, result merge, source aggregation, duplicate detection.
-- **RESOURCE-009 — Extended Providers:** WebDAV/Nextcloud, S3, SFTP, Calibre/OPDS variants, Zotero, public/open catalogs, academic sources.
-- **RESOURCE-010 — Smart Acquisition:** source selection by identity, reliability, availability, format, privacy, and transfer characteristics.
+- **RESOURCE-002 — HTTP + OPDS:** **complete** — discovery/download/ingestion vertical slice, resumable native HTTP jobs, OPDS browse/search, duplicate detection, and Library ingestion.
+- **RESOURCE-003 — Cloud accounts:** **verifying** — reusable Google Drive/Dropbox/OneDrive account/shared-link infrastructure is implemented; provider activation still depends on real OAuth credentials and live account smoke tests.
+- **RESOURCE-004 — Download Manager hardening:** **in progress** — persistent queue/recovery, pause/resume/cancel, concurrency controls, aggregate status and several transport-specific restart/control paths are implemented; remaining hardening continues after native ED2K acquisition work.
+- **RESOURCE-005 — BitTorrent:** **verifying** — native torrent metadata/file selection/transfer integration is present; broader live-network and restart behavior still needs smoke coverage.
+- **RESOURCE-006 — ED2K:** **verifying / active extension** — native Rust Server Search, UDP Global Search, and Kad keyword search are implemented. **RESOURCE-006S** now adds selected-file ED2K/Kad source discovery; native part/block transfer follows afterward. aMule remains only an optional compatibility fallback.
+- **RESOURCE-007 — Advanced Preview:** **planned** — progressive/partial preview where technically safe and supported.
+- **RESOURCE-008 — Federated Search:** **verifying** — parallel search, merge, filtering, cancellation and provider health/latency diagnostics are implemented; remaining work is provider/live-network hardening.
+- **RESOURCE-009 — Extended Providers:** **in progress** — WebDAV, S3-compatible storage, SFTP and public/open discovery paths are implemented on the shared Resource pipeline; additional providers remain optional extensions.
+- **RESOURCE-010 — Smart Acquisition:** **planned** — source selection by identity, reliability, availability, format, privacy, and transfer characteristics.
 
 Detailed architecture, persistence plan, security baseline, acceptance criteria, and the live task status are maintained in `docs/development-plan.md`.
 
