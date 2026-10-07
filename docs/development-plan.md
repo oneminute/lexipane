@@ -191,31 +191,31 @@ Known limitations / next phases:
 
 ### Active regression hotfix
 
-**BUILD-VITE-IPV4 — Prevent Windows Vite localhost IPv6 bind failure**
+**BUILD-VITE-IPV4 — Make Windows dev-server binding resilient**
 
-Status: **VERIFYING**
+Status: **IN_PROGRESS**
 
-Observed failure:
+Observed failure sequence:
 
-- local Windows `start-lexipane.cmd` reached Tauri's `beforeDevCommand`, then Vite failed with `listen EACCES: permission denied ::1:1420`;
-- the previous Vite config used the implicit localhost bind when `TAURI_DEV_HOST` was unset, while Tauri also targeted `http://localhost:1420`.
+- first local Windows launch failed on `::1:1420`, confirming the implicit localhost/IPv6 bind was unusable;
+- after switching both Vite and Tauri to `127.0.0.1:1420`, the next local launch failed with `listen EACCES: permission denied 127.0.0.1:1420`;
+- this confirms TCP port 1420 itself is reserved/excluded or otherwise unavailable on the user's Windows installation, so another fixed port would only move the same fragility.
 
-Implementation summary:
+Revised scope:
 
-- normal desktop Vite development now binds explicitly to `127.0.0.1:1420`;
-- an explicit `TAURI_DEV_HOST` still overrides the bind host for LAN/mobile-oriented development;
-- Tauri's desktop `devUrl` now uses `http://127.0.0.1:1420`, so the WebView and Vite agree on the same IPv4 endpoint;
-- strict port behavior and the existing explicit-host HMR override remain unchanged.
+- keep desktop development on IPv4 loopback;
+- let Vite read the dev port from `TAURI_DEV_PORT`;
+- make the Windows launcher test 1420 first and, when unavailable/reserved, ask Windows for an ephemeral free loopback port instead of guessing another fixed port;
+- generate a temporary Tauri config override whose `build.devUrl` uses the same selected port;
+- preserve explicit `TAURI_DEV_PORT` overrides, rejecting them early with a clear message when unavailable;
+- clean the temporary Tauri override after the development process exits;
+- validate frontend/build/Rust gates and require one local launcher smoke test.
 
-Validation / evidence:
+Risks / dependencies:
 
-- implementation commits: `290e0a1` (Vite IPv4 bind) and `3fdf104` (Tauri IPv4 dev URL);
-- GitHub Actions baseline validation for the final config commit is running;
-- one local Windows `start-lexipane.cmd` smoke test is required before COMPLETE.
-
-Known fallback:
-
-- if the next local run reports `EACCES` on `127.0.0.1:1420` rather than `::1:1420`, Windows has likely excluded/reserved TCP port 1420 itself; in that case the next fix is a coordinated dev-port change rather than another host change.
+- the selected port is released after probing and rebound by Vite shortly afterward, leaving a very small race in which another process could claim it;
+- the Tauri CLI must accept the generated temporary JSON config override and pass the selected-port environment through to `beforeDevCommand`;
+- LAN/mobile HMR remains controlled by explicit `TAURI_DEV_HOST` / `TAURI_DEV_HMR_PORT` overrides.
 
 **DB-SCHEMA-REPAIR — Repair v12/v13 sentence AI schema upgrade ordering**
 
