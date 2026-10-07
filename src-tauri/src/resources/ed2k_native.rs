@@ -608,6 +608,78 @@ fn is_book_candidate(name: &str) -> bool {
         || lower.ends_with(".azw3")
 }
 
+fn parse_search_result(
+    cursor: &mut ByteCursor<'_>,
+    server: &NativeEd2kServer,
+) -> Result<Option<NativeEd2kSearchResult>, String> {
+    let hash = cursor.bytes(16)?.to_vec();
+    let _client_id = cursor.u32()?;
+    let _client_port = cursor.u16()?;
+    let tag_count = cursor.u32()? as usize;
+
+    if tag_count > MAX_TAGS_PER_RECORD {
+        return Err(format!(
+            "ED2K search result has too many tags: {tag_count}."
+        ));
+    }
+
+    let mut name = None;
+    let mut size_low = 0u64;
+    let mut size_high = 0u64;
+    let mut sources = 0u64;
+    let mut complete_sources = 0u64;
+
+    for _ in 0..tag_count {
+        let tag = read_tag(cursor)?;
+        match tag.name_id {
+            Some(FT_FILENAME) => {
+                if let Some(value) = tag_string(&tag) {
+                    name = Some(value.to_string());
+                }
+            }
+            Some(FT_FILESIZE) => {
+                size_low = tag_integer(&tag).unwrap_or(0);
+            }
+            Some(FT_FILESIZE_HI) => {
+                size_high = tag_integer(&tag).unwrap_or(0);
+            }
+            Some(FT_SOURCES) => {
+                sources = tag_integer(&tag).unwrap_or(0);
+            }
+            Some(FT_COMPLETE_SOURCES) => {
+                complete_sources = tag_integer(&tag).unwrap_or(0);
+            }
+            _ => {}
+        }
+    }
+
+    let Some(name) = name.filter(|value| !value.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let size = size_low.saturating_add(size_high << 32);
+    if size == 0 {
+        return Ok(None);
+    }
+
+    let hash = hash_hex(&hash);
+    let encoded_name = urlencoding::encode(&name);
+    let ed2k_link = format!(
+        "ed2k://|file|{encoded_name}|{size}|{hash}|/"
+    );
+    let server_label = format!("{}:{}", server.address, server.port);
+
+    Ok(Some(NativeEd2kSearchResult {
+        hash,
+        book_candidate: is_book_candidate(&name),
+        name,
+        size,
+        sources,
+        complete_sources,
+        ed2k_link,
+        servers: vec![server_label],
+    }))
+}
+
 fn parse_search_results(
     payload: &[u8],
     server: &NativeEd2kServer,
@@ -620,79 +692,67 @@ fn parse_search_results(
         ));
     }
 
-    let server_label = format!(
-        "{}:{}",
-        server.address,
-        server.port
-    );
     let mut results = Vec::with_capacity(count);
-
     for _ in 0..count {
-        let hash = cursor.bytes(16)?.to_vec();
-        let _client_id = cursor.u32()?;
-        let _client_port = cursor.u16()?;
-        let tag_count = cursor.u32()? as usize;
+        if let Some(result) = parse_search_result(&mut cursor, server)? {
+            results.push(result);
+        }
+    }
 
-        if tag_count > MAX_TAGS_PER_RECORD {
+    Ok(results)
+}
+
+fn encode_udp_search_packet(
+    server: &NativeEd2kServer,
+    query: &str,
+) -> Result<Vec<u8>, String> {
+    let opcode = if server.udp_flags & SRV_UDPFLG_EXT_GETFILES != 0 {
+        OP_GLOBSEARCHREQ2
+    } else {
+        OP_GLOBSEARCHREQ
+    };
+    let payload = search_payload(query)?;
+    let mut packet = Vec::with_capacity(payload.len() + 2);
+    packet.push(OP_EDONKEYPROT);
+    packet.push(opcode);
+    packet.extend_from_slice(&payload);
+    Ok(packet)
+}
+
+fn parse_udp_search_datagram(
+    datagram: &[u8],
+    server: &NativeEd2kServer,
+) -> Result<Vec<NativeEd2kSearchResult>, String> {
+    if datagram.len() < 2 {
+        return Err("ED2K UDP search datagram is too short.".to_string());
+    }
+
+    let mut cursor = ByteCursor::new(datagram);
+    let mut results = Vec::new();
+
+    while cursor.remaining() >= 2 {
+        let protocol = cursor.u8()?;
+        let opcode = cursor.u8()?;
+        if protocol != OP_EDONKEYPROT || opcode != OP_GLOBSEARCHRES {
             return Err(format!(
-                "ED2K search result has too many tags: {tag_count}."
+                "Unexpected ED2K UDP search header 0x{protocol:02x}/0x{opcode:02x}."
             ));
         }
 
-        let mut name = None;
-        let mut size_low = 0u64;
-        let mut size_high = 0u64;
-        let mut sources = 0u64;
-        let mut complete_sources = 0u64;
-
-        for _ in 0..tag_count {
-            let tag = read_tag(&mut cursor)?;
-            match tag.name_id {
-                Some(FT_FILENAME) => {
-                    if let Some(value) = tag_string(&tag) {
-                        name = Some(value.to_string());
-                    }
-                }
-                Some(FT_FILESIZE) => {
-                    size_low = tag_integer(&tag).unwrap_or(0);
-                }
-                Some(FT_FILESIZE_HI) => {
-                    size_high = tag_integer(&tag).unwrap_or(0);
-                }
-                Some(FT_SOURCES) => {
-                    sources = tag_integer(&tag).unwrap_or(0);
-                }
-                Some(FT_COMPLETE_SOURCES) => {
-                    complete_sources = tag_integer(&tag).unwrap_or(0);
-                }
-                _ => {}
-            }
+        if let Some(result) = parse_search_result(&mut cursor, server)? {
+            results.push(result);
         }
 
-        let Some(name) = name.filter(|value| !value.trim().is_empty()) else {
-            continue;
-        };
-        let size = size_low.saturating_add(size_high << 32);
-        if size == 0 {
-            continue;
+        if results.len() > MAX_RESULTS_PER_PACKET {
+            return Err(
+                "ED2K UDP datagram contains too many search results."
+                    .to_string(),
+            );
         }
+    }
 
-        let hash = hash_hex(&hash);
-        let encoded_name = urlencoding::encode(&name);
-        let ed2k_link = format!(
-            "ed2k://|file|{encoded_name}|{size}|{hash}|/"
-        );
-
-        results.push(NativeEd2kSearchResult {
-            hash,
-            book_candidate: is_book_candidate(&name),
-            name,
-            size,
-            sources,
-            complete_sources,
-            ed2k_link,
-            servers: vec![server_label.clone()],
-        });
+    if cursor.remaining() != 0 {
+        return Err("ED2K UDP search datagram has trailing bytes.".to_string());
     }
 
     Ok(results)
@@ -777,6 +837,84 @@ async fn search_one_server(
                 "ED2K server {endpoint} rejected the search."
             ));
         }
+    }
+}
+
+async fn search_one_global_server(
+    server: NativeEd2kServer,
+    query: String,
+) -> Result<Vec<NativeEd2kSearchResult>, String> {
+    let udp_port = server
+        .port
+        .checked_add(4)
+        .ok_or_else(|| {
+            format!(
+                "ED2K server {}:{} has no valid UDP port.",
+                server.address, server.port
+            )
+        })?;
+    let endpoint = format!("{}:{udp_port}", server.address);
+
+    let socket = UdpSocket::bind("0.0.0.0:0")
+        .await
+        .map_err(|error| format!("Unable to bind ED2K UDP socket: {error}"))?;
+    socket
+        .connect(&endpoint)
+        .await
+        .map_err(|error| format!("Unable to connect UDP to {endpoint}: {error}"))?;
+
+    let request = encode_udp_search_packet(&server, &query)?;
+    socket
+        .send(&request)
+        .await
+        .map_err(|error| {
+            format!("Unable to send ED2K global search to {endpoint}: {error}")
+        })?;
+
+    let deadline = Instant::now() + GLOBAL_UDP_TIMEOUT;
+    let mut received_any = false;
+    let mut results = Vec::new();
+    let mut buffer = vec![0u8; MAX_UDP_DATAGRAM_SIZE];
+
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            break;
+        }
+
+        let remaining = deadline - now;
+        let wait = if received_any {
+            remaining.min(GLOBAL_UDP_IDLE_AFTER_RESPONSE)
+        } else {
+            remaining
+        };
+
+        match timeout(wait, socket.recv(&mut buffer)).await {
+            Ok(Ok(length)) => {
+                received_any = true;
+                if length == 0 {
+                    continue;
+                }
+                let mut parsed =
+                    parse_udp_search_datagram(&buffer[..length], &server)?;
+                results.append(&mut parsed);
+            }
+            Ok(Err(error)) => {
+                return Err(format!(
+                    "Unable to receive ED2K global search response from {endpoint}: {error}"
+                ));
+            }
+            Err(_) => break,
+        }
+    }
+
+    if received_any {
+        Ok(results)
+    } else {
+        Err(format!(
+            "No UDP global-search response from {}:{}.",
+            server.address, udp_port
+        ))
     }
 }
 
