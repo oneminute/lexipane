@@ -350,6 +350,8 @@ export function ReaderView({
   const previousReaderActiveRef = useRef(active);
   const lastVisibleReaderTargetRef =
     useRef<ReaderNavigationTarget | null>(null);
+  const readerSettingsMenuRef = useRef<HTMLDetailsElement | null>(null);
+  const aiSettingsMenuRef = useRef<HTMLDetailsElement | null>(null);
 
   // Keep event callbacks synchronous with the parent navigation state. This
   // prevents epub.js/IntersectionObserver callbacks caused by display:none
@@ -2595,6 +2597,46 @@ export function ReaderView({
     };
   }, [imagePreview]);
 
+  useEffect(() => {
+    // Close transient reader chrome with Escape or when clicking elsewhere.
+    // Native <details> keeps keyboard semantics while these handlers prevent
+    // stacked menus from obscuring the reading surface.
+    const closeMenus = () => {
+      readerSettingsMenuRef.current?.removeAttribute("open");
+      aiSettingsMenuRef.current?.removeAttribute("open");
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      closeMenus();
+      closeReaderNavigation();
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+
+      const readingMenu = readerSettingsMenuRef.current;
+      const aiMenu = aiSettingsMenuRef.current;
+
+      if (readingMenu?.hasAttribute("open") && !readingMenu.contains(target)) {
+        readingMenu.removeAttribute("open");
+      }
+
+      if (aiMenu?.hasAttribute("open") && !aiMenu.contains(target)) {
+        aiMenu.removeAttribute("open");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, []);
+
   function submitQuestion(event: FormEvent) {
     event.preventDefault();
     const trimmed = question.trim();
@@ -2728,7 +2770,15 @@ export function ReaderView({
           )}
 
           {(isPdf || isEpub || isKindle) && (
-            <details className="reader-settings-menu">
+            <details
+              ref={readerSettingsMenuRef}
+              className="reader-settings-menu"
+              onToggle={(event) => {
+                if (event.currentTarget.open) {
+                  aiSettingsMenuRef.current?.removeAttribute("open");
+                }
+              }}
+            >
               <summary
                 className="toolbar-icon-button"
                 aria-label="Reading settings"
@@ -3260,7 +3310,15 @@ export function ReaderView({
                 {configuredModel || "Ollama local"}
               </span>
               {bookPath && (
-                <details className="ai-settings-menu">
+                <details
+                  ref={aiSettingsMenuRef}
+                  className="ai-settings-menu"
+                  onToggle={(event) => {
+                    if (event.currentTarget.open) {
+                      readerSettingsMenuRef.current?.removeAttribute("open");
+                    }
+                  }}
+                >
                   <summary
                     className="ai-settings-trigger"
                     aria-label="AI settings for this book"
