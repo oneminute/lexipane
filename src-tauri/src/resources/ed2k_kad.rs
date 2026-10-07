@@ -1134,23 +1134,19 @@ async fn collect_keyword_results(
     target: &[u8; 16],
     terms: &[String],
     contacts: &HashMap<(Ipv4Addr, u16), KadContact>,
-    responsive: &HashSet<(Ipv4Addr, u16)>,
 ) -> (usize, usize, Vec<NativeEd2kSearchResult>, Vec<String>) {
     let none = HashSet::new();
-    let mut candidates = closest_contacts(
+    // Kad keyword indexes live near the keyword target. Keep strict XOR
+    // distance ordering here; liveness discovered during bootstrap/lookup is
+    // useful for diagnostics but must not move a distant node ahead of a
+    // closer candidate.
+    let candidates = closest_contacts(
         contacts,
         target,
-        MAX_KAD_CONTACTS,
+        KEYWORD_CONTACTS,
         3,
         &none,
     );
-    candidates.sort_by_key(|contact| {
-        (
-            !responsive.contains(&(contact.address, contact.udp_port)),
-            distance_key(&contact.id, target),
-        )
-    });
-    candidates.truncate(KEYWORD_CONTACTS);
 
     let mut queried = 0usize;
     let mut errors = Vec::new();
@@ -1254,7 +1250,6 @@ pub(crate) async fn search_kad(
         &target,
         &terms,
         &contacts,
-        &responsive,
     )
     .await;
     errors.extend(keyword_errors);
