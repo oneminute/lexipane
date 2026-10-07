@@ -1045,37 +1045,83 @@ pub async fn resource_ed2k_native_search(
         return Err("server.met contains no usable ED2K servers.".to_string());
     }
 
-    let server_limit = max_servers
+    let tcp_limit = max_servers
         .unwrap_or(DEFAULT_QUERY_SERVERS)
         .clamp(1, MAX_QUERY_SERVERS);
-    let selected = servers
+    let tcp_selected = servers
         .iter()
         .filter(|server| server.failed_count < 10)
-        .take(server_limit)
+        .take(tcp_limit)
         .cloned()
         .collect::<Vec<_>>();
 
-    if selected.is_empty() {
+    if tcp_selected.is_empty() {
         return Err("No usable ED2K servers are available.".to_string());
     }
 
-    let servers_queried = selected.len();
-    let tasks = selected
+    let tcp_keys = tcp_selected
+        .iter()
+        .map(|server| format!("{}:{}", server.address, server.port))
+        .collect::<std::collections::HashSet<_>>();
+
+    let global_limit = DEFAULT_GLOBAL_SERVERS.min(MAX_GLOBAL_SERVERS);
+    let global_selected = servers
+        .iter()
+        .filter(|server| {
+            server.failed_count < 10
+                && server.port <= u16::MAX - 4
+                && !tcp_keys.contains(&format!(
+                    "{}:{}",
+                    server.address, server.port
+                ))
+        })
+        .take(global_limit)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let tcp_servers_queried = tcp_selected.len();
+    let global_servers_queried = global_selected.len();
+
+    let tcp_tasks = tcp_selected
         .into_iter()
         .map(|server| search_one_server(server, query.clone()));
+    let global_tasks = global_selected
+        .into_iter()
+        .map(|server| search_one_global_server(server, query.clone()));
 
-    let responses = join_all(tasks).await;
-    let mut successful = Vec::new();
+    let (tcp_responses, global_responses) =
+        tokio::join!(join_all(tcp_tasks), join_all(global_tasks));
+
+    let mut batches = Vec::new();
     let mut errors = Vec::new();
+    let mut tcp_servers_succeeded = 0usize;
+    let mut global_servers_responded = 0usize;
 
-    for response in responses {
+    for response in tcp_responses {
         match response {
-            Ok(results) => successful.push(results),
-            Err(error) => errors.push(error),
+            Ok(results) => {
+                tcp_servers_succeeded += 1;
+                batches.push(results);
+            }
+            Err(error) => errors.push("TCP: ".to_string() + &error),
         }
     }
 
-    let servers_succeeded = successful.len();
+    for response in global_responses {
+        match response {
+            Ok(results) => {
+                global_servers_responded += 1;
+                batches.push(results);
+            }
+            Err(error) => errors.push("UDP: ".to_string() + &error),
+        }
+    }
+
+    let servers_queried =
+        tcp_servers_queried.saturating_add(global_servers_queried);
+    let servers_succeeded =
+        tcp_servers_succeeded.saturating_add(global_servers_responded);
+
     if servers_succeeded == 0 {
         return Err(format!(
             "Native ED2K search could not reach any server. {}",
@@ -1089,7 +1135,12 @@ pub async fn resource_ed2k_native_search(
         servers_loaded: servers.len(),
         servers_queried,
         servers_succeeded,
-        results: merge_results(successful),
+        tcp_servers_queried,
+        tcp_servers_succeeded,
+        global_servers_queried,
+        global_servers_responded,
+        search_phase: "tcp-seed+udp-global".to_string(),
+        results: merge_results(batches),
         errors,
     })
 }
@@ -1183,6 +1234,7 @@ mod tests {
             files: None,
             failed_count: 0,
             preference: 0,
+            udp_flags: SRV_UDPFLG_EXT_GETFILES,
         };
 
         let results = parse_search_results(&payload, &server).unwrap();
@@ -1196,6 +1248,71 @@ mod tests {
             "11111111111111111111111111111111"
         );
         assert!(results[0].ed2k_link.starts_with("ed2k://|file|"));
+    }
+
+    #[test]
+    fn encodes_udp_global_search_for_modern_server() {
+        let server = NativeEd2kServer {
+            address: "1.2.3.4".to_string(),
+            port: 4661,
+            name: None,
+            users: None,
+            files: None,
+            failed_count: 0,
+            preference: 0,
+            udp_flags: SRV_UDPFLG_EXT_GETFILES,
+        };
+
+        let packet = encode_udp_search_packet(&server, "history").unwrap();
+        assert_eq!(packet[0], OP_EDONKEYPROT);
+        assert_eq!(packet[1], OP_GLOBSEARCHREQ2);
+        assert_eq!(packet[2], 0x01);
+    }
+
+    #[test]
+    fn parses_multiple_udp_global_results_in_one_datagram() {
+        let server = NativeEd2kServer {
+            address: "5.6.7.8".to_string(),
+            port: 4661,
+            name: None,
+            users: None,
+            files: None,
+            failed_count: 0,
+            preference: 0,
+            udp_flags: 0,
+        };
+
+        fn one_result(hash_byte: u8, name: &str, size: u32) -> Vec<u8> {
+            let mut result = Vec::new();
+            result.extend_from_slice(&[hash_byte; 16]);
+            push_u32(&mut result, 0);
+            push_u16(&mut result, 0);
+            push_u32(&mut result, 2);
+            result.extend_from_slice(&old_string_tag(FT_FILENAME, name));
+            result.extend_from_slice(&old_u32_tag(FT_FILESIZE, size));
+            result
+        }
+
+        let mut datagram = vec![OP_EDONKEYPROT, OP_GLOBSEARCHRES];
+        datagram.extend_from_slice(&one_result(
+            0x11,
+            "One Book.pdf",
+            100,
+        ));
+        datagram.extend_from_slice(&[
+            OP_EDONKEYPROT,
+            OP_GLOBSEARCHRES,
+        ]);
+        datagram.extend_from_slice(&one_result(
+            0x22,
+            "Two Book.epub",
+            200,
+        ));
+
+        let results = parse_udp_search_datagram(&datagram, &server).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].name, "One Book.pdf");
+        assert_eq!(results[1].name, "Two Book.epub");
     }
 
     #[test]
