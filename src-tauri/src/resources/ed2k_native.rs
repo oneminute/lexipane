@@ -37,8 +37,10 @@ const OP_PACKEDPROT: u8 = 0xD4;
 const OP_LOGINREQUEST: u8 = 0x01;
 const OP_REJECT: u8 = 0x05;
 const OP_SEARCHREQUEST: u8 = 0x16;
+const OP_GETSOURCES: u8 = 0x19;
 const OP_SEARCHRESULT: u8 = 0x33;
 const OP_IDCHANGE: u8 = 0x40;
+const OP_FOUNDSOURCES: u8 = 0x42;
 const OP_GLOBSEARCHREQ2: u8 = 0x92;
 const OP_GLOBSEARCHREQ: u8 = 0x98;
 const OP_GLOBSEARCHRES: u8 = 0x99;
@@ -114,6 +116,44 @@ pub struct NativeEd2kSearchResponse {
     pub kad_keyword_responded: usize,
     pub search_phase: String,
     pub results: Vec<NativeEd2kSearchResult>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeEd2kSource {
+    pub address: Option<String>,
+    pub tcp_port: u16,
+    pub udp_port: Option<u16>,
+    pub origin: String,
+    pub direct: bool,
+    pub low_id: bool,
+    pub client_id: Option<u32>,
+    pub server: Option<String>,
+    pub source_type: Option<u8>,
+    pub encryption: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeEd2kSourceDiscoveryResponse {
+    pub hash: String,
+    pub size: u64,
+    pub server_list_source: String,
+    pub servers_loaded: usize,
+    pub servers_queried: usize,
+    pub servers_responded: usize,
+    pub kad_nodes_source: Option<String>,
+    pub kad_contacts_loaded: usize,
+    pub kad_contacts_discovered: usize,
+    pub kad_bootstrap_queried: usize,
+    pub kad_bootstrap_responded: usize,
+    pub kad_lookup_queried: usize,
+    pub kad_lookup_responded: usize,
+    pub kad_source_queried: usize,
+    pub kad_source_responded: usize,
+    pub search_phase: String,
+    pub sources: Vec<NativeEd2kSource>,
     pub errors: Vec<String>,
 }
 
@@ -689,6 +729,158 @@ fn parse_search_result(
     }))
 }
 
+fn parse_ed2k_hash(value: &str) -> Result<[u8; 16], String> {
+    let value = value.trim();
+    if value.len() != 32 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("ED2K hash must contain exactly 32 hexadecimal characters.".to_string());
+    }
+
+    let mut hash = [0u8; 16];
+    for (index, slot) in hash.iter_mut().enumerate() {
+        let offset = index * 2;
+        *slot = u8::from_str_radix(&value[offset..offset + 2], 16)
+            .map_err(|_| "ED2K hash contains invalid hexadecimal data.".to_string())?;
+    }
+    Ok(hash)
+}
+
+fn valid_remote_source_address(address: Ipv4Addr) -> bool {
+    !address.is_unspecified()
+        && !address.is_loopback()
+        && !address.is_private()
+        && !address.is_link_local()
+        && !address.is_documentation()
+        && !address.is_multicast()
+        && !address.is_broadcast()
+}
+
+fn parse_found_sources(
+    payload: &[u8],
+    expected_hash: &[u8; 16],
+    server: &NativeEd2kServer,
+) -> Result<Vec<NativeEd2kSource>, String> {
+    let mut cursor = ByteCursor::new(payload);
+    let returned_hash = cursor.bytes(16)?;
+    if returned_hash != expected_hash {
+        return Err("ED2K source response hash does not match the requested file.".to_string());
+    }
+
+    let count = cursor.u8()? as usize;
+    let required = count
+        .checked_mul(6)
+        .ok_or_else(|| "ED2K source response size overflow.".to_string())?;
+    if cursor.remaining() < required {
+        return Err(format!(
+            "ED2K source response is truncated: expected {required} source bytes, got {}.",
+            cursor.remaining()
+        ));
+    }
+
+    let server_label = format!("{}:{}", server.address, server.port);
+    let mut sources = Vec::with_capacity(count);
+    for _ in 0..count {
+        let client_id = cursor.u32()?;
+        let tcp_port = cursor.u16()?;
+        if tcp_port == 0 {
+            continue;
+        }
+
+        let low_id = client_id < 0x0100_0000;
+        if low_id {
+            sources.push(NativeEd2kSource {
+                address: None,
+                tcp_port,
+                udp_port: None,
+                origin: "server-tcp".to_string(),
+                direct: false,
+                low_id: true,
+                client_id: Some(client_id),
+                server: Some(server_label.clone()),
+                source_type: None,
+                encryption: None,
+            });
+            continue;
+        }
+
+        let address = Ipv4Addr::from(client_id.to_le_bytes());
+        if !valid_remote_source_address(address) {
+            continue;
+        }
+
+        sources.push(NativeEd2kSource {
+            address: Some(address.to_string()),
+            tcp_port,
+            udp_port: None,
+            origin: "server-tcp".to_string(),
+            direct: true,
+            low_id: false,
+            client_id: Some(client_id),
+            server: Some(server_label.clone()),
+            source_type: None,
+            encryption: None,
+        });
+    }
+
+    Ok(sources)
+}
+
+fn source_identity(source: &NativeEd2kSource) -> String {
+    if let Some(address) = source.address.as_deref() {
+        return format!(
+            "direct:{address}:{}:{}",
+            source.tcp_port,
+            source.udp_port.unwrap_or(0)
+        );
+    }
+
+    format!(
+        "low:{}:{}:{}",
+        source.server.as_deref().unwrap_or_default(),
+        source.client_id.unwrap_or(0),
+        source.tcp_port
+    )
+}
+
+fn merge_sources(
+    batches: Vec<Vec<NativeEd2kSource>>,
+) -> Vec<NativeEd2kSource> {
+    let mut merged: HashMap<String, NativeEd2kSource> = HashMap::new();
+
+    for batch in batches {
+        for source in batch {
+            let key = source_identity(&source);
+            if let Some(existing) = merged.get_mut(&key) {
+                if existing.udp_port.is_none() {
+                    existing.udp_port = source.udp_port;
+                }
+                if existing.source_type.is_none() {
+                    existing.source_type = source.source_type;
+                }
+                if existing.encryption.is_none() {
+                    existing.encryption = source.encryption;
+                }
+                if existing.server.is_none() {
+                    existing.server = source.server;
+                }
+                existing.direct |= source.direct;
+            } else {
+                merged.insert(key, source);
+            }
+        }
+    }
+
+    let mut sources = merged.into_values().collect::<Vec<_>>();
+    sources.sort_by(|left, right| {
+        right
+            .direct
+            .cmp(&left.direct)
+            .then_with(|| left.low_id.cmp(&right.low_id))
+            .then_with(|| left.address.cmp(&right.address))
+            .then_with(|| left.tcp_port.cmp(&right.tcp_port))
+    });
+    sources
+}
+
 fn parse_search_results(
     payload: &[u8],
     server: &NativeEd2kServer,
@@ -844,6 +1036,63 @@ async fn search_one_server(
         if packet.opcode == OP_REJECT {
             return Err(format!(
                 "ED2K server {endpoint} rejected the search."
+            ));
+        }
+    }
+}
+
+async fn discover_sources_one_server(
+    server: NativeEd2kServer,
+    hash: [u8; 16],
+) -> Result<Vec<NativeEd2kSource>, String> {
+    let endpoint = format!("{}:{}", server.address, server.port);
+    let mut stream = timeout(
+        Duration::from_secs(5),
+        TcpStream::connect(&endpoint),
+    )
+    .await
+    .map_err(|_| format!("Connection to {endpoint} timed out."))?
+    .map_err(|error| format!("Unable to connect to {endpoint}: {error}"))?;
+
+    let login = encode_packet(OP_LOGINREQUEST, &login_payload()?)?;
+    timeout(Duration::from_secs(3), stream.write_all(&login))
+        .await
+        .map_err(|_| format!("Login write to {endpoint} timed out."))?
+        .map_err(|error| format!("Unable to send login to {endpoint}: {error}"))?;
+
+    await_login(&mut stream).await?;
+
+    let request = encode_packet(OP_GETSOURCES, &hash)?;
+    timeout(Duration::from_secs(3), stream.write_all(&request))
+        .await
+        .map_err(|_| format!("Source request write to {endpoint} timed out."))?
+        .map_err(|error| {
+            format!("Unable to send source request to {endpoint}: {error}")
+        })?;
+
+    let deadline = Instant::now() + Duration::from_secs(9);
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "Source response from {endpoint} timed out."
+            ));
+        }
+
+        let remaining = deadline - now;
+        let packet = timeout(remaining, read_packet(&mut stream))
+            .await
+            .map_err(|_| {
+                format!("Source response from {endpoint} timed out.")
+            })??;
+
+        if packet.opcode == OP_FOUNDSOURCES {
+            return parse_found_sources(&packet.payload, &hash, &server);
+        }
+
+        if packet.opcode == OP_REJECT {
+            return Err(format!(
+                "ED2K server {endpoint} rejected the source lookup."
             ));
         }
     }
@@ -1037,6 +1286,85 @@ fn merge_results(
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
     results
+}
+
+#[tauri::command]
+pub async fn resource_ed2k_native_discover_sources(
+    app: AppHandle,
+    hash: String,
+    size: u64,
+    max_servers: Option<usize>,
+) -> Result<NativeEd2kSourceDiscoveryResponse, String> {
+    if size == 0 {
+        return Err("ED2K source discovery requires a non-zero file size.".to_string());
+    }
+    let hash_bytes = parse_ed2k_hash(&hash)?;
+    let normalized_hash = hash_hex(&hash_bytes);
+
+    let (server_met, server_list_source) = load_server_met(&app).await?;
+    let servers = parse_server_met(&server_met)?;
+    if servers.is_empty() {
+        return Err("server.met contains no usable ED2K servers.".to_string());
+    }
+
+    let limit = max_servers
+        .unwrap_or(DEFAULT_QUERY_SERVERS.saturating_add(2))
+        .clamp(1, MAX_QUERY_SERVERS);
+    let selected = servers
+        .iter()
+        .filter(|server| server.failed_count < 10)
+        .take(limit)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if selected.is_empty() {
+        return Err("No usable ED2K servers are available for source discovery.".to_string());
+    }
+
+    let servers_queried = selected.len();
+    let tasks = selected
+        .into_iter()
+        .map(|server| discover_sources_one_server(server, hash_bytes));
+    let responses = join_all(tasks).await;
+
+    let mut batches = Vec::new();
+    let mut errors = Vec::new();
+    let mut servers_responded = 0usize;
+    for response in responses {
+        match response {
+            Ok(sources) => {
+                servers_responded += 1;
+                batches.push(sources);
+            }
+            Err(error) => errors.push("TCP source lookup: ".to_string() + &error),
+        }
+    }
+
+    if errors.len() > 32 {
+        errors.truncate(32);
+        errors.push("Additional ED2K source lookup errors were suppressed.".to_string());
+    }
+
+    Ok(NativeEd2kSourceDiscoveryResponse {
+        hash: normalized_hash,
+        size,
+        server_list_source,
+        servers_loaded: servers.len(),
+        servers_queried,
+        servers_responded,
+        kad_nodes_source: None,
+        kad_contacts_loaded: 0,
+        kad_contacts_discovered: 0,
+        kad_bootstrap_queried: 0,
+        kad_bootstrap_responded: 0,
+        kad_lookup_queried: 0,
+        kad_lookup_responded: 0,
+        kad_source_queried: 0,
+        kad_source_responded: 0,
+        search_phase: "server-source-lookup".to_string(),
+        sources: merge_sources(batches),
+        errors,
+    })
 }
 
 #[tauri::command]
@@ -1325,6 +1653,103 @@ mod tests {
             "11111111111111111111111111111111"
         );
         assert!(results[0].ed2k_link.starts_with("ed2k://|file|"));
+    }
+
+    #[test]
+    fn parses_ed2k_server_found_sources() {
+        let hash = [0xAB; 16];
+        let server = NativeEd2kServer {
+            address: "5.6.7.8".to_string(),
+            port: 4661,
+            name: None,
+            users: None,
+            files: None,
+            failed_count: 0,
+            preference: 0,
+            udp_flags: 0,
+        };
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&hash);
+        payload.push(2);
+
+        let high_id = u32::from_le_bytes([8, 8, 4, 4]);
+        push_u32(&mut payload, high_id);
+        push_u16(&mut payload, 4662);
+
+        push_u32(&mut payload, 12_345);
+        push_u16(&mut payload, 4663);
+
+        let sources = parse_found_sources(&payload, &hash, &server).unwrap();
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].address.as_deref(), Some("8.8.4.4"));
+        assert!(sources[0].direct);
+        assert!(!sources[0].low_id);
+        assert_eq!(sources[1].address, None);
+        assert!(!sources[1].direct);
+        assert!(sources[1].low_id);
+        assert_eq!(sources[1].client_id, Some(12_345));
+    }
+
+    #[test]
+    fn filters_non_public_high_id_sources() {
+        let hash = [0xCD; 16];
+        let server = NativeEd2kServer {
+            address: "5.6.7.8".to_string(),
+            port: 4661,
+            name: None,
+            users: None,
+            files: None,
+            failed_count: 0,
+            preference: 0,
+            udp_flags: 0,
+        };
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&hash);
+        payload.push(1);
+        push_u32(
+            &mut payload,
+            u32::from_le_bytes([192, 168, 1, 5]),
+        );
+        push_u16(&mut payload, 4662);
+
+        assert!(parse_found_sources(&payload, &hash, &server)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn validates_and_normalizes_ed2k_hashes() {
+        let parsed = parse_ed2k_hash("AABBCCDDEEFF00112233445566778899")
+            .unwrap();
+        assert_eq!(
+            hash_hex(&parsed),
+            "aabbccddeeff00112233445566778899"
+        );
+        assert!(parse_ed2k_hash("not-a-hash").is_err());
+    }
+
+    #[test]
+    fn merges_duplicate_direct_sources() {
+        let first = NativeEd2kSource {
+            address: Some("8.8.8.8".to_string()),
+            tcp_port: 4662,
+            udp_port: None,
+            origin: "server-tcp".to_string(),
+            direct: true,
+            low_id: false,
+            client_id: Some(1),
+            server: Some("one:4661".to_string()),
+            source_type: None,
+            encryption: None,
+        };
+        let mut second = first.clone();
+        second.udp_port = Some(4672);
+        second.source_type = Some(1);
+
+        let merged = merge_sources(vec![vec![first], vec![second]]);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].udp_port, Some(4672));
+        assert_eq!(merged[0].source_type, Some(1));
     }
 
     #[test]
