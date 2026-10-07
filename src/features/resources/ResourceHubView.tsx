@@ -153,12 +153,14 @@ import {
   type Ed2kEngineAccount,
 } from "../../core/resources/ed2kAdapter";
 import {
+  discoverNativeEd2kSources,
   searchNativeEd2k,
   type Ed2kEnvironment,
   type Ed2kLinkMetadata,
   type Ed2kSearchResult,
   type NativeEd2kSearchResponse,
   type NativeEd2kSearchResult,
+  type NativeEd2kSourceDiscoveryResponse,
 } from "../../core/resources/ed2kTransport";
 import type {
   ResourceInputClassification,
@@ -513,6 +515,10 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<NativeEd2kSearchResponse | null>(null);
   const [nativeEd2kResults, setNativeEd2kResults] =
     useState<NativeEd2kSearchResult[]>([]);
+  const [nativeEd2kSourceBusyKey, setNativeEd2kSourceBusyKey] =
+    useState<string | null>(null);
+  const [nativeEd2kSourceResponses, setNativeEd2kSourceResponses] =
+    useState<Record<string, NativeEd2kSourceDiscoveryResponse>>({});
   const [ed2kSearchType, setEd2kSearchType] =
     useState<"global" | "kad" | "local">("global");
   const [ed2kResults, setEd2kResults] =
@@ -2568,6 +2574,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setNativeEd2kBusy(true);
     setMessage("");
     setNativeEd2kResponse(null);
+    setNativeEd2kSourceResponses({});
+    setNativeEd2kSourceBusyKey(null);
 
     try {
       const response = await searchNativeEd2k(ed2kQuery, 6);
@@ -2606,6 +2614,51 @@ export function ResourceHubView({ onOpenBook }: Props) {
       );
     } finally {
       setNativeEd2kBusy(false);
+    }
+  }
+
+  function nativeEd2kSourceKey(result: NativeEd2kSearchResult) {
+    return result.hash + ":" + result.size;
+  }
+
+  async function runNativeEd2kSourceDiscovery(
+    result: NativeEd2kSearchResult,
+  ) {
+    const key = nativeEd2kSourceKey(result);
+    setNativeEd2kSourceBusyKey(key);
+    setMessage("");
+
+    try {
+      const response = await discoverNativeEd2kSources(result, 6);
+      setNativeEd2kSourceResponses((current) => ({
+        ...current,
+        [key]: response,
+      }));
+
+      const direct = response.sources.filter((source) => source.direct).length;
+      const callback = response.sources.length - direct;
+      setMessage(
+        response.sources.length +
+          " native source" +
+          (response.sources.length === 1 ? "" : "s") +
+          " discovered for " +
+          result.name +
+          " (" +
+          direct +
+          " direct, " +
+          callback +
+          " callback/firewalled).",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Native ED2K/Kad source discovery failed.",
+      );
+    } finally {
+      setNativeEd2kSourceBusyKey((current) =>
+        current === key ? null : current,
+      );
     }
   }
 
@@ -3485,14 +3538,16 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <section className="resource-section">
             <header>
               <div>
-                <span className="eyebrow">Native ED2K · Phase 3</span>
-                <h2>Server + Global + Kad search</h2>
+                <span className="eyebrow">Native ED2K · Phase 4</span>
+                <h2>Search + native source discovery</h2>
               </div>
               <small>
                 No aMule is required for search. LexiPane searches direct ED2K
                 servers, expands through UDP Global Search, bootstraps Kad from
                 nodes.dat, performs a bounded Kad keyword lookup, then merges
-                all identities by ED2K hash and file size.
+                all identities by ED2K hash and file size. Select a result to
+                discover concrete sources through ED2K servers and Kad without
+                starting a download.
               </small>
             </header>
 
@@ -3582,6 +3637,22 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       <button
                         type="button"
                         className="ghost-button"
+                        onClick={() =>
+                          void runNativeEd2kSourceDiscovery(result)
+                        }
+                        disabled={
+                          nativeEd2kSourceBusyKey ===
+                          nativeEd2kSourceKey(result)
+                        }
+                      >
+                        {nativeEd2kSourceBusyKey ===
+                        nativeEd2kSourceKey(result)
+                          ? "Finding sources…"
+                          : "Find native sources"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
                         onClick={() => void copyNativeEd2kLink(result)}
                       >
                         Copy ED2K link
@@ -3599,6 +3670,96 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         </button>
                       )}
                     </div>
+
+                    {nativeEd2kSourceResponses[
+                      nativeEd2kSourceKey(result)
+                    ] && (
+                      <details className="resource-safety-note">
+                        <summary>
+                          {
+                            nativeEd2kSourceResponses[
+                              nativeEd2kSourceKey(result)
+                            ].sources.length
+                          }{" "}
+                          discovered source(s)
+                        </summary>
+                        {(() => {
+                          const sourceResponse =
+                            nativeEd2kSourceResponses[
+                              nativeEd2kSourceKey(result)
+                            ];
+                          const directSources =
+                            sourceResponse.sources.filter(
+                              (source) => source.direct,
+                            ).length;
+                          return (
+                            <>
+                              <p>
+                                {directSources} direct ·{" "}
+                                {sourceResponse.sources.length - directSources}{" "}
+                                callback/firewalled · server responses{" "}
+                                {sourceResponse.serversResponded}/
+                                {sourceResponse.serversQueried} · Kad source{" "}
+                                {sourceResponse.kadSourceResponded}/
+                                {sourceResponse.kadSourceQueried} · Kad lookup{" "}
+                                {sourceResponse.kadLookupResponded}/
+                                {sourceResponse.kadLookupQueried} · phase:{" "}
+                                {sourceResponse.searchPhase}
+                                {sourceResponse.errors.length > 0
+                                  ? " · " +
+                                    sourceResponse.errors.length +
+                                    " timeout/error(s)"
+                                  : ""}
+                              </p>
+                              {sourceResponse.sources
+                                .slice(0, 12)
+                                .map((source, index) => (
+                                  <small
+                                    key={
+                                      (source.sourceId ??
+                                        source.address ??
+                                        "source") +
+                                      ":" +
+                                      source.tcpPort +
+                                      ":" +
+                                      index
+                                    }
+                                  >
+                                    {source.direct
+                                      ? "Direct"
+                                      : "Callback/firewalled"}{" "}
+                                    · {source.origin} ·{" "}
+                                    {source.address ?? "LowID"}
+                                    {source.tcpPort > 0
+                                      ? ":" + source.tcpPort
+                                      : ""}
+                                    {source.udpPort
+                                      ? " · UDP " + source.udpPort
+                                      : ""}
+                                    {source.sourceType
+                                      ? " · Kad type " + source.sourceType
+                                      : ""}
+                                    {source.buddyAddress
+                                      ? " · buddy " +
+                                        source.buddyAddress +
+                                        (source.buddyPort
+                                          ? ":" + source.buddyPort
+                                          : "")
+                                      : ""}
+                                  </small>
+                                ))}
+                              {sourceResponse.sources.length > 12 && (
+                                <small>
+                                  +
+                                  {sourceResponse.sources.length - 12} more
+                                  source(s)
+                                </small>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </details>
+                    )}
                   </article>
                 ))}
               </div>
@@ -3608,9 +3769,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 <div className="resource-empty compact">
                   <strong>No results returned by the responding servers.</strong>
                   <p>
-                    Try fewer or broader keywords. Server, UDP Global Search, and Kad
-                    keyword search are all active; source discovery is the
-                    next native ED2K phase.
+                    Try fewer or broader keywords. Server, UDP Global Search,
+                    Kad keyword search, and selected-file source discovery are
+                    active. Native part/block transfer is the next ED2K phase.
                   </p>
                 </div>
               )
