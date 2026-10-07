@@ -245,6 +245,9 @@ fn valid_contact_address(address: Ipv4Addr, port: u16) -> bool {
     port != 0
         && !address.is_unspecified()
         && !address.is_loopback()
+        && !address.is_private()
+        && !address.is_link_local()
+        && !address.is_documentation()
         && !address.is_multicast()
         && !address.is_broadcast()
 }
@@ -1400,6 +1403,26 @@ mod tests {
         assert_eq!(results[0].sources, 9);
         assert!(results[0].book_candidate);
         assert!(results[0].ed2k_link.starts_with("ed2k://|file|"));
+    }
+
+    #[test]
+    fn rejects_private_kad_contact_addresses() {
+        assert!(!valid_contact_address(
+            Ipv4Addr::new(127, 0, 0, 1),
+            4672,
+        ));
+        assert!(!valid_contact_address(
+            Ipv4Addr::new(192, 168, 1, 10),
+            4672,
+        ));
+        assert!(!valid_contact_address(
+            Ipv4Addr::new(169, 254, 1, 10),
+            4672,
+        ));
+        assert!(valid_contact_address(
+            Ipv4Addr::new(8, 8, 8, 8),
+            4672,
+        ));
     }
 
     #[test]
