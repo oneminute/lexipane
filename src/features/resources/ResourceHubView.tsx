@@ -2576,7 +2576,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
       const partial =
         response.errors.length > 0
-          ? " " + response.errors.length + " server(s) failed or timed out."
+          ? " " + response.errors.length + " network timeout/error(s)."
           : "";
       setMessage(
         response.results.length +
@@ -2590,6 +2590,10 @@ export function ResourceHubView({ onOpenBook }: Props) {
           response.globalServersResponded +
           "/" +
           response.globalServersQueried +
+          ", Kad keyword " +
+          response.kadKeywordResponded +
+          "/" +
+          response.kadKeywordQueried +
           "." +
           partial,
       );
@@ -3481,14 +3485,14 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <section className="resource-section">
             <header>
               <div>
-                <span className="eyebrow">Native ED2K · Phase 2</span>
-                <h2>Server + Global ED2K search</h2>
+                <span className="eyebrow">Native ED2K · Phase 3</span>
+                <h2>Server + Global + Kad search</h2>
               </div>
               <small>
-                No aMule is required for search. LexiPane first performs direct TCP
-                server searches, then expands the same query across additional
-                ED2K servers with UDP Global Search before merging duplicate
-                hashes and ranking Reader formats by availability.
+                No aMule is required for search. LexiPane searches direct ED2K
+                servers, expands through UDP Global Search, bootstraps Kad from
+                nodes.dat, performs a bounded Kad keyword lookup, then merges
+                all identities by ED2K hash and file size.
               </small>
             </header>
 
@@ -3509,7 +3513,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 disabled={nativeEd2kBusy || !ed2kQuery.trim()}
                 onClick={() => void runNativeEd2kSearch()}
               >
-                {nativeEd2kBusy ? "TCP + UDP global search…" : "Native global search"}
+                {nativeEd2kBusy
+                  ? "Server + Global + Kad search…"
+                  : "Native ED2K + Kad search"}
               </button>
             </div>
 
@@ -3519,13 +3525,18 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   TCP {nativeEd2kResponse.tcpServersSucceeded}/
                   {nativeEd2kResponse.tcpServersQueried} · UDP global{" "}
                   {nativeEd2kResponse.globalServersResponded}/
-                  {nativeEd2kResponse.globalServersQueried}
+                  {nativeEd2kResponse.globalServersQueried} · Kad keyword{" "}
+                  {nativeEd2kResponse.kadKeywordResponded}/
+                  {nativeEd2kResponse.kadKeywordQueried}
                 </strong>
                 <p>
                   {nativeEd2kResponse.results.length} unique result(s) ·{" "}
-                  {nativeEd2kResponse.serversLoaded} servers loaded · phase:{" "}
+                  {nativeEd2kResponse.serversLoaded} servers ·{" "}
+                  {nativeEd2kResponse.kadContactsLoaded} Kad contacts +{" "}
+                  {nativeEd2kResponse.kadContactsDiscovered} discovered · phase:{" "}
                   {nativeEd2kResponse.searchPhase} · server.met:{" "}
-                  {nativeEd2kResponse.serverListSource}
+                  {nativeEd2kResponse.serverListSource} · nodes.dat:{" "}
+                  {nativeEd2kResponse.kadNodesSource ?? "unavailable"}
                   {nativeEd2kResponse.errors.length > 0
                     ? " · " +
                       nativeEd2kResponse.errors.length +
@@ -3593,8 +3604,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 <div className="resource-empty compact">
                   <strong>No results returned by the responding servers.</strong>
                   <p>
-                    Try fewer or broader keywords. UDP Global Search is active; Kad
-                    search is the next native ED2K phase.
+                    Try fewer or broader keywords. Server, UDP Global Search, and Kad
+                    keyword search are all active; source discovery is the
+                    next native ED2K phase.
                   </p>
                 </div>
               )
