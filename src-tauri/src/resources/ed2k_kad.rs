@@ -16,7 +16,7 @@ use tokio::{
     time::{timeout, Instant},
 };
 
-use super::ed2k_native::NativeEd2kSearchResult;
+use super::ed2k_native::{NativeEd2kSearchResult, NativeEd2kSource};
 
 const NODES_DAT_URL: &str = "https://upd.emule-security.org/nodes.dat";
 const NODES_DAT_CACHE_SECONDS: u64 = 6 * 60 * 60;
@@ -35,6 +35,8 @@ const LOOKUP_ALPHA: usize = 5;
 const LOOKUP_WAIT: Duration = Duration::from_millis(1_100);
 const KEYWORD_CONTACTS: usize = 6;
 const KEYWORD_WAIT: Duration = Duration::from_millis(2_500);
+const SOURCE_CONTACTS: usize = 8;
+const SOURCE_WAIT: Duration = Duration::from_millis(2_800);
 
 const OP_KADEMLIAHEADER: u8 = 0xE4;
 const OP_KADEMLIAPACKEDPROT: u8 = 0xE5;
@@ -43,6 +45,7 @@ const KADEMLIA2_BOOTSTRAP_RES: u8 = 0x09;
 const KADEMLIA2_REQ: u8 = 0x21;
 const KADEMLIA2_RES: u8 = 0x29;
 const KADEMLIA2_SEARCH_KEY_REQ: u8 = 0x33;
+const KADEMLIA2_SEARCH_SOURCE_REQ: u8 = 0x34;
 const KADEMLIA2_SEARCH_RES: u8 = 0x3B;
 const KADEMLIA_FIND_VALUE: u8 = 0x02;
 
@@ -52,6 +55,15 @@ const TAG_FILENAME: u8 = 0x01;
 const TAG_FILESIZE: u8 = 0x02;
 const TAG_FILESIZE_HI: u8 = 0x3A;
 const TAG_SOURCES: u8 = 0x15;
+const TAG_ENCRYPTION: u8 = 0xF3;
+const TAG_BUDDYHASH: u8 = 0xF8;
+const TAG_CLIENTLOWID: u8 = 0xF9;
+const TAG_SERVERPORT: u8 = 0xFA;
+const TAG_SERVERIP: u8 = 0xFB;
+const TAG_SOURCEUPORT: u8 = 0xFC;
+const TAG_SOURCEPORT: u8 = 0xFD;
+const TAG_SOURCEIP: u8 = 0xFE;
+const TAG_SOURCETYPE: u8 = 0xFF;
 
 static NONCE: AtomicU64 = AtomicU64::new(1);
 
@@ -67,6 +79,21 @@ pub(crate) struct KadSearchOutcome {
     pub keyword_queried: usize,
     pub keyword_responded: usize,
     pub results: Vec<NativeEd2kSearchResult>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct KadSourceOutcome {
+    pub nodes_source: String,
+    pub contacts_loaded: usize,
+    pub contacts_discovered: usize,
+    pub bootstrap_queried: usize,
+    pub bootstrap_responded: usize,
+    pub lookup_queried: usize,
+    pub lookup_responded: usize,
+    pub source_queried: usize,
+    pub source_responded: usize,
+    pub sources: Vec<NativeEd2kSource>,
     pub errors: Vec<String>,
 }
 
@@ -520,6 +547,10 @@ fn crypt_value_from_wire(id: &[u8; 16]) -> [u8; 16] {
     out
 }
 
+fn file_target(hash_be: &[u8; 16]) -> [u8; 16] {
+    be_to_wire(hash_be)
+}
+
 fn keyword_target(query: &str) -> Result<([u8; 16], Vec<String>), String> {
     let terms = keyword_terms(query)?;
     let digest = Md4::digest(terms[0].as_bytes());
@@ -880,6 +911,146 @@ fn matches_query(name: &str, terms: &[String]) -> bool {
     terms.iter().all(|term| lower.contains(term))
 }
 
+fn normalized_hash_string(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Some(value.to_ascii_lowercase())
+    } else {
+        None
+    }
+}
+
+fn public_tag_address(value: u64) -> Option<Ipv4Addr> {
+    let value = u32::try_from(value).ok()?;
+    let address = Ipv4Addr::from(value.to_be_bytes());
+    valid_contact_address(address, 1).then_some(address)
+}
+
+fn parse_source_response(
+    payload: &[u8],
+    expected_target: &[u8; 16],
+) -> Result<Vec<NativeEd2kSource>, String> {
+    let mut cursor = Cursor::new(payload);
+    let _sender_id = cursor.id()?;
+    let target = cursor.id()?;
+    if &target != expected_target {
+        return Err("Kad source response target does not match.".to_string());
+    }
+
+    let count = cursor.u16()? as usize;
+    if count > MAX_KAD_RESULTS {
+        return Err(format!(
+            "Kad source response contains too many results: {count}."
+        ));
+    }
+
+    let mut sources = Vec::with_capacity(count);
+    for _ in 0..count {
+        let answer = cursor.id()?;
+        let source_id = hash_hex(&wire_to_be(&answer));
+        let tag_count = cursor.u8()? as usize;
+        if tag_count > MAX_KAD_TAGS {
+            return Err(format!(
+                "Kad source result contains too many tags: {tag_count}."
+            ));
+        }
+
+        let mut source_type = 0u8;
+        let mut source_ip = None;
+        let mut source_tcp = 0u16;
+        let mut source_udp = None;
+        let mut buddy_ip = None;
+        let mut buddy_port = None;
+        let mut buddy_id = None;
+        let mut client_low_id = None;
+        let mut encryption = None;
+
+        for _ in 0..tag_count {
+            let tag = read_kad_tag(&mut cursor)?;
+            match tag.name_id {
+                Some(TAG_SOURCETYPE) => {
+                    source_type = tag_integer(&tag)
+                        .and_then(|value| u8::try_from(value).ok())
+                        .unwrap_or(0);
+                }
+                Some(TAG_SOURCEIP) => {
+                    source_ip = tag_integer(&tag).and_then(public_tag_address);
+                }
+                Some(TAG_SOURCEPORT) => {
+                    source_tcp = tag_integer(&tag)
+                        .and_then(|value| u16::try_from(value).ok())
+                        .unwrap_or(0);
+                }
+                Some(TAG_SOURCEUPORT) => {
+                    source_udp = tag_integer(&tag)
+                        .and_then(|value| u16::try_from(value).ok())
+                        .filter(|value| *value != 0);
+                }
+                Some(TAG_SERVERIP) => {
+                    buddy_ip = tag_integer(&tag).and_then(public_tag_address);
+                }
+                Some(TAG_SERVERPORT) => {
+                    buddy_port = tag_integer(&tag)
+                        .and_then(|value| u16::try_from(value).ok())
+                        .filter(|value| *value != 0);
+                }
+                Some(TAG_BUDDYHASH) => {
+                    buddy_id = tag_string(&tag).and_then(normalized_hash_string);
+                }
+                Some(TAG_CLIENTLOWID) => {
+                    client_low_id = tag_integer(&tag)
+                        .and_then(|value| u32::try_from(value).ok());
+                }
+                Some(TAG_ENCRYPTION) => {
+                    encryption = tag_integer(&tag)
+                        .and_then(|value| u8::try_from(value).ok());
+                }
+                _ => {}
+            }
+        }
+
+        if !matches!(source_type, 1 | 3 | 4 | 5 | 6) {
+            continue;
+        }
+
+        let firewalled = matches!(source_type, 3 | 5 | 6);
+        if matches!(source_type, 1 | 4)
+            && (source_ip.is_none() || source_tcp == 0)
+        {
+            continue;
+        }
+        if source_type == 6
+            && (source_ip.is_none() || source_udp.is_none())
+        {
+            continue;
+        }
+        if matches!(source_type, 3 | 5)
+            && (buddy_ip.is_none() || buddy_port.is_none())
+        {
+            continue;
+        }
+
+        sources.push(NativeEd2kSource {
+            address: source_ip.map(|address| address.to_string()),
+            tcp_port: source_tcp,
+            udp_port: source_udp,
+            origin: "kad".to_string(),
+            direct: matches!(source_type, 1 | 4),
+            low_id: firewalled,
+            client_id: client_low_id,
+            source_id: Some(source_id),
+            server: None,
+            buddy_address: buddy_ip.map(|address| address.to_string()),
+            buddy_port,
+            buddy_id,
+            source_type: Some(source_type),
+            encryption,
+        });
+    }
+
+    Ok(sources)
+}
+
 fn parse_search_response(
     payload: &[u8],
     expected_target: &[u8; 16],
@@ -1206,6 +1377,159 @@ async fn collect_keyword_results(
     (queried, responders.len(), results, errors)
 }
 
+async fn collect_source_results(
+    socket: &UdpSocket,
+    local_id: &[u8; 16],
+    target: &[u8; 16],
+    size: u64,
+    contacts: &HashMap<(Ipv4Addr, u16), KadContact>,
+) -> (usize, usize, Vec<NativeEd2kSource>, Vec<String>) {
+    let none = HashSet::new();
+    let candidates = closest_contacts(
+        contacts,
+        target,
+        SOURCE_CONTACTS,
+        3,
+        &none,
+    );
+
+    let mut queried = 0usize;
+    let mut errors = Vec::new();
+    for contact in &candidates {
+        let mut payload = Vec::with_capacity(26);
+        payload.extend_from_slice(target);
+        payload.extend_from_slice(&0u16.to_le_bytes());
+        payload.extend_from_slice(&size.to_le_bytes());
+        match send_kad(
+            socket,
+            contact,
+            KADEMLIA2_SEARCH_SOURCE_REQ,
+            &payload,
+        )
+        .await
+        {
+            Ok(()) => queried += 1,
+            Err(error) => errors.push(error),
+        }
+    }
+
+    let deadline = Instant::now() + SOURCE_WAIT;
+    let mut buffer = vec![0u8; MAX_KAD_DATAGRAM];
+    let mut responders = HashSet::new();
+    let mut sources = Vec::new();
+
+    while Instant::now() < deadline {
+        let wait = deadline
+            .saturating_duration_since(Instant::now())
+            .min(Duration::from_millis(350));
+        match recv_packet(socket, local_id, wait, &mut buffer).await {
+            Ok(Some((source, opcode, payload))) => {
+                if opcode != KADEMLIA2_SEARCH_RES {
+                    continue;
+                }
+                match parse_source_response(&payload, target) {
+                    Ok(mut found) => {
+                        responders.insert((*source.ip(), source.port()));
+                        sources.append(&mut found);
+                        if sources.len() >= MAX_KAD_RESULTS {
+                            sources.truncate(MAX_KAD_RESULTS);
+                            break;
+                        }
+                    }
+                    Err(error) => errors.push(format!(
+                        "Kad source response from {source}: {error}"
+                    )),
+                }
+            }
+            Ok(None) => {}
+            Err(error) => errors.push(error),
+        }
+    }
+
+    (queried, responders.len(), sources, errors)
+}
+
+pub(crate) async fn discover_sources_kad(
+    app: &AppHandle,
+    hash_be: &[u8; 16],
+    size: u64,
+) -> Result<KadSourceOutcome, String> {
+    if size == 0 {
+        return Err("Kad source discovery requires a non-zero file size.".to_string());
+    }
+
+    let target = file_target(hash_be);
+    let (loaded, nodes_source) = load_nodes_dat(app).await?;
+    let contacts_loaded = loaded.len();
+    let local_id = make_local_kad_id();
+    let mut contacts = contact_map(loaded);
+
+    let socket = UdpSocket::bind("0.0.0.0:0")
+        .await
+        .map_err(|error| format!("Unable to bind Kad UDP socket: {error}"))?;
+
+    let mut responsive = HashSet::new();
+    let (bootstrap_queried, bootstrap_responded, mut errors) =
+        collect_bootstrap(
+            &socket,
+            &local_id,
+            &mut contacts,
+            &mut responsive,
+        )
+        .await;
+
+    let (lookup_queried, lookup_responded, lookup_errors) =
+        collect_lookup(
+            &socket,
+            &local_id,
+            &target,
+            &mut contacts,
+            &mut responsive,
+        )
+        .await;
+    errors.extend(lookup_errors);
+
+    let contacts_discovered = contacts.len().saturating_sub(contacts_loaded);
+    let (
+        source_queried,
+        source_responded,
+        sources,
+        source_errors,
+    ) = collect_source_results(
+        &socket,
+        &local_id,
+        &target,
+        size,
+        &contacts,
+    )
+    .await;
+    errors.extend(source_errors);
+
+    if bootstrap_responded == 0
+        && lookup_responded == 0
+        && source_responded == 0
+    {
+        errors.push(
+            "Kad contacts were loaded, but no Kad UDP node responded during source discovery."
+                .to_string(),
+        );
+    }
+
+    Ok(KadSourceOutcome {
+        nodes_source,
+        contacts_loaded,
+        contacts_discovered,
+        bootstrap_queried,
+        bootstrap_responded,
+        lookup_queried,
+        lookup_responded,
+        source_queried,
+        source_responded,
+        sources,
+        errors,
+    })
+}
+
 pub(crate) async fn search_kad(
     app: &AppHandle,
     query: &str,
@@ -1403,6 +1727,115 @@ mod tests {
         assert_eq!(results[0].sources, 9);
         assert!(results[0].book_candidate);
         assert!(results[0].ed2k_link.starts_with("ed2k://|file|"));
+    }
+
+    #[test]
+    fn file_hash_be_bytes_round_trip_to_kad_target() {
+        let mut hash = [0u8; 16];
+        for (index, byte) in hash.iter_mut().enumerate() {
+            *byte = index as u8;
+        }
+        let target = file_target(&hash);
+        assert_eq!(wire_to_be(&target), hash);
+    }
+
+    #[test]
+    fn parses_kad_high_id_source_result() {
+        let hash = [0x42; 16];
+        let target = file_target(&hash);
+        let answer = [0x33; 16];
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&[0x99; 16]);
+        payload.extend_from_slice(&target);
+        push_u16(&mut payload, 1);
+        payload.extend_from_slice(&answer);
+        payload.push(5);
+        push_u32_tag(&mut payload, TAG_SOURCETYPE, 1);
+        push_u32_tag(
+            &mut payload,
+            TAG_SOURCEIP,
+            u32::from_be_bytes([8, 8, 4, 4]),
+        );
+        push_u32_tag(&mut payload, TAG_SOURCEPORT, 4662);
+        push_u32_tag(&mut payload, TAG_SOURCEUPORT, 4672);
+        push_u32_tag(&mut payload, TAG_ENCRYPTION, 9);
+
+        let sources = parse_source_response(&payload, &target).unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].address.as_deref(), Some("8.8.4.4"));
+        assert_eq!(sources[0].tcp_port, 4662);
+        assert_eq!(sources[0].udp_port, Some(4672));
+        assert_eq!(sources[0].source_type, Some(1));
+        assert_eq!(sources[0].encryption, Some(9));
+        assert!(sources[0].direct);
+        assert!(!sources[0].low_id);
+        assert!(sources[0].source_id.is_some());
+    }
+
+    #[test]
+    fn keeps_kad_firewalled_source_callback_metadata() {
+        let hash = [0x52; 16];
+        let target = file_target(&hash);
+        let answer = [0x44; 16];
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&[0x88; 16]);
+        payload.extend_from_slice(&target);
+        push_u16(&mut payload, 1);
+        payload.extend_from_slice(&answer);
+        payload.push(7);
+        push_u32_tag(&mut payload, TAG_SOURCETYPE, 3);
+        push_u32_tag(
+            &mut payload,
+            TAG_SOURCEIP,
+            u32::from_be_bytes([9, 9, 9, 9]),
+        );
+        push_u32_tag(&mut payload, TAG_SOURCEPORT, 4662);
+        push_u32_tag(&mut payload, TAG_SOURCEUPORT, 4672);
+        push_u32_tag(
+            &mut payload,
+            TAG_SERVERIP,
+            u32::from_be_bytes([8, 8, 8, 8]),
+        );
+        push_u32_tag(&mut payload, TAG_SERVERPORT, 4672);
+        push_string_tag(
+            &mut payload,
+            TAG_BUDDYHASH,
+            "00112233445566778899AABBCCDDEEFF",
+        );
+
+        let sources = parse_source_response(&payload, &target).unwrap();
+        assert_eq!(sources.len(), 1);
+        assert!(!sources[0].direct);
+        assert!(sources[0].low_id);
+        assert_eq!(sources[0].buddy_address.as_deref(), Some("8.8.8.8"));
+        assert_eq!(sources[0].buddy_port, Some(4672));
+        assert_eq!(
+            sources[0].buddy_id.as_deref(),
+            Some("00112233445566778899aabbccddeeff")
+        );
+    }
+
+    #[test]
+    fn rejects_private_kad_source_endpoints() {
+        let hash = [0x62; 16];
+        let target = file_target(&hash);
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&[0x88; 16]);
+        payload.extend_from_slice(&target);
+        push_u16(&mut payload, 1);
+        payload.extend_from_slice(&[0x55; 16]);
+        payload.push(3);
+        push_u32_tag(&mut payload, TAG_SOURCETYPE, 1);
+        push_u32_tag(
+            &mut payload,
+            TAG_SOURCEIP,
+            u32::from_be_bytes([192, 168, 1, 20]),
+        );
+        push_u32_tag(&mut payload, TAG_SOURCEPORT, 4662);
+
+        assert!(parse_source_response(&payload, &target)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
