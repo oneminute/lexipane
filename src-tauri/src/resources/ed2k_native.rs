@@ -103,6 +103,15 @@ pub struct NativeEd2kSearchResponse {
     pub tcp_servers_succeeded: usize,
     pub global_servers_queried: usize,
     pub global_servers_responded: usize,
+    pub kad_nodes_source: Option<String>,
+    pub kad_contacts_loaded: usize,
+    pub kad_contacts_discovered: usize,
+    pub kad_bootstrap_queried: usize,
+    pub kad_bootstrap_responded: usize,
+    pub kad_lookup_queried: usize,
+    pub kad_lookup_responded: usize,
+    pub kad_keyword_queried: usize,
+    pub kad_keyword_responded: usize,
     pub search_phase: String,
     pub results: Vec<NativeEd2kSearchResult>,
     pub errors: Vec<String>,
@@ -1089,13 +1098,28 @@ pub async fn resource_ed2k_native_search(
         .into_iter()
         .map(|server| search_one_global_server(server, query.clone()));
 
-    let (tcp_responses, global_responses) =
-        tokio::join!(join_all(tcp_tasks), join_all(global_tasks));
+    let app_for_kad = app.clone();
+    let kad_query = query.clone();
+    let (tcp_responses, global_responses, kad_response) = tokio::join!(
+        join_all(tcp_tasks),
+        join_all(global_tasks),
+        super::ed2k_kad::search_kad(&app_for_kad, &kad_query),
+    );
 
     let mut batches = Vec::new();
     let mut errors = Vec::new();
     let mut tcp_servers_succeeded = 0usize;
     let mut global_servers_responded = 0usize;
+
+    let mut kad_nodes_source = None;
+    let mut kad_contacts_loaded = 0usize;
+    let mut kad_contacts_discovered = 0usize;
+    let mut kad_bootstrap_queried = 0usize;
+    let mut kad_bootstrap_responded = 0usize;
+    let mut kad_lookup_queried = 0usize;
+    let mut kad_lookup_responded = 0usize;
+    let mut kad_keyword_queried = 0usize;
+    let mut kad_keyword_responded = 0usize;
 
     for response in tcp_responses {
         match response {
@@ -1117,16 +1141,52 @@ pub async fn resource_ed2k_native_search(
         }
     }
 
+    match kad_response {
+        Ok(outcome) => {
+            kad_nodes_source = Some(outcome.nodes_source);
+            kad_contacts_loaded = outcome.contacts_loaded;
+            kad_contacts_discovered = outcome.contacts_discovered;
+            kad_bootstrap_queried = outcome.bootstrap_queried;
+            kad_bootstrap_responded = outcome.bootstrap_responded;
+            kad_lookup_queried = outcome.lookup_queried;
+            kad_lookup_responded = outcome.lookup_responded;
+            kad_keyword_queried = outcome.keyword_queried;
+            kad_keyword_responded = outcome.keyword_responded;
+            if !outcome.results.is_empty() {
+                batches.push(outcome.results);
+            }
+            errors.extend(
+                outcome
+                    .errors
+                    .into_iter()
+                    .map(|error| "KAD: ".to_string() + &error),
+            );
+        }
+        Err(error) => errors.push("KAD: ".to_string() + &error),
+    }
+
     let servers_queried =
         tcp_servers_queried.saturating_add(global_servers_queried);
     let servers_succeeded =
         tcp_servers_succeeded.saturating_add(global_servers_responded);
 
-    if servers_succeeded == 0 {
+    let kad_network_responded = kad_bootstrap_responded
+        .saturating_add(kad_lookup_responded)
+        .saturating_add(kad_keyword_responded)
+        > 0;
+
+    if servers_succeeded == 0 && !kad_network_responded {
         return Err(format!(
-            "Native ED2K search could not reach any server. {}",
+            "Native ED2K/Kad search could not reach any network peer. {}",
             errors.join(" | ")
         ));
+    }
+
+    if errors.len() > 64 {
+        errors.truncate(64);
+        errors.push(
+            "Additional ED2K/Kad timeout errors were suppressed.".to_string(),
+        );
     }
 
     Ok(NativeEd2kSearchResponse {
@@ -1139,7 +1199,16 @@ pub async fn resource_ed2k_native_search(
         tcp_servers_succeeded,
         global_servers_queried,
         global_servers_responded,
-        search_phase: "tcp-seed+udp-global".to_string(),
+        kad_nodes_source,
+        kad_contacts_loaded,
+        kad_contacts_discovered,
+        kad_bootstrap_queried,
+        kad_bootstrap_responded,
+        kad_lookup_queried,
+        kad_lookup_responded,
+        kad_keyword_queried,
+        kad_keyword_responded,
+        search_phase: "tcp-seed+udp-global+kad-keyword".to_string(),
         results: merge_results(batches),
         errors,
     })
