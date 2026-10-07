@@ -191,6 +191,31 @@ Known limitations / next phases:
 
 ### Active regression hotfix
 
+**READER-NAV-RESUME — Preserve reading position across main-view navigation**
+
+Status: **IN_PROGRESS**
+
+Observed regression:
+
+- while a book is open, switching from Reader to another main application view and then returning to Reader loses the previously visible reading position;
+- this occurs independently of the earlier EPUB mouse-wheel snap-back fix and indicates a Reader unmount/remount or restore-order regression.
+
+Scope:
+
+- trace main-navigation mounting behavior and ReaderView lifecycle;
+- verify PDF, EPUB, MOBI/AZW reading-position state separately;
+- ensure the latest visible position is persisted before Reader unmounts or is retained in application state when navigation hides/remounts the Reader;
+- ensure Reader remount restores the active book and latest position only after the document/rendition is ready;
+- avoid resetting the saved position during initial render/relocation events;
+- preserve explicit bookmark/progress navigation and the existing debounced EPUB persistence;
+- add targeted tests where practical and run the baseline frontend/Rust validation.
+
+Risks / dependencies:
+
+- epub.js emits relocation events during initial display and can overwrite persisted CFIs if restoration ordering is wrong;
+- PDF page/scroll restoration and EPUB CFI restoration use different coordinate systems and must not share a lossy generic fallback;
+- the fix must not reintroduce the earlier continuous-EPUB scroll snap-back regression.
+
 **BUILD-VITE-IPV4 — Make Windows dev-server binding resilient**
 
 Status: **VERIFYING**
