@@ -70,6 +70,15 @@ export interface NativeEd2kSearchResponse {
   tcpServersSucceeded: number;
   globalServersQueried: number;
   globalServersResponded: number;
+  kadNodesSource?: string | null;
+  kadContactsLoaded: number;
+  kadContactsDiscovered: number;
+  kadBootstrapQueried: number;
+  kadBootstrapResponded: number;
+  kadLookupQueried: number;
+  kadLookupResponded: number;
+  kadKeywordQueried: number;
+  kadKeywordResponded: number;
   searchPhase: string;
   results: NativeEd2kSearchResult[];
   errors: string[];
