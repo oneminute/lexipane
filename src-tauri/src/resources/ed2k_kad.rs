@@ -1020,13 +1020,21 @@ fn parse_source_response(
             continue;
         }
         if source_type == 6
-            && (source_ip.is_none() || source_udp.is_none())
+            && (source_ip.is_none()
+                || source_udp.is_none()
+                || encryption.unwrap_or(0) & 0x08 == 0)
         {
+            // Type 6 is useful only when the source advertises the direct
+            // UDP-callback capability bit, matching established eMule logic.
             continue;
         }
         if matches!(source_type, 3 | 5)
-            && (buddy_ip.is_none() || buddy_port.is_none())
+            && (buddy_ip.is_none()
+                || buddy_port.is_none()
+                || buddy_id.is_none())
         {
+            // Kad-only firewalled sources need the complete buddy tuple for
+            // a later callback; incomplete publications are not actionable.
             continue;
         }
 
