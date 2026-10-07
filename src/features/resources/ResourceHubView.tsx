@@ -2582,11 +2582,15 @@ export function ResourceHubView({ onOpenBook }: Props) {
         response.results.length +
           " native ED2K result" +
           (response.results.length === 1 ? "" : "s") +
-          " returned from " +
-          response.serversSucceeded +
+          " returned. TCP " +
+          response.tcpServersSucceeded +
           "/" +
-          response.serversQueried +
-          " server(s)." +
+          response.tcpServersQueried +
+          ", UDP global " +
+          response.globalServersResponded +
+          "/" +
+          response.globalServersQueried +
+          "." +
           partial,
       );
     } catch (error) {
@@ -3477,13 +3481,14 @@ export function ResourceHubView({ onOpenBook }: Props) {
           <section className="resource-section">
             <header>
               <div>
-                <span className="eyebrow">Native ED2K · Phase 1</span>
-                <h2>Search ED2K directly from LexiPane</h2>
+                <span className="eyebrow">Native ED2K · Phase 2</span>
+                <h2>Server + Global ED2K search</h2>
               </div>
               <small>
-                No aMule is required for search. LexiPane downloads and caches
-                server.met, connects directly to several ED2K servers, merges
-                duplicate hashes, and ranks Reader formats by availability.
+                No aMule is required for search. LexiPane first performs direct TCP
+                server searches, then expands the same query across additional
+                ED2K servers with UDP Global Search before merging duplicate
+                hashes and ranking Reader formats by availability.
               </small>
             </header>
 
@@ -3504,20 +3509,23 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 disabled={nativeEd2kBusy || !ed2kQuery.trim()}
                 onClick={() => void runNativeEd2kSearch()}
               >
-                {nativeEd2kBusy ? "Searching servers…" : "Native search"}
+                {nativeEd2kBusy ? "TCP + UDP global search…" : "Native global search"}
               </button>
             </div>
 
             {nativeEd2kResponse && (
               <div className="resource-safety-note">
                 <strong>
-                  {nativeEd2kResponse.serversSucceeded}/
-                  {nativeEd2kResponse.serversQueried} servers responded
+                  TCP {nativeEd2kResponse.tcpServersSucceeded}/
+                  {nativeEd2kResponse.tcpServersQueried} · UDP global{" "}
+                  {nativeEd2kResponse.globalServersResponded}/
+                  {nativeEd2kResponse.globalServersQueried}
                 </strong>
                 <p>
                   {nativeEd2kResponse.results.length} unique result(s) ·{" "}
-                  {nativeEd2kResponse.serversLoaded} servers loaded ·
-                  server.met: {nativeEd2kResponse.serverListSource}
+                  {nativeEd2kResponse.serversLoaded} servers loaded · phase:{" "}
+                  {nativeEd2kResponse.searchPhase} · server.met:{" "}
+                  {nativeEd2kResponse.serverListSource}
                   {nativeEd2kResponse.errors.length > 0
                     ? " · " +
                       nativeEd2kResponse.errors.length +
@@ -3585,8 +3593,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 <div className="resource-empty compact">
                   <strong>No results returned by the responding servers.</strong>
                   <p>
-                    Try fewer or broader English keywords. Native Global Search
-                    and Kad search are the next ED2K phases.
+                    Try fewer or broader keywords. UDP Global Search is active; Kad
+                    search is the next native ED2K phase.
                   </p>
                 </div>
               )
