@@ -66,6 +66,11 @@ export interface NativeEd2kSearchResponse {
   serversLoaded: number;
   serversQueried: number;
   serversSucceeded: number;
+  tcpServersQueried: number;
+  tcpServersSucceeded: number;
+  globalServersQueried: number;
+  globalServersResponded: number;
+  searchPhase: string;
   results: NativeEd2kSearchResult[];
   errors: string[];
 }
