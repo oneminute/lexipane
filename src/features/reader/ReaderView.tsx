@@ -2602,6 +2602,31 @@ export function ReaderView({
     void runAi("ask", trimmed);
   }
 
+  const hasReaderContents =
+    (isPdf && outline.length > 0) ||
+    (isEpub && epubOutline.length > 0) ||
+    (isKindle && kindleOutline.length > 0);
+  const readerNavigationOpen = tocOpen || bookmarksOpen;
+
+  function closeReaderNavigation() {
+    setTocOpen(false);
+    setBookmarksOpen(false);
+  }
+
+  function toggleReaderNavigation() {
+    if (readerNavigationOpen) {
+      closeReaderNavigation();
+      return;
+    }
+
+    if (hasReaderContents) {
+      setTocOpen(true);
+      setBookmarksOpen(false);
+    } else {
+      setBookmarksOpen(true);
+    }
+  }
+
   return (
     <section className="reader-page">
       <header className="reader-toolbar">
@@ -2609,7 +2634,6 @@ export function ReaderView({
           <button className="text-button" onClick={onBackToLibrary}>
             ← Library
           </button>
-          <span className="toolbar-divider" />
           <div>
             <strong>
               {(isEpub
@@ -2643,276 +2667,305 @@ export function ReaderView({
                       ? Math.round(kindleProgress * 100) + "% read"
                       : "MOBI / Kindle"
                     : bookPath
-                    ? "Format saved · reader engine pending"
-                    : "Open a book to begin"}
+                      ? "Format saved · reader engine pending"
+                      : "Open a book to begin"}
             </small>
           </div>
         </div>
 
         <div className="reader-actions">
-          {(isPdf || isEpub || isKindle) && (
-            <div className="zoom-control">
-              <button
-                onClick={isEpub || isKindle ? epubFontDown : zoomOut}
-                aria-label={isEpub || isKindle ? "Decrease font size" : "Zoom out"}
-              >
-                −
-              </button>
-              <span>{isEpub || isKindle ? epubFontLabel : zoomLabel}</span>
-              <button
-                onClick={isEpub || isKindle ? epubFontUp : zoomIn}
-                aria-label={isEpub || isKindle ? "Increase font size" : "Zoom in"}
-              >
-                +
-              </button>
-            </div>
-          )}
-
-          {(isEpub || isKindle) && (
-            <label className="reader-display-control">
-              <span>Theme</span>
-              <select
-                value={ebookTheme}
-                onChange={(event) =>
-                  void changeEbookTheme(event.target.value as EbookTheme)
-                }
-              >
-                <option value="light">Light</option>
-                <option value="sepia">Sepia</option>
-                <option value="dark">Dark</option>
-              </select>
-            </label>
-          )}
-
-          {isEpub && (
-            <label className="reader-display-control">
-              <span>Flow</span>
-              <select
-                value={epubFlowMode}
-                onChange={(event) =>
-                  void changeEpubFlowMode(
-                    event.target.value as EpubFlowMode,
-                  )
-                }
-              >
-                <option value="scrolled">Scrolled</option>
-                <option value="paginated">Paginated</option>
-              </select>
-            </label>
-          )}
-
-          {((isPdf && outline.length > 0) ||
-            (isEpub && epubOutline.length > 0) ||
-            (isKindle && kindleOutline.length > 0)) && (
-            <button
-              className={tocOpen ? "ghost-button active" : "ghost-button"}
-              onClick={() => setTocOpen((value) => !value)}
-            >
-              Contents
-            </button>
-          )}
-          {isPdf && (
-          <button
-            className={regionMode ? "ghost-button active" : "ghost-button"}
-            onClick={() => {
-              setRegionMode((value) => !value);
-              setRegionDrag(null);
-              setRegionCapture(null);
-            }}
-          >
-            {regionMode ? "Cancel region" : "Region select"}
-          </button>
-          )}
           {bookPath && (
             <>
               <button
-                className="ghost-button"
-                disabled={!positionLoaded || bookmarkStatus === "saving"}
-                onClick={() => void addCurrentBookmark()}
+                className={
+                  readerNavigationOpen
+                    ? "toolbar-icon-button active"
+                    : "toolbar-icon-button"
+                }
+                type="button"
+                aria-label="Contents and bookmarks"
+                aria-pressed={readerNavigationOpen}
+                title="Contents and bookmarks"
+                onClick={toggleReaderNavigation}
               >
-                {bookmarkStatus === "saving"
-                  ? "Saving bookmark…"
-                  : bookmarkStatus === "saved"
-                    ? "Bookmarked"
-                    : "＋ Bookmark"}
+                ☰
               </button>
               <button
-                className={bookmarksOpen ? "ghost-button active" : "ghost-button"}
-                onClick={() => setBookmarksOpen((value) => !value)}
+                className="toolbar-icon-button"
+                type="button"
+                disabled={!positionLoaded || bookmarkStatus === "saving"}
+                aria-label={
+                  bookmarkStatus === "saved"
+                    ? "Current position bookmarked"
+                    : "Bookmark current position"
+                }
+                title={
+                  bookmarkStatus === "saving"
+                    ? "Saving bookmark…"
+                    : bookmarkStatus === "saved"
+                      ? "Bookmarked"
+                      : "Bookmark current position"
+                }
+                onClick={() => void addCurrentBookmark()}
               >
-                Bookmarks{bookmarks.length ? " (" + bookmarks.length + ")" : ""}
+                {bookmarkStatus === "saved" ? "★" : "☆"}
               </button>
-              <label
-                className="book-privacy-control"
-                title="Override the global AI privacy policy for this book"
-              >
-                <span>Privacy</span>
-                <select
-                  value={bookPrivacyMode ?? "inherit"}
-                  onChange={(event) =>
-                    void changeBookPrivacy(event.target.value)
-                  }
-                >
-                  <option value="inherit">Global</option>
-                  <option value="local-only">Local only</option>
-                  <option value="prefer-local">Prefer local</option>
-                  <option value="automatic">Automatic</option>
-                  <option value="cloud-only">Cloud only</option>
-                </select>
-              </label>
-              <BookProviderPolicyControl
-                bookPath={bookPath}
-                onChanged={resetAiPolicyState}
-              />
             </>
           )}
-          <button className="ghost-button">Notes</button>
-          <button className="primary-button compact" onClick={onOpenBook}>
-            Open
-          </button>
+
+          {isPdf && (
+            <button
+              className={regionMode ? "toolbar-text-button active" : "toolbar-text-button"}
+              type="button"
+              onClick={() => {
+                setRegionMode((value) => !value);
+                setRegionDrag(null);
+                setRegionCapture(null);
+              }}
+            >
+              {regionMode ? "Cancel region" : "Region"}
+            </button>
+          )}
+
+          {(isPdf || isEpub || isKindle) && (
+            <details className="reader-settings-menu">
+              <summary
+                className="toolbar-icon-button"
+                aria-label="Reading settings"
+                title="Reading settings"
+              >
+                Aa
+              </summary>
+              <div className="reader-settings-panel">
+                <div className="reader-settings-heading">
+                  <strong>Reading settings</strong>
+                  <small>Display and reading flow</small>
+                </div>
+
+                <div className="reader-setting-group">
+                  <span>{isEpub || isKindle ? "Text size" : "Zoom"}</span>
+                  <div className="zoom-control">
+                    <button
+                      type="button"
+                      onClick={isEpub || isKindle ? epubFontDown : zoomOut}
+                      aria-label={
+                        isEpub || isKindle
+                          ? "Decrease font size"
+                          : "Zoom out"
+                      }
+                    >
+                      −
+                    </button>
+                    <span>
+                      {isEpub || isKindle ? epubFontLabel : zoomLabel}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={isEpub || isKindle ? epubFontUp : zoomIn}
+                      aria-label={
+                        isEpub || isKindle
+                          ? "Increase font size"
+                          : "Zoom in"
+                      }
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {(isEpub || isKindle) && (
+                  <label className="reader-display-control">
+                    <span>Theme</span>
+                    <select
+                      value={ebookTheme}
+                      onChange={(event) =>
+                        void changeEbookTheme(event.target.value as EbookTheme)
+                      }
+                    >
+                      <option value="light">Light</option>
+                      <option value="sepia">Sepia</option>
+                      <option value="dark">Dark</option>
+                    </select>
+                  </label>
+                )}
+
+                {isEpub && (
+                  <label className="reader-display-control">
+                    <span>Reading mode</span>
+                    <select
+                      value={epubFlowMode}
+                      onChange={(event) =>
+                        void changeEpubFlowMode(
+                          event.target.value as EpubFlowMode,
+                        )
+                      }
+                    >
+                      <option value="scrolled">Scrolled</option>
+                      <option value="paginated">Paginated</option>
+                    </select>
+                  </label>
+                )}
+              </div>
+            </details>
+          )}
         </div>
       </header>
 
       <div className="split-reader">
         <section className="document-pane">
-          {tocOpen && isPdf && outline.length > 0 && (
-            <aside className="toc-panel">
+          {(tocOpen || bookmarksOpen) && (
+            <aside className="reader-navigation-panel">
               <header>
                 <div>
-                  <span className="eyebrow">Contents</span>
-                  <strong>{outline.length} sections</strong>
+                  <span className="eyebrow">Navigation</span>
+                  <strong>{tocOpen ? "Contents" : "Bookmarks"}</strong>
                 </div>
-                <button onClick={() => setTocOpen(false)}>×</button>
-              </header>
-              <div className="toc-list">
-                {outline.map((item) => (
-                  <button
-                    key={item.id}
-                    disabled={!item.page}
-                    className={
-                      item.page === currentPage
-                        ? "toc-item current"
-                        : "toc-item"
-                    }
-                    style={{ paddingLeft: 12 + item.depth * 14 }}
-                    onClick={() => item.page && jumpToPage(item.page)}
-                  >
-                    <span>{item.title}</span>
-                    {item.page && <small>{item.page}</small>}
-                  </button>
-                ))}
-              </div>
-            </aside>
-          )}
-
-          {tocOpen && isEpub && epubOutline.length > 0 && (
-            <aside className="toc-panel">
-              <header>
-                <div>
-                  <span className="eyebrow">Contents</span>
-                  <strong>{epubOutline.length} sections</strong>
-                </div>
-                <button onClick={() => setTocOpen(false)}>×</button>
-              </header>
-              <div className="toc-list">
-                {epubOutline.map((item) => (
-                  <button
-                    key={item.id}
-                    className="toc-item"
-                    style={{ paddingLeft: 12 + item.depth * 14 }}
-                    onClick={() => {
-                      setEpubNavigationTarget(item.href);
-                      setTocOpen(false);
-                    }}
-                  >
-                    <span>{item.title}</span>
-                  </button>
-                ))}
-              </div>
-            </aside>
-          )}
-          {tocOpen && isKindle && kindleOutline.length > 0 && (
-            <aside className="toc-panel">
-              <header>
-                <div>
-                  <span className="eyebrow">Contents</span>
-                  <strong>{kindleOutline.length} sections</strong>
-                </div>
-                <button onClick={() => setTocOpen(false)}>×</button>
-              </header>
-              <div className="toc-list">
-                {kindleOutline.map((item) => (
-                  <button
-                    key={item.id}
-                    disabled={!item.chapterId}
-                    className="toc-item"
-                    style={{ paddingLeft: 12 + item.depth * 14 }}
-                    onClick={() => {
-                      if (item.chapterId) {
-                        setKindleNavigationChapterId(item.chapterId);
-                      }
-                      setTocOpen(false);
-                    }}
-                  >
-                    <span>{item.title}</span>
-                  </button>
-                ))}
-              </div>
-            </aside>
-          )}
-
-          {bookmarksOpen && (
-            <aside className="bookmark-panel">
-              <header>
-                <div>
-                  <span className="eyebrow">Bookmarks</span>
-                  <strong>
-                    {bookmarks.length
-                      ? bookmarks.length + " saved place" +
-                        (bookmarks.length === 1 ? "" : "s")
-                      : "No bookmarks yet"}
-                  </strong>
-                </div>
-                <button onClick={() => setBookmarksOpen(false)}>×</button>
+                <button
+                  type="button"
+                  aria-label="Close navigation"
+                  onClick={closeReaderNavigation}
+                >
+                  ×
+                </button>
               </header>
 
-              {bookmarks.length > 0 ? (
-                <div className="bookmark-list">
-                  {bookmarks.map((bookmark) => (
-                    <div className="bookmark-item" key={bookmark.id}>
-                      <button
-                        className="bookmark-jump"
-                        onClick={() => openBookmark(bookmark)}
-                      >
-                        <strong>
-                          {bookmark.label ||
-                            (bookmark.progress !== null
-                              ? Math.round(bookmark.progress * 100) + "%"
-                              : "Saved place")}
-                        </strong>
-                        <small>
-                          {bookmark.target.kind === "pdf-page"
-                            ? "Page " + bookmark.target.page
-                            : bookmark.progress !== null
-                              ? Math.round(bookmark.progress * 100) + "% through book"
-                              : "Saved reading location"}
-                        </small>
-                      </button>
-                      <button
-                        className="bookmark-remove"
-                        aria-label="Remove bookmark"
-                        title="Remove bookmark"
-                        onClick={() => void removeBookmark(bookmark.id)}
-                      >
-                        ×
-                      </button>
+              <div className="reader-navigation-tabs">
+                <button
+                  type="button"
+                  className={tocOpen ? "active" : ""}
+                  disabled={!hasReaderContents}
+                  onClick={() => {
+                    setBookmarksOpen(false);
+                    setTocOpen(true);
+                  }}
+                >
+                  Contents
+                </button>
+                <button
+                  type="button"
+                  className={bookmarksOpen ? "active" : ""}
+                  onClick={() => {
+                    setTocOpen(false);
+                    setBookmarksOpen(true);
+                  }}
+                >
+                  Bookmarks{bookmarks.length ? " (" + bookmarks.length + ")" : ""}
+                </button>
+              </div>
+
+              {tocOpen && (
+                <div className="reader-navigation-body">
+                  {isPdf && outline.length > 0 && (
+                    <div className="toc-list">
+                      {outline.map((item) => (
+                        <button
+                          key={item.id}
+                          disabled={!item.page}
+                          className={
+                            item.page === currentPage
+                              ? "toc-item current"
+                              : "toc-item"
+                          }
+                          style={{ paddingLeft: 12 + item.depth * 14 }}
+                          onClick={() => item.page && jumpToPage(item.page)}
+                        >
+                          <span>{item.title}</span>
+                          {item.page && <small>{item.page}</small>}
+                        </button>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {isEpub && epubOutline.length > 0 && (
+                    <div className="toc-list">
+                      {epubOutline.map((item) => (
+                        <button
+                          key={item.id}
+                          className="toc-item"
+                          style={{ paddingLeft: 12 + item.depth * 14 }}
+                          onClick={() => {
+                            setEpubNavigationTarget(item.href);
+                            closeReaderNavigation();
+                          }}
+                        >
+                          <span>{item.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {isKindle && kindleOutline.length > 0 && (
+                    <div className="toc-list">
+                      {kindleOutline.map((item) => (
+                        <button
+                          key={item.id}
+                          disabled={!item.chapterId}
+                          className="toc-item"
+                          style={{ paddingLeft: 12 + item.depth * 14 }}
+                          onClick={() => {
+                            if (item.chapterId) {
+                              setKindleNavigationChapterId(item.chapterId);
+                            }
+                            closeReaderNavigation();
+                          }}
+                        >
+                          <span>{item.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {!hasReaderContents && (
+                    <p className="reader-navigation-empty">
+                      No table of contents is available for this book.
+                    </p>
+                  )}
                 </div>
-              ) : (
-                <p className="muted">
-                  Use + Bookmark to save the current reading position.
-                </p>
+              )}
+
+              {bookmarksOpen && (
+                <div className="reader-navigation-body">
+                  {bookmarks.length > 0 ? (
+                    <div className="bookmark-list">
+                      {bookmarks.map((bookmark) => (
+                        <div className="bookmark-item" key={bookmark.id}>
+                          <button
+                            className="bookmark-jump"
+                            onClick={() => openBookmark(bookmark)}
+                          >
+                            <strong>
+                              {bookmark.label ||
+                                (bookmark.progress !== null
+                                  ? Math.round(bookmark.progress * 100) + "%"
+                                  : "Saved place")}
+                            </strong>
+                            <small>
+                              {bookmark.target.kind === "pdf-page"
+                                ? "Page " + bookmark.target.page
+                                : bookmark.progress !== null
+                                  ? Math.round(bookmark.progress * 100) +
+                                    "% through book"
+                                  : "Saved reading location"}
+                            </small>
+                          </button>
+                          <button
+                            className="bookmark-remove"
+                            aria-label="Remove bookmark"
+                            title="Remove bookmark"
+                            onClick={() => void removeBookmark(bookmark.id)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="reader-navigation-empty">
+                      No bookmarks yet. Use ☆ to save the current reading
+                      position.
+                    </p>
+                  )}
+                </div>
               )}
             </aside>
           )}
@@ -3203,9 +3256,45 @@ export function ReaderView({
             </div>
             <div className="ai-pane-meta">
               <span>{readingLevel} reader</span>
-              <button className="model-pill">
-                {configuredModel || "Ollama local"} ▾
-              </button>
+              <span className="model-pill">
+                {configuredModel || "Ollama local"}
+              </span>
+              {bookPath && (
+                <details className="ai-settings-menu">
+                  <summary
+                    className="ai-settings-trigger"
+                    aria-label="AI settings for this book"
+                    title="AI settings for this book"
+                  >
+                    ⚙
+                  </summary>
+                  <div className="ai-settings-panel">
+                    <div className="ai-settings-heading">
+                      <strong>AI settings</strong>
+                      <small>Settings for this book</small>
+                    </div>
+                    <label className="book-privacy-control">
+                      <span>Privacy</span>
+                      <select
+                        value={bookPrivacyMode ?? "inherit"}
+                        onChange={(event) =>
+                          void changeBookPrivacy(event.target.value)
+                        }
+                      >
+                        <option value="inherit">Follow global setting</option>
+                        <option value="local-only">Local only</option>
+                        <option value="prefer-local">Prefer local</option>
+                        <option value="automatic">Automatic</option>
+                        <option value="cloud-only">Cloud only</option>
+                      </select>
+                    </label>
+                    <BookProviderPolicyControl
+                      bookPath={bookPath}
+                      onChanged={resetAiPolicyState}
+                    />
+                  </div>
+                </details>
+              )}
             </div>
           </header>
 
