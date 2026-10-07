@@ -86,29 +86,38 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 **RESOURCE-006G — Native ED2K Global Search**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Scope for this batch:
+Implementation summary:
 
-- extend the native ED2K engine from direct TCP server search to UDP Global Search across the server.met population;
-- identify usable UDP endpoints and server capabilities from current ED2K protocol metadata;
-- encode Global Search requests using current ED2K server UDP opcodes and parse UDP search-result packets with the existing tag codec;
-- query a bounded set of servers concurrently with strict per-server timeouts and partial-success behavior;
-- merge UDP results with the initial TCP results by ED2K hash + size while preserving aggregate source/server metadata;
-- surface search phase and partial-failure counts in Resource Hub;
-- add targeted Rust tests for UDP framing/parsing and result merging.
+- extended the native ED2K engine from direct TCP server search to ED2K UDP Global Search;
+- parses `ST_UDPFLAGS` from server.met and chooses `OP_GLOBSEARCHREQ2 (0x92)` for servers advertising extended file search, with legacy `OP_GLOBSEARCHREQ (0x98)` fallback;
+- sends standard unencrypted ED2K UDP packets to server TCP-port + 4, without requiring aMule, External Connections, or a persistent sidecar;
+- parses `OP_GLOBSEARCHRES (0x99)` including multiple concatenated `E3 99 + result` records in one UDP datagram;
+- runs bounded TCP seed search and bounded UDP global expansion concurrently, with independent timeouts and partial-success behavior;
+- excludes TCP seed servers from the UDP expansion set so the global phase broadens coverage instead of repeating the same servers;
+- merges TCP + UDP results by ED2K hash and file size while preserving source counts, complete-source counts, and responding-server identities;
+- Resource Hub now displays separate TCP and UDP-global response counts and labels the native search path as Phase 2;
+- federated Resource Search automatically benefits from the same global ED2K expansion without any ED2K account configuration.
 
-Out of scope:
+Validation / evidence:
 
-- Kad bootstrap/routing/search;
-- peer source discovery;
-- native part/block downloading.
+- final CI run `37554195198` passed `npm run typecheck`, `npm test`, and `npm run build`;
+- the same run passed Linux `cargo check` and `cargo test --lib`;
+- the same run passed Windows `cargo check` and `cargo test --lib`;
+- targeted Rust tests cover UDP capability parsing from server.met, extended-vs-legacy UDP opcode selection, multi-result UDP datagram parsing, TCP framing/search parsing, and cross-server result deduplication.
 
-Dependencies / risks:
+Remaining verification:
 
-- public ED2K server capability flags are heterogeneous; unsupported UDP/global-search servers must be skipped without failing the search;
-- UDP responses can arrive fragmented/out of order or not arrive at all, so the implementation must remain bounded and tolerant;
-- the previous RESOURCE-006N server-search implementation remains the TCP baseline and fallback.
+- one local Windows/Tauri live search is still required to confirm real public ED2K servers respond to the combined TCP + UDP Global Search path under the user's network/firewall environment.
+
+Known limitations / next phase:
+
+- Kad is not implemented yet;
+- native source lookup and native file transfer are not implemented yet;
+- aMule remains optional only as a temporary download fallback after native search;
+- the next selected ED2K task is `RESOURCE-006K — Native Kad bootstrap and keyword search`.
+
 
 **RESOURCE-006N — Native ED2K search engine**
 
@@ -291,64 +300,12 @@ Network-resource batch priorities:
 
 ## Next selected task
 
-**RESOURCE-006N — Native ED2K Server Search**
+**RESOURCE-006K — Native Kad bootstrap and keyword search**
 
-Status: **VERIFYING**
+Status: **READY**
 
-This supersedes the aMule-first setup flow. After a live native server search is verified, continue with native Global Search, then Kad, then native source/download transport.
+Start after the local Global Search smoke test or after any protocol fixes discovered by that test. Scope: nodes.dat/bootstrap, Kad node identity/routing-table foundation, keyword lookup, bounded result collection, and reuse of the existing native ED2K result model. Native downloading remains a later phase.
 
-After this build regression is fixed, resume:
-
-**READER-EPUB-SCROLL-STABILITY — EPUB scroll stability hotfix**
-
-Status: **VERIFYING**
-
-Implementation and baseline CI are complete. Remaining validation is a local Windows/Tauri mouse-wheel smoke test across EPUB section boundaries.
-
-After this regression is validated, resume:
-
-**RESOURCE-004 — Download Manager hardening**
-
-Status: **IN_PROGRESS**
-
-Current implementation already includes:
-
-- persistent `TransferJob` records and native transfer events;
-- native transfers continuing outside the Resources React lifecycle;
-- pause/resume/cancel/retry for HTTP, cloud, WebDAV, S3, BitTorrent, and ED2K where supported by the engine;
-- restart recovery to paused/recoverable state;
-- provider-specific temporary storage cleanup;
-- unified verified ingestion into the existing managed Library;
-- SHA-256 duplicate detection and provenance recording;
-- Active / Completed / Failed / All Download Manager filters and finished-history cleanup;
-- transfer progress, byte counts, rate display, and Open after Library ingestion.
-
-Current hardening scope:
-
-- finish queue/concurrency behavior and transfer summary/ETA presentation;
-- normalize cleanup/retry semantics across providers;
-- finish SFTP as the remaining started extended-storage vertical slice;
-- keep all existing transfer engines on the same ingestion/runtime path;
-- update milestone ledger to match the already implemented cloud/P2P/federated work.
-
-Reader AI persistence requested in LONGRUN-001 is complete and remains covered by schema/tests.
----
-
-# Product direction
-
-LexiPane is evolving from a local AI-assisted reading application into an integrated:
-
-**discover → inspect → acquire → verify → ingest → read → annotate → AI-assist**
-
-workflow.
-
-Network-resource support must not become several isolated download features. ED2K, BitTorrent, cloud storage, OPDS, HTTP, WebDAV, and future sources should share one Resource Acquisition Platform.
-
-The UI name for this platform is **Resource Hub**, surfaced as **Resources** in the main navigation.
-
----
-
-# Resource Acquisition Platform
 
 ## Core principles
 
