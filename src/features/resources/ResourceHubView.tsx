@@ -3533,7 +3533,11 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   {nativeEd2kResponse.results.length} unique result(s) ·{" "}
                   {nativeEd2kResponse.serversLoaded} servers ·{" "}
                   {nativeEd2kResponse.kadContactsLoaded} Kad contacts +{" "}
-                  {nativeEd2kResponse.kadContactsDiscovered} discovered · phase:{" "}
+                  {nativeEd2kResponse.kadContactsDiscovered} discovered · Kad
+                  bootstrap {nativeEd2kResponse.kadBootstrapResponded}/
+                  {nativeEd2kResponse.kadBootstrapQueried} · lookup{" "}
+                  {nativeEd2kResponse.kadLookupResponded}/
+                  {nativeEd2kResponse.kadLookupQueried} · phase:{" "}
                   {nativeEd2kResponse.searchPhase} · server.met:{" "}
                   {nativeEd2kResponse.serverListSource} · nodes.dat:{" "}
                   {nativeEd2kResponse.kadNodesSource ?? "unavailable"}
