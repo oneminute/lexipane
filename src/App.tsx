@@ -143,6 +143,7 @@ export default function App() {
             onBackToLibrary={() => setView("library")}
           >
             <ReaderView
+              active={view === "reader"}
               bookPath={activeBookPath}
               navigationTarget={activeNavigationTarget}
               onOpenBook={openBook}
