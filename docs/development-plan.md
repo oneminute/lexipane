@@ -193,28 +193,40 @@ Known limitations / next phases:
 
 **READER-NAV-RESUME — Preserve reading position across main-view navigation**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Observed regression:
+Root cause:
 
-- while a book is open, switching from Reader to another main application view and then returning to Reader loses the previously visible reading position;
-- this occurs independently of the earlier EPUB mouse-wheel snap-back fix and indicates a Reader unmount/remount or restore-order regression.
+- Reader is intentionally kept mounted while other main views are shown, but its keep-alive wrapper uses `display:none`;
+- epub.js and PDF visibility/layout observers can react to the resulting zero-size layout and emit relocation/visible-page changes that are not real user navigation;
+- those callbacks previously continued updating/saving Reader position while the Reader was hidden, allowing the last foreground position to be overwritten.
 
-Scope:
+Implementation summary:
 
-- trace main-navigation mounting behavior and ReaderView lifecycle;
-- verify PDF, EPUB, MOBI/AZW reading-position state separately;
-- ensure the latest visible position is persisted before Reader unmounts or is retained in application state when navigation hides/remounts the Reader;
-- ensure Reader remount restores the active book and latest position only after the document/rendition is ready;
-- avoid resetting the saved position during initial render/relocation events;
-- preserve explicit bookmark/progress navigation and the existing debounced EPUB persistence;
-- add targeted tests where practical and run the baseline frontend/Rust validation.
+- App now explicitly tells ReaderView whether Reader is the active foreground main view;
+- ReaderView keeps a synchronous foreground-state ref so EPUB/PDF/Kindle position callbacks ignore layout-driven events as soon as Reader is hidden;
+- the last valid foreground PDF page, EPUB CFI, or Kindle chapter is retained separately from hidden renderer state;
+- on leaving Reader, any pending debounced EPUB save is flushed immediately before hidden-layout events can interfere;
+- if a progress-scrub peek is active, the protected pre-peek location is retained rather than the temporary browse location;
+- when returning to Reader, LexiPane waits for the keep-alive wrapper to regain layout, dispatches resize, and then actively restores the protected target;
+- EPUB and Kindle navigation targets are briefly cleared before restoration so returning to the same prior target still produces a fresh navigation request;
+- existing bookmark/progress navigation and EPUB 600 ms scroll-write debounce remain intact.
 
-Risks / dependencies:
+Validation / evidence:
 
-- epub.js emits relocation events during initial display and can overwrite persisted CFIs if restoration ordering is wrong;
-- PDF page/scroll restoration and EPUB CFI restoration use different coordinate systems and must not share a lossy generic fallback;
-- the fix must not reintroduce the earlier continuous-EPUB scroll snap-back regression.
+- implementation commits: `b1ad50c` and `dde744c`;
+- CI run `37631677296` passed frontend `npm run typecheck`, `npm test`, and `npm run build`;
+- Rust/Linux/Windows repository gates are still completing, although this hotfix contains no Rust changes.
+
+Remaining verification:
+
+- local Windows/Tauri smoke test: open a book, move to a recognizable reading location, switch Reader → Library/Resources/AI → Reader, and confirm the same location is restored;
+- repeat for the affected EPUB; PDF/Kindle should also retain their format-native stored target;
+- verify the earlier EPUB mouse-wheel snap-back does not return.
+
+Known limitation:
+
+- Kindle position persistence is currently chapter-based rather than a fine-grained within-chapter locator; this hotfix preserves the existing Kindle position model rather than redesigning it.
 
 **BUILD-VITE-IPV4 — Make Windows dev-server binding resilient**
 
