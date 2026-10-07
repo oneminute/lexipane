@@ -70,6 +70,7 @@ export interface EpubActiveSentence {
 
 interface Props {
   path: string;
+  active?: boolean;
   fontScale?: number;
   theme?: EbookTheme;
   flowMode?: EpubFlowMode;
@@ -468,6 +469,7 @@ function syncAutoHighlights(
 
 export function EpubDocumentView({
   path,
+  active = true,
   fontScale = 100,
   theme = "light",
   flowMode = "scrolled",
@@ -494,6 +496,9 @@ export function EpubDocumentView({
   const renderedHighlightCfisRef = useRef<Set<string>>(new Set());
   const lastCfiRef = useRef<string | null>(null);
   const lastPathRef = useRef<string | null>(null);
+  const readerActiveRef = useRef(active);
+  const previousActiveRenderRef = useRef(active);
+  const resumeGuardRef = useRef(false);
   const renderedAutoCfisRef = useRef<Map<string, string>>(new Map());
   const autoTermsRef = useRef<DifficultTerm[]>(autoTerms);
   const activeSentenceStateRef = useRef<EpubActiveSentence | null>(
@@ -519,6 +524,17 @@ export function EpubDocumentView({
 
   onWordSelectionRef.current = onWordSelection;
   onSentenceSelectionRef.current = onSentenceSelection;
+
+  if (previousActiveRenderRef.current !== active) {
+    if (active) {
+      // The keep-alive wrapper is becoming visible again. Ignore any
+      // zero-size/layout relocation until we explicitly restore the last
+      // foreground CFI.
+      resumeGuardRef.current = true;
+    }
+    previousActiveRenderRef.current = active;
+  }
+  readerActiveRef.current = active;
   activeSentenceStateRef.current = activeSentence;
 
   const restoreActiveSentenceHighlight = useCallback(
@@ -805,6 +821,10 @@ export function EpubDocumentView({
               ? location.start.percentage
               : null;
 
+          if (!readerActiveRef.current || resumeGuardRef.current) {
+            return;
+          }
+
           lastCfiRef.current = cfi;
           onRelocated?.(cfi, percentage);
 
@@ -978,6 +998,43 @@ export function EpubDocumentView({
         );
       });
   }, [navigationTarget]);
+
+  useEffect(() => {
+    if (!active) return;
+
+    const rendition = renditionRef.current;
+    const cfi = lastCfiRef.current;
+    if (!rendition || !cfi) {
+      resumeGuardRef.current = false;
+      return;
+    }
+
+    let cancelled = false;
+    let releaseFrame = 0;
+
+    // Restore the last foreground CFI before accepting relocation events
+    // again. epub.js can emit a relocation when its host returns from
+    // display:none with a different intermediate layout.
+    void Promise.resolve(rendition.display(cfi))
+      .catch((error) => {
+        console.warn("Unable to restore EPUB CFI after Reader resume", cfi, error);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        releaseFrame = window.requestAnimationFrame(() => {
+          if (!cancelled) {
+            resumeGuardRef.current = false;
+          }
+        });
+      });
+
+    return () => {
+      cancelled = true;
+      if (releaseFrame) {
+        window.cancelAnimationFrame(releaseFrame);
+      }
+    };
+  }, [active]);
 
   useEffect(() => {
     if (
