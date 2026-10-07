@@ -133,6 +133,7 @@ import {
 import { segmentSentences } from "./sentenceNavigation";
 
 interface Props {
+  active?: boolean;
   bookPath: string | null;
   navigationTarget?: ReaderNavigationTarget | null;
   onOpenBook: () => void;
@@ -220,6 +221,7 @@ function rectsApproximatelyEqual(
 }
 
 export function ReaderView({
+  active = true,
   bookPath,
   navigationTarget = null,
   onOpenBook,
@@ -344,6 +346,15 @@ export function ReaderView({
     useState<KindleTextAnnotation[]>([]);
   const [kindleSelectionChapterId, setKindleSelectionChapterId] =
     useState<string | null>(null);
+  const readerActiveRef = useRef(active);
+  const previousReaderActiveRef = useRef(active);
+  const lastVisibleReaderTargetRef =
+    useRef<ReaderNavigationTarget | null>(null);
+
+  // Keep event callbacks synchronous with the parent navigation state. This
+  // prevents epub.js/IntersectionObserver callbacks caused by display:none
+  // layout collapse from overwriting the last real foreground position.
+  readerActiveRef.current = active;
 
   const isPdf = isPdfPath(bookPath);
   const isEpub = isEpubPath(bookPath);
@@ -382,6 +393,7 @@ export function ReaderView({
   useEffect(() => {
     let cancelled = false;
 
+    lastVisibleReaderTargetRef.current = null;
     setPageCount(0);
     setCurrentPage(1);
     setInitialPage(null);
@@ -455,6 +467,10 @@ export function ReaderView({
               : position?.page ?? 1;
           setInitialPage(targetPage);
           setCurrentPage(targetPage);
+          lastVisibleReaderTargetRef.current = {
+            kind: "pdf-page",
+            page: targetPage,
+          };
         })
         .catch((error) => {
           console.error("Unable to restore PDF reading position", error);
@@ -471,12 +487,18 @@ export function ReaderView({
       void loadEpubReadingPosition(bookPath)
         .then((position) => {
           if (cancelled) return;
-          setEpubInitialCfi(
+          const targetCfi =
             navigationTarget?.kind === "epub-cfi"
               ? navigationTarget.cfi
-              : position?.cfi ?? null,
-          );
+              : position?.cfi ?? null;
+          setEpubInitialCfi(targetCfi);
           setEpubProgress(position?.progress ?? null);
+          if (targetCfi) {
+            lastVisibleReaderTargetRef.current = {
+              kind: "epub-cfi",
+              cfi: targetCfi,
+            };
+          }
         })
         .catch((error) => {
           console.error("Unable to restore EPUB reading position", error);
@@ -490,12 +512,18 @@ export function ReaderView({
       void loadKindleReadingPosition(bookPath)
         .then((position) => {
           if (cancelled) return;
-          setKindleInitialChapterId(
+          const targetChapterId =
             navigationTarget?.kind === "kindle-chapter"
               ? navigationTarget.chapterId
-              : position?.chapterId ?? null,
-          );
+              : position?.chapterId ?? null;
+          setKindleInitialChapterId(targetChapterId);
           setKindleProgress(position?.progress ?? null);
+          if (targetChapterId) {
+            lastVisibleReaderTargetRef.current = {
+              kind: "kindle-chapter",
+              chapterId: targetChapterId,
+            };
+          }
         })
         .catch((error) => {
           console.error("Unable to restore Kindle reading position", error);
@@ -883,11 +911,17 @@ export function ReaderView({
 
   const handleEpubRelocated = useCallback(
     (cfi: string, progress: number | null) => {
+      if (!readerActiveRef.current) return;
+
       setEpubCurrentCfi(cfi);
       setEpubProgress(progress);
       setProgressDraft(null);
       if (!bookPath || peekOriginRef.current) return;
 
+      lastVisibleReaderTargetRef.current = {
+        kind: "epub-cfi",
+        cfi,
+      };
       scheduleEpubReadingPositionSave(bookPath, cfi, progress);
     },
     [bookPath, scheduleEpubReadingPositionSave],
@@ -995,11 +1029,17 @@ export function ReaderView({
 
   const handleKindleRelocated = useCallback(
     (chapterId: string, progress: number | null) => {
+      if (!readerActiveRef.current) return;
+
       setKindleCurrentChapterId(chapterId);
       setKindleProgress(progress);
       setProgressDraft(null);
       if (!bookPath || peekOriginRef.current) return;
 
+      lastVisibleReaderTargetRef.current = {
+        kind: "kindle-chapter",
+        chapterId,
+      };
       void saveKindleReadingPosition(
         bookPath,
         chapterId,
@@ -1091,10 +1131,16 @@ export function ReaderView({
 
   const handleCurrentPageChange = useCallback(
     (page: number) => {
+      if (!readerActiveRef.current) return;
+
       setCurrentPage(page);
 
       if (!bookPath || pageCount < 1 || peekOriginRef.current) return;
 
+      lastVisibleReaderTargetRef.current = {
+        kind: "pdf-page",
+        page,
+      };
       void savePdfReadingPosition(bookPath, page, pageCount).catch((error) => {
         console.error("Unable to save PDF reading position", error);
       });
@@ -2317,6 +2363,78 @@ export function ReaderView({
 
     setKindleNavigationChapterId(target.chapterId);
   }
+
+  useEffect(() => {
+    const wasActive = previousReaderActiveRef.current;
+    previousReaderActiveRef.current = active;
+
+    if (wasActive === active) return;
+
+    if (!active) {
+      const protectedTarget =
+        peekOriginRef.current ??
+        lastVisibleReaderTargetRef.current ??
+        currentReaderTarget();
+
+      if (protectedTarget) {
+        lastVisibleReaderTargetRef.current = protectedTarget;
+      }
+
+      // A pending EPUB debounce contains the last foreground relocation.
+      // Flush it before display:none can cause epub.js to relayout.
+      if (epubPositionSaveTimerRef.current !== null) {
+        window.clearTimeout(epubPositionSaveTimerRef.current);
+        epubPositionSaveTimerRef.current = null;
+      }
+
+      const pending = pendingEpubPositionRef.current;
+      pendingEpubPositionRef.current = null;
+      if (pending && !peekOriginRef.current) {
+        void saveEpubReadingPosition(
+          pending.path,
+          pending.cfi,
+          pending.progress,
+        ).catch((error) => {
+          console.error(
+            "Unable to flush EPUB position while leaving Reader",
+            error,
+          );
+        });
+      }
+
+      return;
+    }
+
+    if (!positionLoaded) return;
+
+    const target = lastVisibleReaderTargetRef.current;
+    if (!target) return;
+
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      // Allow the keep-alive wrapper to regain non-zero layout first.
+      window.dispatchEvent(new Event("resize"));
+
+      if (target.kind === "epub-cfi") {
+        // Force a fresh navigation request even if this CFI was also the
+        // previous explicit bookmark/TOC destination.
+        setEpubNavigationTarget(null);
+      } else if (target.kind === "kindle-chapter") {
+        setKindleNavigationChapterId(null);
+      }
+
+      secondFrame = window.requestAnimationFrame(() => {
+        navigateToTarget(target);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) {
+        window.cancelAnimationFrame(secondFrame);
+      }
+    };
+  }, [active, positionLoaded]);
 
   async function addCurrentBookmark() {
     if (!bookPath || bookmarkStatus === "saving") return;
