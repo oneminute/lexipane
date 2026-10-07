@@ -3195,6 +3195,7 @@ export function ReaderView({
             {bookPath && isKindle && positionLoaded && (
               <MobiDocumentView
                 path={bookPath}
+                active={active}
                 fontScale={epubFontScale}
                 theme={ebookTheme}
                 initialChapterId={kindleInitialChapterId}
