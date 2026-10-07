@@ -929,6 +929,7 @@ fn public_tag_address(value: u64) -> Option<Ipv4Addr> {
 fn parse_source_response(
     payload: &[u8],
     expected_target: &[u8; 16],
+    expected_size: u64,
 ) -> Result<Vec<NativeEd2kSource>, String> {
     let mut cursor = Cursor::new(payload);
     let _sender_id = cursor.id()?;
@@ -964,6 +965,7 @@ fn parse_source_response(
         let mut buddy_id = None;
         let mut client_low_id = None;
         let mut encryption = None;
+        let mut published_size = None;
 
         for _ in 0..tag_count {
             let tag = read_kad_tag(&mut cursor)?;
@@ -1005,11 +1007,19 @@ fn parse_source_response(
                     encryption = tag_integer(&tag)
                         .and_then(|value| u8::try_from(value).ok());
                 }
+                Some(TAG_FILESIZE) => {
+                    published_size = tag_integer(&tag);
+                }
                 _ => {}
             }
         }
 
         if !matches!(source_type, 1 | 3 | 4 | 5 | 6) {
+            continue;
+        }
+        if published_size
+            .is_some_and(|published| published != expected_size)
+        {
             continue;
         }
 
@@ -1397,7 +1407,7 @@ async fn collect_source_results(
         contacts,
         target,
         SOURCE_CONTACTS,
-        3,
+        2,
         &none,
     );
 
@@ -1435,7 +1445,7 @@ async fn collect_source_results(
                 if opcode != KADEMLIA2_SEARCH_RES {
                     continue;
                 }
-                match parse_source_response(&payload, target) {
+                match parse_source_response(&payload, target, size) {
                     Ok(mut found) => {
                         responders.insert((*source.ip(), source.port()));
                         sources.append(&mut found);
@@ -1757,8 +1767,9 @@ mod tests {
         payload.extend_from_slice(&target);
         push_u16(&mut payload, 1);
         payload.extend_from_slice(&answer);
-        payload.push(5);
+        payload.push(6);
         push_u32_tag(&mut payload, TAG_SOURCETYPE, 1);
+        push_u32_tag(&mut payload, TAG_FILESIZE, 12_345);
         push_u32_tag(
             &mut payload,
             TAG_SOURCEIP,
@@ -1768,7 +1779,7 @@ mod tests {
         push_u32_tag(&mut payload, TAG_SOURCEUPORT, 4672);
         push_u32_tag(&mut payload, TAG_ENCRYPTION, 9);
 
-        let sources = parse_source_response(&payload, &target).unwrap();
+        let sources = parse_source_response(&payload, &target, 12_345).unwrap();
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].address.as_deref(), Some("8.8.4.4"));
         assert_eq!(sources[0].tcp_port, 4662);
@@ -1790,8 +1801,9 @@ mod tests {
         payload.extend_from_slice(&target);
         push_u16(&mut payload, 1);
         payload.extend_from_slice(&answer);
-        payload.push(7);
+        payload.push(8);
         push_u32_tag(&mut payload, TAG_SOURCETYPE, 3);
+        push_u32_tag(&mut payload, TAG_FILESIZE, 12_345);
         push_u32_tag(
             &mut payload,
             TAG_SOURCEIP,
@@ -1811,7 +1823,7 @@ mod tests {
             "00112233445566778899AABBCCDDEEFF",
         );
 
-        let sources = parse_source_response(&payload, &target).unwrap();
+        let sources = parse_source_response(&payload, &target, 12_345).unwrap();
         assert_eq!(sources.len(), 1);
         assert!(!sources[0].direct);
         assert!(sources[0].low_id);
@@ -1832,8 +1844,9 @@ mod tests {
         payload.extend_from_slice(&target);
         push_u16(&mut payload, 1);
         payload.extend_from_slice(&[0x55; 16]);
-        payload.push(3);
+        payload.push(4);
         push_u32_tag(&mut payload, TAG_SOURCETYPE, 1);
+        push_u32_tag(&mut payload, TAG_FILESIZE, 12_345);
         push_u32_tag(
             &mut payload,
             TAG_SOURCEIP,
