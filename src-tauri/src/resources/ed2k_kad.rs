@@ -254,8 +254,10 @@ fn read_contact(
     with_key: bool,
 ) -> Result<Option<KadContact>, String> {
     let id = cursor.id()?;
-    let raw_ip = cursor.bytes(4)?;
-    let address = Ipv4Addr::new(raw_ip[0], raw_ip[1], raw_ip[2], raw_ip[3]);
+    // Kad stores the IPv4 value as a little-endian u32. Convert the
+    // numeric address back to network byte order before creating Ipv4Addr.
+    let raw_ip = cursor.u32()?;
+    let address = Ipv4Addr::from(raw_ip.to_be_bytes());
     let udp_port = cursor.u16()?;
     let tcp_port = cursor.u16()?;
     let version = cursor.u8()?;
@@ -1330,7 +1332,7 @@ mod tests {
         push_u32(&mut data, 1);
         push_u32(&mut data, 1);
         data.extend_from_slice(&[0x11; 16]);
-        data.extend_from_slice(&[1, 2, 3, 4]);
+        push_u32(&mut data, u32::from_be_bytes([1, 2, 3, 4]));
         push_u16(&mut data, 4672);
         push_u16(&mut data, 4662);
         data.push(8);
@@ -1369,7 +1371,7 @@ mod tests {
         payload.extend_from_slice(&target);
         payload.push(1);
         payload.extend_from_slice(&[0x55; 16]);
-        payload.extend_from_slice(&[8, 8, 8, 8]);
+        push_u32(&mut payload, u32::from_be_bytes([8, 8, 8, 8]));
         push_u16(&mut payload, 4672);
         push_u16(&mut payload, 4662);
         payload.push(8);
