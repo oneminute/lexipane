@@ -193,7 +193,7 @@ Known limitations / next phases:
 
 **BUILD-VITE-IPV4 — Make Windows dev-server binding resilient**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 Observed failure sequence:
 
@@ -201,21 +201,26 @@ Observed failure sequence:
 - after switching both Vite and Tauri to `127.0.0.1:1420`, the next local launch failed with `listen EACCES: permission denied 127.0.0.1:1420`;
 - this confirms TCP port 1420 itself is reserved/excluded or otherwise unavailable on the user's Windows installation, so another fixed port would only move the same fragility.
 
-Revised scope:
+Implementation summary:
 
-- keep desktop development on IPv4 loopback;
-- let Vite read the dev port from `TAURI_DEV_PORT`;
-- make the Windows launcher test 1420 first and, when unavailable/reserved, ask Windows for an ephemeral free loopback port instead of guessing another fixed port;
-- generate a temporary Tauri config override whose `build.devUrl` uses the same selected port;
-- preserve explicit `TAURI_DEV_PORT` overrides, rejecting them early with a clear message when unavailable;
-- clean the temporary Tauri override after the development process exits;
-- validate frontend/build/Rust gates and require one local launcher smoke test.
+- Vite now reads its strict dev port from `TAURI_DEV_PORT`, defaulting to 1420 only when launched directly without the Windows launcher;
+- the Windows launcher probes 1420 and, when Windows refuses/reserves it, binds a temporary loopback listener on port 0 so Windows chooses a usable ephemeral port;
+- the selected port is exported to Vite and printed as `Dev : http://127.0.0.1:<port>`;
+- desktop startup writes a temporary Tauri JSON override with `build.devUrl` pointing to exactly the same selected port, invokes `tauri dev --config <temp-file>`, and removes the override afterward;
+- an explicit user `TAURI_DEV_PORT` is still supported but is validated before startup and rejected early if unavailable;
+- explicit `TAURI_DEV_HOST` / `TAURI_DEV_HMR_PORT` support remains available;
+- Windows CI now parses `scripts/windows/start-lexipane.ps1` without executing it, so launcher syntax regressions are caught before local use.
 
-Risks / dependencies:
+Validation / evidence:
 
-- the selected port is released after probing and rebound by Vite shortly afterward, leaving a very small race in which another process could claim it;
-- the Tauri CLI must accept the generated temporary JSON config override and pass the selected-port environment through to `beforeDevCommand`;
-- LAN/mobile HMR remains controlled by explicit `TAURI_DEV_HOST` / `TAURI_DEV_HMR_PORT` overrides.
+- dynamic-port implementation commits: `0a47f00` and `60e61db`;
+- frontend typecheck/tests/build have already passed on the dynamic-port commits;
+- final CI including the new Windows launcher parser is queued/running;
+- one local Windows `start-lexipane.cmd` smoke test is still required before COMPLETE.
+
+Known limitation:
+
+- there is a very small race between releasing the probe listener and Vite rebinding the selected ephemeral port; if another process claims it in that interval, rerunning the launcher will choose another port.
 
 **DB-SCHEMA-REPAIR — Repair v12/v13 sentence AI schema upgrade ordering**
 
