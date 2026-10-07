@@ -68,7 +68,11 @@ export interface NativeEd2kSource {
   direct: boolean;
   lowId: boolean;
   clientId?: number | null;
+  sourceId?: string | null;
   server?: string | null;
+  buddyAddress?: string | null;
+  buddyPort?: number | null;
+  buddyId?: string | null;
   sourceType?: number | null;
   encryption?: number | null;
 }
