@@ -192,6 +192,26 @@ Known limitations / next phases:
 
 ### Active regression hotfix
 
+**BUILD-VITE-IPV4 — Prevent Windows Vite localhost IPv6 bind failure**
+
+Status: **IN_PROGRESS**
+
+Observed failure:
+
+- local Windows `start-lexipane.cmd` reaches Tauri's `beforeDevCommand`, then Vite fails with `listen EACCES: permission denied ::1:1420`;
+- current Vite config uses `host: false` when `TAURI_DEV_HOST` is unset, and Tauri uses `http://localhost:1420`, allowing Windows/Node to resolve localhost to IPv6 `::1`.
+
+Scope:
+
+- make normal desktop development bind explicitly to `127.0.0.1` while preserving an explicit `TAURI_DEV_HOST` override for LAN/mobile development;
+- make Tauri's desktop development URL match the explicit IPv4 endpoint;
+- keep the existing strict dev port and HMR override behavior;
+- validate frontend/build/Rust configuration gates and then require one local Windows launcher smoke test.
+
+Risk / dependency:
+
+- if Windows has excluded TCP port 1420 itself rather than only rejecting the IPv6 localhost bind, the next fallback will be a coordinated dev-port change; do not change ports unless the IPv4 bind still fails.
+
 **DB-SCHEMA-REPAIR — Repair v12/v13 sentence AI schema upgrade ordering**
 
 Status: **VERIFYING**
