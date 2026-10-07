@@ -20,6 +20,7 @@ import type {
   EpubFlowMode,
 } from "../../core/reading/ebookPreferences";
 import type { ReaderImagePreview } from "./readerImage";
+import { shouldAcceptReaderRelocation } from "./readerResume";
 import {
   clearDomSentenceHighlight,
   findDomSentenceByText,
@@ -821,7 +822,12 @@ export function EpubDocumentView({
               ? location.start.percentage
               : null;
 
-          if (!readerActiveRef.current || resumeGuardRef.current) {
+          if (
+            !shouldAcceptReaderRelocation(
+              readerActiveRef.current,
+              resumeGuardRef.current,
+            )
+          ) {
             return;
           }
 
