@@ -350,6 +350,8 @@ export function ReaderView({
   const previousReaderActiveRef = useRef(active);
   const lastVisibleReaderTargetRef =
     useRef<ReaderNavigationTarget | null>(null);
+  const documentStageRef = useRef<HTMLDivElement | null>(null);
+  const pdfScrollTopRef = useRef(0);
   const readerSettingsMenuRef = useRef<HTMLDetailsElement | null>(null);
   const aiSettingsMenuRef = useRef<HTMLDetailsElement | null>(null);
 
@@ -396,6 +398,7 @@ export function ReaderView({
     let cancelled = false;
 
     lastVisibleReaderTargetRef.current = null;
+    pdfScrollTopRef.current = 0;
     setPageCount(0);
     setCurrentPage(1);
     setInitialPage(null);
@@ -1120,16 +1123,19 @@ export function ReaderView({
     [],
   );
 
-  const jumpToPage = useCallback((page: number) => {
-    const element = window.document.querySelector<HTMLElement>(
-      '[data-pdf-page="' + page + '"]',
-    );
-    element?.scrollIntoView({
-      block: "start",
-      behavior: "smooth",
-    });
-    setTocOpen(false);
-  }, []);
+  const jumpToPage = useCallback(
+    (page: number, behavior: ScrollBehavior = "smooth") => {
+      const element = window.document.querySelector<HTMLElement>(
+        '[data-pdf-page="' + page + '"]',
+      );
+      element?.scrollIntoView({
+        block: "start",
+        behavior,
+      });
+      setTocOpen(false);
+    },
+    [],
+  );
 
   const handleCurrentPageChange = useCallback(
     (page: number) => {
@@ -2350,11 +2356,14 @@ export function ReaderView({
     return Math.round(progress * 100) + "%";
   }
 
-  function navigateToTarget(target: ReaderNavigationTarget) {
+  function navigateToTarget(
+    target: ReaderNavigationTarget,
+    behavior: ScrollBehavior = "smooth",
+  ) {
     if (target.kind === "pdf-page") {
       setCurrentPage(target.page);
       setInitialPage(target.page);
-      jumpToPage(target.page);
+      jumpToPage(target.page, behavior);
       return;
     }
 
@@ -2412,7 +2421,9 @@ export function ReaderView({
     const target = lastVisibleReaderTargetRef.current;
     if (!target) return;
 
+    const savedPdfScrollTop = pdfScrollTopRef.current;
     let secondFrame = 0;
+    let thirdFrame = 0;
     const firstFrame = window.requestAnimationFrame(() => {
       // Allow the keep-alive wrapper to regain non-zero layout first.
       window.dispatchEvent(new Event("resize"));
@@ -2426,7 +2437,16 @@ export function ReaderView({
       }
 
       secondFrame = window.requestAnimationFrame(() => {
-        navigateToTarget(target);
+        navigateToTarget(target, "auto");
+
+        if (target.kind === "pdf-page") {
+          thirdFrame = window.requestAnimationFrame(() => {
+            const stage = documentStageRef.current;
+            if (stage) {
+              stage.scrollTop = savedPdfScrollTop;
+            }
+          });
+        }
       });
     });
 
@@ -2434,6 +2454,9 @@ export function ReaderView({
       window.cancelAnimationFrame(firstFrame);
       if (secondFrame) {
         window.cancelAnimationFrame(secondFrame);
+      }
+      if (thirdFrame) {
+        window.cancelAnimationFrame(thirdFrame);
       }
     };
   }, [active, positionLoaded]);
@@ -3065,7 +3088,13 @@ export function ReaderView({
           )}
 
           <div
+            ref={documentStageRef}
             className={regionMode ? "document-stage region-mode" : "document-stage"}
+            onScroll={(event) => {
+              if (isPdf && readerActiveRef.current) {
+                pdfScrollTopRef.current = event.currentTarget.scrollTop;
+              }
+            }}
             onMouseDown={handleDocumentMouseDown}
             onMouseUp={handleDocumentMouseUp}
             onPointerDown={beginRegionSelection}
@@ -3134,6 +3163,7 @@ export function ReaderView({
             {bookPath && isEpub && positionLoaded && (
               <EpubDocumentView
                 path={bookPath}
+                active={active}
                 fontScale={epubFontScale}
                 theme={ebookTheme}
                 flowMode={epubFlowMode}
