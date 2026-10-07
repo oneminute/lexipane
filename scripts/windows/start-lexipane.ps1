@@ -181,6 +181,95 @@ function Ensure-LocalOcr {
     Write-Host "OCR : $Executable"
 }
 
+function Test-LoopbackTcpPort([int]$Port) {
+    $Listener = $null
+    try {
+        $Listener = [System.Net.Sockets.TcpListener]::new(
+            [System.Net.IPAddress]::Loopback,
+            $Port
+        )
+        $Listener.Start()
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        if ($null -ne $Listener) {
+            try {
+                $Listener.Stop()
+            }
+            catch {
+                # Best-effort cleanup only.
+            }
+        }
+    }
+}
+
+function Get-AvailableLoopbackTcpPort {
+    if ($env:TAURI_DEV_PORT) {
+        $RequestedPort = 0
+        if (-not [int]::TryParse($env:TAURI_DEV_PORT, [ref]$RequestedPort) -or
+            $RequestedPort -lt 1 -or
+            $RequestedPort -gt 65535) {
+            Fail "TAURI_DEV_PORT must be an integer between 1 and 65535."
+        }
+
+        if (-not (Test-LoopbackTcpPort $RequestedPort)) {
+            Fail "Requested TAURI_DEV_PORT $RequestedPort is unavailable or reserved by Windows."
+        }
+
+        return $RequestedPort
+    }
+
+    # Keep the historical port when it is usable so direct URLs remain
+    # predictable. Windows can reserve large TCP ranges for Hyper-V/WSL/
+    # containers, so do not assume a different hard-coded port is safer.
+    if (Test-LoopbackTcpPort 1420) {
+        return 1420
+    }
+
+    $Listener = $null
+    try {
+        $Listener = [System.Net.Sockets.TcpListener]::new(
+            [System.Net.IPAddress]::Loopback,
+            0
+        )
+        $Listener.Start()
+        return ([System.Net.IPEndPoint]$Listener.LocalEndpoint).Port
+    }
+    catch {
+        Fail "Windows could not allocate a free loopback TCP port for the LexiPane dev server: $($_.Exception.Message)"
+    }
+    finally {
+        if ($null -ne $Listener) {
+            try {
+                $Listener.Stop()
+            }
+            catch {
+                # Best-effort cleanup only.
+            }
+        }
+    }
+}
+
+function New-TauriDevConfig([int]$Port) {
+    $ConfigPath = Join-Path $env:TEMP "lexipane-tauri-dev-$PID.json"
+    $Config = @{
+        build = @{
+            devUrl = "http://127.0.0.1:$Port"
+        }
+    } | ConvertTo-Json -Depth 4
+
+    [System.IO.File]::WriteAllText(
+        $ConfigPath,
+        $Config,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
+    return $ConfigPath
+}
+
 function Ensure-TauriIcons {
     $IconDir = Join-Path $ProjectRoot "src-tauri\icons"
     $SourceIcon = Join-Path $IconDir "icon.png"
@@ -300,15 +389,29 @@ if (-not $Web) {
     Ensure-TauriIcons
 }
 
+$DevPort = Get-AvailableLoopbackTcpPort
+$env:TAURI_DEV_PORT = "$DevPort"
+Write-Host "Dev : http://127.0.0.1:$DevPort"
+
+$LaunchExitCode = 0
+
 if ($Web) {
     Write-Step "Starting LexiPane in browser development mode"
     & npm run dev
+    $LaunchExitCode = $LASTEXITCODE
 }
 else {
-    Write-Step "Starting LexiPane desktop application"
-    & npm run tauri dev
+    $RuntimeConfig = New-TauriDevConfig $DevPort
+    try {
+        Write-Step "Starting LexiPane desktop application"
+        & npm run tauri -- dev --config $RuntimeConfig
+        $LaunchExitCode = $LASTEXITCODE
+    }
+    finally {
+        Remove-Item $RuntimeConfig -Force -ErrorAction SilentlyContinue
+    }
 }
 
-if ($LASTEXITCODE -ne 0) {
-    Fail "LexiPane exited with code $LASTEXITCODE."
+if ($LaunchExitCode -ne 0) {
+    Fail "LexiPane exited with code $LaunchExitCode."
 }
