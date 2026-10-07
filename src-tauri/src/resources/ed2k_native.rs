@@ -1192,10 +1192,14 @@ mod tests {
             u32::from_le_bytes([45, 82, 80, 155]),
         );
         push_u16(&mut data, 5687);
-        push_u32(&mut data, 1);
+        push_u32(&mut data, 2);
         data.extend_from_slice(&old_string_tag(
             ST_SERVERNAME,
             "Example ED2K",
+        ));
+        data.extend_from_slice(&old_u32_tag(
+            ST_UDPFLAGS,
+            SRV_UDPFLG_EXT_GETFILES as u32,
         ));
 
         let servers = parse_server_met(&data).unwrap();
@@ -1203,6 +1207,10 @@ mod tests {
         assert_eq!(servers[0].address, "45.82.80.155");
         assert_eq!(servers[0].port, 5687);
         assert_eq!(servers[0].name.as_deref(), Some("Example ED2K"));
+        assert_eq!(
+            servers[0].udp_flags & SRV_UDPFLG_EXT_GETFILES,
+            SRV_UDPFLG_EXT_GETFILES,
+        );
     }
 
     #[test]
@@ -1267,6 +1275,24 @@ mod tests {
         assert_eq!(packet[0], OP_EDONKEYPROT);
         assert_eq!(packet[1], OP_GLOBSEARCHREQ2);
         assert_eq!(packet[2], 0x01);
+    }
+
+    #[test]
+    fn falls_back_to_legacy_udp_global_search_opcode() {
+        let server = NativeEd2kServer {
+            address: "9.8.7.6".to_string(),
+            port: 4661,
+            name: None,
+            users: None,
+            files: None,
+            failed_count: 0,
+            preference: 0,
+            udp_flags: 0,
+        };
+
+        let packet = encode_udp_search_packet(&server, "history").unwrap();
+        assert_eq!(packet[0], OP_EDONKEYPROT);
+        assert_eq!(packet[1], OP_GLOBSEARCHREQ);
     }
 
     #[test]
