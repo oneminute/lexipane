@@ -106,13 +106,12 @@ Implementation summary:
 Validation / evidence:
 
 - module-compilation CI run `37558089320` passed frontend checks, Linux `cargo check` + `cargo test --lib`, and Windows `cargo check` + `cargo test --lib`;
-- integration/UI runs have already passed frontend `npm run typecheck`, `npm test`, and `npm run build`, and Linux Kad-integrated `cargo check/test` on intermediate final-equivalent code;
-- the final address-filter/UI commits are still completing cross-platform Rust validation;
+- final Kad code CI run `37558784573` passed frontend `npm run typecheck`, `npm test`, and `npm run build`;
+- the same final run passed Linux and Windows `cargo check` + `cargo test --lib`;
 - targeted Rust tests cover nodes.dat v3 bootstrap parsing, Kad MD4 keyword hash, UInt128/NodeID encryption round-trip, Kad lookup-contact parsing, Kad keyword result -> ED2K identity conversion, contact deduplication, and local/private-address rejection.
 
 Remaining verification:
 
-- finish the final Linux/Windows CI run for the last code commit;
 - perform one local Windows/Tauri live search to verify current nodes.dat retrieval plus real Kad bootstrap/lookup/keyword responses under the user's network/firewall environment.
 
 Known limitations / next phase:
@@ -194,23 +193,29 @@ Known limitations / next phases:
 
 **BUILD-VITE-IPV4 — Prevent Windows Vite localhost IPv6 bind failure**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 Observed failure:
 
-- local Windows `start-lexipane.cmd` reaches Tauri's `beforeDevCommand`, then Vite fails with `listen EACCES: permission denied ::1:1420`;
-- current Vite config uses `host: false` when `TAURI_DEV_HOST` is unset, and Tauri uses `http://localhost:1420`, allowing Windows/Node to resolve localhost to IPv6 `::1`.
+- local Windows `start-lexipane.cmd` reached Tauri's `beforeDevCommand`, then Vite failed with `listen EACCES: permission denied ::1:1420`;
+- the previous Vite config used the implicit localhost bind when `TAURI_DEV_HOST` was unset, while Tauri also targeted `http://localhost:1420`.
 
-Scope:
+Implementation summary:
 
-- make normal desktop development bind explicitly to `127.0.0.1` while preserving an explicit `TAURI_DEV_HOST` override for LAN/mobile development;
-- make Tauri's desktop development URL match the explicit IPv4 endpoint;
-- keep the existing strict dev port and HMR override behavior;
-- validate frontend/build/Rust configuration gates and then require one local Windows launcher smoke test.
+- normal desktop Vite development now binds explicitly to `127.0.0.1:1420`;
+- an explicit `TAURI_DEV_HOST` still overrides the bind host for LAN/mobile-oriented development;
+- Tauri's desktop `devUrl` now uses `http://127.0.0.1:1420`, so the WebView and Vite agree on the same IPv4 endpoint;
+- strict port behavior and the existing explicit-host HMR override remain unchanged.
 
-Risk / dependency:
+Validation / evidence:
 
-- if Windows has excluded TCP port 1420 itself rather than only rejecting the IPv6 localhost bind, the next fallback will be a coordinated dev-port change; do not change ports unless the IPv4 bind still fails.
+- implementation commits: `290e0a1` (Vite IPv4 bind) and `3fdf104` (Tauri IPv4 dev URL);
+- GitHub Actions baseline validation for the final config commit is running;
+- one local Windows `start-lexipane.cmd` smoke test is required before COMPLETE.
+
+Known fallback:
+
+- if the next local run reports `EACCES` on `127.0.0.1:1420` rather than `::1:1420`, Windows has likely excluded/reserved TCP port 1420 itself; in that case the next fix is a coordinated dev-port change rather than another host change.
 
 **DB-SCHEMA-REPAIR — Repair v12/v13 sentence AI schema upgrade ordering**
 
@@ -360,11 +365,11 @@ Network-resource batch priorities:
 
 ## Next selected task
 
-**RESOURCE-006K — Native Kad bootstrap and keyword search**
+**BUILD-VITE-IPV4 — Windows development startup hotfix**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Start after the local Global Search smoke test or after any protocol fixes discovered by that test. Scope: nodes.dat/bootstrap, Kad node identity/routing-table foundation, keyword lookup, bounded result collection, and reuse of the existing native ED2K result model. Native downloading remains a later phase.
+Finish the local Windows launcher smoke test first. Once LexiPane starts normally, resume `RESOURCE-006K` live Kad search verification; after that, the next native ED2K milestone is `RESOURCE-006S — Native ED2K/Kad source discovery`.
 
 
 ## Core principles
