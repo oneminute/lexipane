@@ -22,6 +22,7 @@ flate2 = "1"
 fs2 = "0.4"
 hmac = "0.12"
 md-5 = "0.10"
+md4 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 librqbit = "9.0.1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json", "gzip", "brotli", "deflate"] }
