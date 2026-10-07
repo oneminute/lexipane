@@ -84,6 +84,33 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 ### Active product priority
 
+**RESOURCE-006K — Native Kad bootstrap and keyword search**
+
+Status: **IN_PROGRESS**
+
+Scope for this batch:
+
+- add a native Kad bootstrap cache based on nodes.dat, with bounded download/cache/parse behavior;
+- create an ephemeral local Kad node identity and routing-table seed model from bootstrap contacts;
+- implement the minimum Kad UDP request/response framing required for bootstrap contact discovery and keyword search;
+- compute Kad keyword hashes locally and perform a bounded iterative keyword lookup against discovered contacts;
+- normalize Kad keyword results into the existing NativeEd2kSearchResult model and merge them with Server/Global Search results;
+- expose Kad contact/result statistics in Resource Hub;
+- add targeted Rust tests for nodes.dat parsing, Kad hash/framing, bounded contact deduplication, and result parsing.
+
+Out of scope:
+
+- source lookup for a selected ED2K hash;
+- peer TCP transfer, part maps, AICH, credit/queue behavior, or native downloading;
+- long-lived background Kad participation or publishing;
+- replacing existing Server/Global Search fallback behavior.
+
+Dependencies / risks:
+
+- Kad2 UDP packets and nodes.dat variants differ across client generations; parsers must be version-bounded and reject malformed packets safely;
+- many Kad contacts may be stale or filtered by NAT/firewalls, so bootstrap/search must tolerate partial or zero response without breaking Server/Global Search;
+- the implementation is intentionally search-only and ephemeral in this phase.
+
 **RESOURCE-006G — Native ED2K Global Search**
 
 Status: **VERIFYING**
@@ -302,7 +329,7 @@ Network-resource batch priorities:
 
 **RESOURCE-006K — Native Kad bootstrap and keyword search**
 
-Status: **READY**
+Status: **IN_PROGRESS**
 
 Start after the local Global Search smoke test or after any protocol fixes discovered by that test. Scope: nodes.dat/bootstrap, Kad node identity/routing-table foundation, keyword lookup, bounded result collection, and reuse of the existing native ED2K result model. Native downloading remains a later phase.
 
