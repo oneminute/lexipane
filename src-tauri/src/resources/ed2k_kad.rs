@@ -1395,6 +1395,14 @@ async fn collect_keyword_results(
     (queried, responders.len(), results, errors)
 }
 
+fn source_search_payload(target: &[u8; 16], size: u64) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(26);
+    payload.extend_from_slice(target);
+    payload.extend_from_slice(&0u16.to_le_bytes());
+    payload.extend_from_slice(&size.to_le_bytes());
+    payload
+}
+
 async fn collect_source_results(
     socket: &UdpSocket,
     local_id: &[u8; 16],
@@ -1413,11 +1421,8 @@ async fn collect_source_results(
 
     let mut queried = 0usize;
     let mut errors = Vec::new();
+    let payload = source_search_payload(target, size);
     for contact in &candidates {
-        let mut payload = Vec::with_capacity(26);
-        payload.extend_from_slice(target);
-        payload.extend_from_slice(&0u16.to_le_bytes());
-        payload.extend_from_slice(&size.to_le_bytes());
         match send_kad(
             socket,
             contact,
@@ -1758,6 +1763,19 @@ mod tests {
     }
 
     #[test]
+    fn encodes_kad_source_request_target_start_and_size() {
+        let hash = [0x21; 16];
+        let target = file_target(&hash);
+        let size = 0x0102_0304_0506_0708u64;
+        let payload = source_search_payload(&target, size);
+
+        assert_eq!(payload.len(), 26);
+        assert_eq!(&payload[..16], &target);
+        assert_eq!(&payload[16..18], &0u16.to_le_bytes());
+        assert_eq!(&payload[18..26], &size.to_le_bytes());
+    }
+
+    #[test]
     fn parses_kad_high_id_source_result() {
         let hash = [0x42; 16];
         let target = file_target(&hash);
@@ -1833,6 +1851,30 @@ mod tests {
             sources[0].buddy_id.as_deref(),
             Some("00112233445566778899aabbccddeeff")
         );
+    }
+
+    #[test]
+    fn rejects_kad_source_with_mismatched_published_size() {
+        let hash = [0x72; 16];
+        let target = file_target(&hash);
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&[0x88; 16]);
+        payload.extend_from_slice(&target);
+        push_u16(&mut payload, 1);
+        payload.extend_from_slice(&[0x65; 16]);
+        payload.push(4);
+        push_u32_tag(&mut payload, TAG_SOURCETYPE, 1);
+        push_u32_tag(&mut payload, TAG_FILESIZE, 99_999);
+        push_u32_tag(
+            &mut payload,
+            TAG_SOURCEIP,
+            u32::from_be_bytes([8, 8, 8, 8]),
+        );
+        push_u32_tag(&mut payload, TAG_SOURCEPORT, 4662);
+
+        assert!(parse_source_response(&payload, &target, 12_345)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
