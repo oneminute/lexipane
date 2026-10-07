@@ -60,6 +60,40 @@ export interface NativeEd2kSearchResult {
   servers: string[];
 }
 
+export interface NativeEd2kSource {
+  address?: string | null;
+  tcpPort: number;
+  udpPort?: number | null;
+  origin: string;
+  direct: boolean;
+  lowId: boolean;
+  clientId?: number | null;
+  server?: string | null;
+  sourceType?: number | null;
+  encryption?: number | null;
+}
+
+export interface NativeEd2kSourceDiscoveryResponse {
+  hash: string;
+  size: number;
+  serverListSource: string;
+  serversLoaded: number;
+  serversQueried: number;
+  serversResponded: number;
+  kadNodesSource?: string | null;
+  kadContactsLoaded: number;
+  kadContactsDiscovered: number;
+  kadBootstrapQueried: number;
+  kadBootstrapResponded: number;
+  kadLookupQueried: number;
+  kadLookupResponded: number;
+  kadSourceQueried: number;
+  kadSourceResponded: number;
+  searchPhase: string;
+  sources: NativeEd2kSource[];
+  errors: string[];
+}
+
 export interface NativeEd2kSearchResponse {
   query: string;
   serverListSource: string;
@@ -128,6 +162,21 @@ export async function searchNativeEd2k(
     "resource_ed2k_native_search",
     {
       query,
+      maxServers,
+    },
+  );
+}
+
+export async function discoverNativeEd2kSources(
+  result: Pick<NativeEd2kSearchResult, "hash" | "size">,
+  maxServers = 6,
+): Promise<NativeEd2kSourceDiscoveryResponse> {
+  requireDesktop();
+  return invoke<NativeEd2kSourceDiscoveryResponse>(
+    "resource_ed2k_native_discover_sources",
+    {
+      hash: result.hash,
+      size: result.size,
       maxServers,
     },
   );
