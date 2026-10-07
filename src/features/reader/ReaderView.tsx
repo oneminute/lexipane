@@ -123,6 +123,7 @@ import {
 import { PdfDocumentView } from "./PdfDocumentView";
 import { BookProviderPolicyControl } from "./BookProviderPolicyControl";
 import type { ReaderImagePreview } from "./readerImage";
+import { clampReaderScrollTop } from "./readerResume";
 import { AiRequestDebugPanel } from "./AiRequestDebugPanel";
 import { StructuredAnalysisView } from "./StructuredAnalysisView";
 import { getPdfPageText, locatePdfTextRects } from "./pdfTextDom";
@@ -2443,7 +2444,11 @@ export function ReaderView({
           thirdFrame = window.requestAnimationFrame(() => {
             const stage = documentStageRef.current;
             if (stage) {
-              stage.scrollTop = savedPdfScrollTop;
+              stage.scrollTop = clampReaderScrollTop(
+                savedPdfScrollTop,
+                stage.scrollHeight,
+                stage.clientHeight,
+              );
             }
           });
         }
