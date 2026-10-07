@@ -65,7 +65,7 @@ Schema/network/native-engine changes should add targeted tests or validation bey
 
 # Current Development Status
 
-Last updated: **2026-10-04**
+Last updated: **2026-10-07**
 
 ## Active program
 
@@ -77,12 +77,38 @@ This is a continuous implementation batch authorized to proceed without per-feat
 
 Two workstreams are tracked in this batch:
 
-1. **Resource Acquisition Platform** — HTTP/OPDS is complete; cloud, BitTorrent, ED2K, WebDAV, S3, public/open discovery, and federated search are implemented on the shared pipeline. The current active work is Download Manager hardening followed by SFTP completion and final provider/search cleanup.
+1. **Resource Acquisition Platform** — HTTP/OPDS is complete; cloud accounts/shared links, BitTorrent, WebDAV, S3, SFTP, public/open discovery, federated search, and native ED2K Server/UDP Global/Kad search are implemented on the shared pipeline. Download Manager hardening remains partially open. Native ED2K/Kad search is implemented and awaiting one local live-network smoke test; the next code milestone is selected-file source discovery.
 2. **Reader AI persistence** — **COMPLETE** for the requested scope: every current-sentence explanation uses versioned SQLite history first, Regenerate appends immutable versions, Older/Newer browse saved versions without inference, configurable look-ahead pre-generation writes every successful result immediately, and history uses stable Library book identity when available.
 
-RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone, temporarily interrupted by a Reader regression hotfix.
+RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **IN_PROGRESS**. RESOURCE-006K remains **VERIFYING** only for a local Windows/Tauri live-network smoke test and no longer blocks implementation of the next native ED2K phase.
 
 ### Active product priority
+
+**RESOURCE-006S — Native ED2K/Kad source discovery**
+
+Status: **IN_PROGRESS**
+
+Goal:
+
+- given one selected native ED2K search result (ED2K hash + exact file size), discover concrete peer/source endpoints without requiring aMule;
+- query both ED2K servers and Kad where practical, merge/deduplicate source endpoints, and preserve partial-success behavior when one discovery path is unavailable;
+- expose bounded diagnostics and source counts through the native command/API so the later native transfer milestone can consume the same source model;
+- keep this milestone discovery-only: no part/block transfer, publishing, persistent Kad routing table, or background participation yet.
+
+Initial implementation scope:
+
+- add a normalized native source model containing endpoint, client/server origin, and any protocol metadata needed by later transfer negotiation;
+- implement ED2K server source lookup for a selected file identity using the existing server list/cache and bounded TCP sessions;
+- add Kad source lookup against the selected ED2K file hash using the existing bootstrap/routing/search transport where protocol support is sufficient;
+- merge and validate endpoints, rejecting unusable/private/local destinations learned from remote peers;
+- add a Tauri command and TypeScript transport wrapper for source discovery;
+- add targeted Rust parsing/protocol/merge tests and run the normal frontend/Linux/Windows validation gates.
+
+Dependencies / risks:
+
+- live ED2K/Kad networks may be unavailable or filtered by the local firewall, so deterministic protocol tests must remain the primary completion evidence and live-network behavior is a separate smoke test;
+- LowID/firewalled clients and callback-required sources are not expected to be directly downloadable in the first discovery slice and should be represented or filtered explicitly rather than treated as direct endpoints;
+- source discovery must not silently start file transfer or enable long-lived Kad participation.
 
 **RESOURCE-006K — Native Kad bootstrap and keyword search**
 
@@ -404,14 +430,18 @@ Network-resource batch priorities:
 | 2026-10-05 | RESOURCE-002 — HTTP + OPDS vertical slice | COMPLETE | Native resumable HTTP, OPDS browse/search/navigation, persistent jobs, verified ingestion, duplicate detection, Reader-format validation, restart recovery. Repeated full CI passes include frontend typecheck/tests/build plus Rust check/tests; latest pre-cleanup full main validation passed before LONGRUN continuation. | RESOURCE-004 |
 | 2026-10-05 | READER-AI-HISTORY — Versioned sentence explanations | COMPLETE | SQLite `sentence_ai_versions`, stable book-id association, DB-first lookup, Regenerate/new immutable version, Older/Newer browsing, configurable look-ahead pre-generation, PDF cross-page prefetch, and removal of retired automatic difficult-term code. | RESOURCE-004 |
 | 2026-10-05 | READER-EPUB-SCROLL-STABILITY — Mouse-wheel snap-back regression | VERIFYING | Disabled scroll anchoring across the epub.js continuous rendition; debounced automatic reading-position writes to 600 ms; CI run 37405995032 passed frontend typecheck/tests/build and Rust check/tests. Local Windows/Tauri mouse-wheel smoke test remains. | READER-EPUB-SCROLL-STABILITY |
+| 2026-10-06 | RESOURCE-006N — Native ED2K Server Search | VERIFYING | Native Rust ED2K TCP search, server.met cache, result normalization, Resource Hub integration, and targeted protocol tests implemented; frontend/Linux/Windows CI gates passed after Windows icon validation fix. Local live-network smoke test remains. | RESOURCE-006G |
+| 2026-10-06 | RESOURCE-006G — Native ED2K UDP Global Search | VERIFYING | Added UDP Global Search with capability-aware opcodes, merged TCP/UDP results, diagnostics, and cross-platform CI/test coverage. Local live-network smoke test remains. | RESOURCE-006K |
+| 2026-10-07 | RESOURCE-006K — Native Kad bootstrap and keyword search | VERIFYING | Native Kad2 bootstrap, iterative lookup, keyword search, UDP obfuscation/decoding, result merge and diagnostics implemented; final frontend/Linux/Windows CI and targeted Rust tests passed. Local Kad smoke test remains. | RESOURCE-006S |
+| 2026-10-07 | READER-NAV-RESUME — Preserve Reader position across main-view navigation | VERIFYING | Foreground guards, exact PDF/EPUB/Kindle restoration helpers, Kindle in-chapter preservation, and targeted tests landed; local Windows/Tauri format smoke tests remain. | RESOURCE-006S |
 
 ## Next selected task
 
-**BUILD-VITE-IPV4 — Windows development startup hotfix**
+**RESOURCE-006S — Native ED2K/Kad source discovery**
 
-Status: **VERIFYING**
+Status: **IN_PROGRESS**
 
-Finish the local Windows launcher smoke test first. Once LexiPane starts normally, resume `RESOURCE-006K` live Kad search verification; after that, the next native ED2K milestone is `RESOURCE-006S — Native ED2K/Kad source discovery`.
+Implementation starts now. `BUILD-VITE-IPV4`, `READER-NAV-RESUME`, `READER-EPUB-SCROLL-STABILITY`, and `RESOURCE-006K` remain in **VERIFYING** where their only remaining evidence is local Windows/Tauri or live-network smoke testing; those external verification steps no longer block the Resource Acquisition implementation sequence.
 
 
 ## Core principles
