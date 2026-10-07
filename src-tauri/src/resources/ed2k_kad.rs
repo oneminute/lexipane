@@ -228,8 +228,8 @@ fn read_kad_tag(cursor: &mut Cursor<'_>) -> Result<KadTag, String> {
 }
 
 fn tag_integer(tag: &KadTag) -> Option<u64> {
-    match tag.value {
-        KadTagValue::Integer(value) => Some(value),
+    match &tag.value {
+        KadTagValue::Integer(value) => Some(*value),
         _ => None,
     }
 }
