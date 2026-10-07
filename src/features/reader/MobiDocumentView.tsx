@@ -20,6 +20,7 @@ import { getBookExtension } from "../../core/books/openBook";
 import { normalizeTerm } from "../../core/reading/knownTerms";
 import type { EbookTheme } from "../../core/reading/ebookPreferences";
 import type { ReaderImagePreview } from "./readerImage";
+import { clampReaderScrollTop } from "./readerResume";
 import {
   clearDomSentenceHighlight,
   findDomSentenceByText,
@@ -86,6 +87,7 @@ export interface KindleActiveSentence {
 
 interface Props {
   path: string;
+  active?: boolean;
   fontScale?: number;
   theme?: EbookTheme;
   initialChapterId?: string | null;
@@ -367,6 +369,7 @@ function applyMarks(
 
 export function MobiDocumentView({
   path,
+  active = true,
   fontScale = 100,
   theme = "light",
   initialChapterId,
@@ -388,6 +391,8 @@ export function MobiDocumentView({
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const parserRef = useRef<KindleParser | null>(null);
+  const readerActiveRef = useRef(active);
+  const chapterScrollTopRef = useRef<Map<string, number>>(new Map());
   const pendingSelectorRef = useRef<string | null>(null);
   const annotationsRef = useRef(annotations);
   const autoTermsRef = useRef(autoTerms);
@@ -419,6 +424,7 @@ export function MobiDocumentView({
   activeSentenceStateRef.current = activeSentence;
   onWordSelectionRef.current = onWordSelection;
   onSentenceSelectionRef.current = onSentenceSelection;
+  readerActiveRef.current = active;
 
   useEffect(() => {
     let cancelled = false;
@@ -426,6 +432,7 @@ export function MobiDocumentView({
 
     setLoading(true);
     setError(null);
+    chapterScrollTopRef.current = new Map();
     setParser(null);
     setSpine([]);
     setChapterId("");
@@ -526,7 +533,9 @@ export function MobiDocumentView({
         ? null
         : index / (spine.length - 1);
 
-    onRelocated?.(chapterId, progress);
+    if (readerActiveRef.current) {
+      onRelocated?.(chapterId, progress);
+    }
   }, [chapterId, onRelocated, parser, spine, theme]);
 
   useEffect(() => {
@@ -670,7 +679,33 @@ export function MobiDocumentView({
       } catch {
         // Invalid selectors from damaged source books are ignored.
       }
+    } else {
+      const savedTop = chapterScrollTopRef.current.get(chapterId);
+      if (savedTop !== undefined) {
+        window.requestAnimationFrame(() => {
+          const scrollingElement =
+            document.scrollingElement ?? document.documentElement;
+          frameWindow.scrollTo(
+            0,
+            clampReaderScrollTop(
+              savedTop,
+              scrollingElement.scrollHeight,
+              scrollingElement.clientHeight,
+            ),
+          );
+        });
+      }
     }
+
+    const handleFrameScroll = () => {
+      if (!readerActiveRef.current) return;
+      const scrollingElement =
+        document.scrollingElement ?? document.documentElement;
+      chapterScrollTopRef.current.set(
+        chapterId,
+        scrollingElement.scrollTop,
+      );
+    };
 
     const reportSelection = () => {
       const text = normalizeText(
@@ -823,6 +858,9 @@ export function MobiDocumentView({
       openImage(image);
     };
 
+    frameWindow.addEventListener("scroll", handleFrameScroll, {
+      passive: true,
+    });
     document.addEventListener("mousedown", handleDocumentMouseDown);
     document.addEventListener("mouseup", reportSelection);
     document.addEventListener("keyup", reportSelection);
@@ -831,6 +869,7 @@ export function MobiDocumentView({
     document.addEventListener("keydown", handleImageKeyDown);
 
     return () => {
+      frameWindow.removeEventListener("scroll", handleFrameScroll);
       document.removeEventListener("mousedown", handleDocumentMouseDown);
       document.removeEventListener("mouseup", reportSelection);
       document.removeEventListener("keyup", reportSelection);
@@ -871,6 +910,42 @@ export function MobiDocumentView({
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [restoreActiveSentenceHighlight]);
+
+  useEffect(() => {
+    if (!active || !chapterId) return;
+
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        const iframe = iframeRef.current;
+        const document = iframe?.contentDocument;
+        const frameWindow = iframe?.contentWindow;
+        const savedTop = chapterScrollTopRef.current.get(chapterId);
+
+        if (!document || !frameWindow || savedTop === undefined) return;
+
+        // Restore the precise in-chapter offset after the hidden keep-alive
+        // Reader regains its real dimensions.
+        const scrollingElement =
+          document.scrollingElement ?? document.documentElement;
+        frameWindow.scrollTo(
+          0,
+          clampReaderScrollTop(
+            savedTop,
+            scrollingElement.scrollHeight,
+            scrollingElement.clientHeight,
+          ),
+        );
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) {
+        window.cancelAnimationFrame(secondFrame);
+      }
+    };
+  }, [active, chapterId]);
 
   const chapterIndex = useMemo(
     () => spine.findIndex((item) => item.id === chapterId),
