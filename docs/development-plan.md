@@ -84,6 +84,32 @@ RESOURCE-002 is **COMPLETE**. RESOURCE-004 remains the active Resource milestone
 
 ### Active product priority
 
+**RESOURCE-006G — Native ED2K Global Search**
+
+Status: **IN_PROGRESS**
+
+Scope for this batch:
+
+- extend the native ED2K engine from direct TCP server search to UDP Global Search across the server.met population;
+- identify usable UDP endpoints and server capabilities from current ED2K protocol metadata;
+- encode Global Search requests using current ED2K server UDP opcodes and parse UDP search-result packets with the existing tag codec;
+- query a bounded set of servers concurrently with strict per-server timeouts and partial-success behavior;
+- merge UDP results with the initial TCP results by ED2K hash + size while preserving aggregate source/server metadata;
+- surface search phase and partial-failure counts in Resource Hub;
+- add targeted Rust tests for UDP framing/parsing and result merging.
+
+Out of scope:
+
+- Kad bootstrap/routing/search;
+- peer source discovery;
+- native part/block downloading.
+
+Dependencies / risks:
+
+- public ED2K server capability flags are heterogeneous; unsupported UDP/global-search servers must be skipped without failing the search;
+- UDP responses can arrive fragmented/out of order or not arrive at all, so the implementation must remain bounded and tolerant;
+- the previous RESOURCE-006N server-search implementation remains the TCP baseline and fallback.
+
 **RESOURCE-006N — Native ED2K search engine**
 
 Status: **VERIFYING**
