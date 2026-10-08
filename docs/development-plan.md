@@ -86,29 +86,40 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 **RESOURCE-006S — Native ED2K/Kad source discovery**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Goal:
+Implementation summary:
 
-- given one selected native ED2K search result (ED2K hash + exact file size), discover concrete peer/source endpoints without requiring aMule;
-- query both ED2K servers and Kad where practical, merge/deduplicate source endpoints, and preserve partial-success behavior when one discovery path is unavailable;
-- expose bounded diagnostics and source counts through the native command/API so the later native transfer milestone can consume the same source model;
-- keep this milestone discovery-only: no part/block transfer, publishing, persistent Kad routing table, or background participation yet.
+- added a normalized NativeEd2kSource model shared by ED2K Server and Kad discovery, preserving public endpoint, TCP/UDP ports, origin/provenance, HighID/LowID state, server context, Kad source/user ID, source type, encryption flags, and buddy callback metadata needed by the later native transfer phase;
+- added resource_ed2k_native_discover_sources plus the TypeScript discoverNativeEd2kSources(...) transport API; the command is discovery-only and does not start transfer, publish files, or keep a background Kad participant alive;
+- implemented bounded ED2K Server OP_GETSOURCES lookup after normal server login, parses OP_IDCHANGE TCP capability flags, rejects login responses with no assigned client ID, and parses OP_FOUNDSOURCES into direct HighID or server-callback LowID source records;
+- fixed the ED2K Server source request wire format to include the exact file size: regular files use hash + u32 size; >4 GiB files use hash + 0u32 + u64 size and are sent only to servers advertising SRV_TCPFLG_LARGEFILES;
+- source lookup now receives the selected search result's reporting-server provenance and queries those servers first, then fills the bounded query set from the normal ranked server.met list; Kad provenance labels are intentionally ignored as server hints;
+- implemented Kad2 selected-file source lookup using the ED2K file hash as the Kad target, the standard 26-byte SEARCH_SOURCE_REQ payload (target + startPosition + uint64 filesize), the existing bounded bootstrap/FIND_VALUE routing flow, and KADEMLIA2_SEARCH_RES parsing;
+- Kad source parsing supports actionable source types 1/3/4/5/6, preserves direct-UDP callback and buddy callback metadata, rejects missing TCP ports, private/local endpoints, wrong file-size class, mismatched published file sizes, incomplete buddy tuples, invalid type-6 callback capability, and responses from nodes that were not actually queried;
+- server and Kad results are merged with a protocol-neutral identity key; matching IP:TCP endpoints enrich one record with UDP/source-type/encryption/provenance metadata instead of creating duplicates, while LowID/callback identities are kept separate when they cannot be safely proven identical;
+- added explicit API diagnostics for direct, callback/firewalled, server-provenance, and Kad-provenance source counts plus bounded network errors; partial success is preserved if either Server or Kad discovery path is unavailable;
+- Resource Hub is now Native ED2K Phase 4: each native search result has **Find native sources**, displays source counts, direct/callback classification, server/Kad lookup diagnostics, endpoint/callback metadata, and the first bounded network diagnostic messages;
+- source-discovery UI requests are single-flight and reset on a new ED2K search so stale responses cannot repopulate results from an earlier query.
 
-Initial implementation scope:
+Validation / evidence:
 
-- add a normalized native source model containing endpoint, client/server origin, and any protocol metadata needed by later transfer negotiation;
-- implement ED2K server source lookup for a selected file identity using the existing server list/cache and bounded TCP sessions;
-- add Kad source lookup against the selected ED2K file hash using the existing bootstrap/routing/search transport where protocol support is sufficient;
-- merge and validate endpoints, rejecting unusable/private/local destinations learned from remote peers;
-- add a Tauri command and TypeScript transport wrapper for source discovery;
-- add targeted Rust parsing/protocol/merge tests and run the normal frontend/Linux/Windows validation gates.
+- CI run 37687595426 passed frontend checks, Linux cargo check + cargo test --lib, and Windows cargo check + cargo test --lib for the first complete Server+Kad callback-validation slice;
+- a later deterministic test expansion exposed one missed expected_size test argument on both Linux and Windows; commit a953abcf fixes that compile/test issue, and its frontend + Linux Rust gates have passed while the Windows Rust test gate is still running at this update;
+- targeted tests now cover regular and >4 GiB Server source request encoding, large-file capability rejection, source-response parsing, public/private address filtering, source merging, result-server prioritization, Kad file-target conversion, Kad source request layout, HighID sources, firewalled buddy metadata, published-size identity guards, TCP-port requirements, and file-size/source-type compatibility;
+- later commits add protocol-correct Server filesize requests, server provenance prioritization, stricter Kad source validation, explicit source counts, and UI diagnostics; their final cross-platform CI runs are still executing and must pass before this milestone is marked COMPLETE.
+
+Remaining verification:
+
+- wait for the latest frontend/Linux/Windows CI run on the final 006S code to complete successfully;
+- run one local Windows/Tauri live-network smoke test: perform native ED2K search, choose a real result, click **Find native sources**, and confirm that Server and/or Kad diagnostics return plausible source records or explicit network timeouts without starting a download;
+- live-network failure alone does not invalidate deterministic protocol completion when the local ED2K/Kad network is blocked, but the UI must surface that condition clearly.
 
 Dependencies / risks:
 
-- live ED2K/Kad networks may be unavailable or filtered by the local firewall, so deterministic protocol tests must remain the primary completion evidence and live-network behavior is a separate smoke test;
-- LowID/firewalled clients and callback-required sources are not expected to be directly downloadable in the first discovery slice and should be represented or filtered explicitly rather than treated as direct endpoints;
-- source discovery must not silently start file transfer or enable long-lived Kad participation.
+- ED2K Server/Kad availability varies and UDP may be filtered by the local firewall/router;
+- Server LowID, Kad buddy-callback, and Kad direct-UDP-callback sources are preserved for the next transfer milestone but are intentionally not treated as ordinary direct TCP endpoints;
+- native part/block negotiation, queueing, piece verification, callback execution, publishing, and long-lived Kad participation remain outside RESOURCE-006S.
 
 **RESOURCE-006K — Native Kad bootstrap and keyword search**
 
@@ -434,14 +445,15 @@ Network-resource batch priorities:
 | 2026-10-06 | RESOURCE-006G — Native ED2K UDP Global Search | VERIFYING | Added UDP Global Search with capability-aware opcodes, merged TCP/UDP results, diagnostics, and cross-platform CI/test coverage. Local live-network smoke test remains. | RESOURCE-006K |
 | 2026-10-07 | RESOURCE-006K — Native Kad bootstrap and keyword search | VERIFYING | Native Kad2 bootstrap, iterative lookup, keyword search, UDP obfuscation/decoding, result merge and diagnostics implemented; final frontend/Linux/Windows CI and targeted Rust tests passed. Local Kad smoke test remains. | RESOURCE-006S |
 | 2026-10-07 | READER-NAV-RESUME — Preserve Reader position across main-view navigation | VERIFYING | Foreground guards, exact PDF/EPUB/Kindle restoration helpers, Kindle in-chapter preservation, and targeted tests landed; local Windows/Tauri format smoke tests remain. | RESOURCE-006S |
+| 2026-10-07 | RESOURCE-006S — Native ED2K/Kad source discovery | VERIFYING | Native Server + Kad selected-file source discovery, callback metadata, large-file protocol handling, result-server prioritization, merged provenance/count diagnostics, UI source inspection, and targeted protocol tests implemented. Latest cross-platform CI plus one local live-network smoke test remain. | RESOURCE-006S |
 
 ## Next selected task
 
 **RESOURCE-006S — Native ED2K/Kad source discovery**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Implementation starts now. `BUILD-VITE-IPV4`, `READER-NAV-RESUME`, `READER-EPUB-SCROLL-STABILITY`, and `RESOURCE-006K` remain in **VERIFYING** where their only remaining evidence is local Windows/Tauri or live-network smoke testing; those external verification steps no longer block the Resource Acquisition implementation sequence.
+Implementation is feature-complete for the selected discovery-only scope. Keep 006S selected until the latest frontend/Linux/Windows CI gates pass and one local Windows/Tauri live-network source-discovery smoke test is recorded. Do not start native part/block transfer under 006S; that is the following ED2K milestone.
 
 
 ## Core principles
