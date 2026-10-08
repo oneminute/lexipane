@@ -1023,10 +1023,16 @@ fn parse_source_response(
             continue;
         }
 
-        let firewalled = matches!(source_type, 3 | 5 | 6);
-        if matches!(source_type, 1 | 4)
-            && (source_ip.is_none() || source_tcp == 0)
+        let is_large = expected_size > u32::MAX as u64;
+        if source_tcp == 0
+            || (is_large && matches!(source_type, 1 | 3))
+            || (!is_large && matches!(source_type, 4 | 5))
         {
+            continue;
+        }
+
+        let firewalled = matches!(source_type, 3 | 5 | 6);
+        if matches!(source_type, 1 | 4) && source_ip.is_none() {
             continue;
         }
         if source_type == 6
@@ -1419,6 +1425,10 @@ async fn collect_source_results(
         &none,
     );
 
+    let candidate_keys = candidates
+        .iter()
+        .map(|contact| (contact.address, contact.udp_port))
+        .collect::<HashSet<_>>();
     let mut queried = 0usize;
     let mut errors = Vec::new();
     let payload = source_search_payload(target, size);
@@ -1447,7 +1457,9 @@ async fn collect_source_results(
             .min(Duration::from_millis(350));
         match recv_packet(socket, local_id, wait, &mut buffer).await {
             Ok(Some((source, opcode, payload))) => {
-                if opcode != KADEMLIA2_SEARCH_RES {
+                if opcode != KADEMLIA2_SEARCH_RES
+                    || !candidate_keys.contains(&(*source.ip(), source.port()))
+                {
                     continue;
                 }
                 match parse_source_response(&payload, target, size) {
@@ -1865,6 +1877,54 @@ mod tests {
         payload.push(4);
         push_u32_tag(&mut payload, TAG_SOURCETYPE, 1);
         push_u32_tag(&mut payload, TAG_FILESIZE, 99_999);
+        push_u32_tag(
+            &mut payload,
+            TAG_SOURCEIP,
+            u32::from_be_bytes([8, 8, 8, 8]),
+        );
+        push_u32_tag(&mut payload, TAG_SOURCEPORT, 4662);
+
+        assert!(parse_source_response(&payload, &target, 12_345)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn rejects_kad_source_without_tcp_port() {
+        let hash = [0x82; 16];
+        let target = file_target(&hash);
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&[0x88; 16]);
+        payload.extend_from_slice(&target);
+        push_u16(&mut payload, 1);
+        payload.extend_from_slice(&[0x75; 16]);
+        payload.push(4);
+        push_u32_tag(&mut payload, TAG_SOURCETYPE, 1);
+        push_u32_tag(&mut payload, TAG_FILESIZE, 12_345);
+        push_u32_tag(
+            &mut payload,
+            TAG_SOURCEIP,
+            u32::from_be_bytes([8, 8, 8, 8]),
+        );
+        push_u32_tag(&mut payload, TAG_SOURCEPORT, 0);
+
+        assert!(parse_source_response(&payload, &target, 12_345)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn rejects_kad_source_type_for_wrong_file_size_class() {
+        let hash = [0x92; 16];
+        let target = file_target(&hash);
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&[0x88; 16]);
+        payload.extend_from_slice(&target);
+        push_u16(&mut payload, 1);
+        payload.extend_from_slice(&[0x85; 16]);
+        payload.push(4);
+        push_u32_tag(&mut payload, TAG_SOURCETYPE, 4);
+        push_u32_tag(&mut payload, TAG_FILESIZE, 12_345);
         push_u32_tag(
             &mut payload,
             TAG_SOURCEIP,
