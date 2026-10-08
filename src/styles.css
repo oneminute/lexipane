@@ -4817,6 +4817,19 @@ button { cursor: pointer; }
   overflow-wrap: anywhere;
 }
 
+.ed2k-source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 8px;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.ed2k-source-row .ed2k-peer-handshake {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1100px) {
   .ed2k-account-card {
     grid-template-columns: 1fr 1fr;
