@@ -94,6 +94,10 @@ export interface NativeEd2kSourceDiscoveryResponse {
   kadSourceQueried: number;
   kadSourceResponded: number;
   searchPhase: string;
+  directSources: number;
+  callbackSources: number;
+  serverSources: number;
+  kadSources: number;
   sources: NativeEd2kSource[];
   errors: string[];
 }
