@@ -1,6 +1,7 @@
 pub mod cloud;
 pub mod ed2k;
 pub mod ed2k_native;
+pub mod ed2k_runtime;
 pub mod ed2k_kad;
 pub mod http;
 pub mod s3;
