@@ -27,6 +27,7 @@ const MAX_KAD_DECOMPRESSED: usize = 2 * 1024 * 1024;
 const MAX_KAD_CONTACTS: usize = 2_000;
 const MAX_KAD_RESULTS: usize = 2_000;
 const MAX_KAD_TAGS: usize = 128;
+const OLD_MAX_FILE_SIZE: u64 = 4_290_048_000;
 
 const BOOTSTRAP_SEEDS: usize = 8;
 const BOOTSTRAP_WAIT: Duration = Duration::from_millis(1_800);
@@ -1023,7 +1024,7 @@ fn parse_source_response(
             continue;
         }
 
-        let is_large = expected_size > u32::MAX as u64;
+        let is_large = expected_size > OLD_MAX_FILE_SIZE;
         if source_tcp == 0
             || (is_large && matches!(source_type, 1 | 3))
             || (!is_large && matches!(source_type, 4 | 5))
@@ -1911,6 +1912,30 @@ mod tests {
         assert!(parse_source_response(&payload, &target, 12_345)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn accepts_large_kad_source_type_above_old_protocol_limit() {
+        let hash = [0x91; 16];
+        let target = file_target(&hash);
+        let size = OLD_MAX_FILE_SIZE + 1;
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&[0x88; 16]);
+        payload.extend_from_slice(&target);
+        push_u16(&mut payload, 1);
+        payload.extend_from_slice(&[0x84; 16]);
+        payload.push(3);
+        push_u32_tag(&mut payload, TAG_SOURCETYPE, 4);
+        push_u32_tag(
+            &mut payload,
+            TAG_SOURCEIP,
+            u32::from_be_bytes([8, 8, 8, 8]),
+        );
+        push_u32_tag(&mut payload, TAG_SOURCEPORT, 4662);
+
+        let sources = parse_source_response(&payload, &target, size).unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].source_type, Some(4));
     }
 
     #[test]
