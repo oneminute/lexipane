@@ -4807,6 +4807,16 @@ button { cursor: pointer; }
   color: #8c919e;
 }
 
+.resource-diagnostic-list {
+  display: grid;
+  gap: 3px;
+  margin: 7px 0;
+}
+
+.resource-diagnostic-list small {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1100px) {
   .ed2k-account-card {
     grid-template-columns: 1fr 1fr;
