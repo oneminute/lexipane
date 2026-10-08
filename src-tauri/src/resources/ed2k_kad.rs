@@ -16,7 +16,7 @@ use tokio::{
     time::{timeout, Instant},
 };
 
-use super::ed2k_native::{NativeEd2kSearchResult, NativeEd2kSource};
+use super::ed2k_native::{NativeEd2kSearchResult, NativeEd2kSource, OLD_MAX_FILE_SIZE};
 
 const NODES_DAT_URL: &str = "https://upd.emule-security.org/nodes.dat";
 const NODES_DAT_CACHE_SECONDS: u64 = 6 * 60 * 60;
@@ -27,7 +27,6 @@ const MAX_KAD_DECOMPRESSED: usize = 2 * 1024 * 1024;
 const MAX_KAD_CONTACTS: usize = 2_000;
 const MAX_KAD_RESULTS: usize = 2_000;
 const MAX_KAD_TAGS: usize = 128;
-const OLD_MAX_FILE_SIZE: u64 = 4_290_048_000;
 
 const BOOTSTRAP_SEEDS: usize = 8;
 const BOOTSTRAP_WAIT: Duration = Duration::from_millis(1_800);
