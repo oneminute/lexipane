@@ -35,6 +35,9 @@
     "targets": "all",
     "category": "Education",
     "shortDescription": "AI-assisted ebook reader",
-    "longDescription": "Cross-platform AI-assisted ebook reader for deep reading and language learning."
+    "longDescription": "Cross-platform AI-assisted ebook reader for deep reading and language learning.",
+    "resources": [
+      "runtime/amule/**/*"
+    ]
   }
 }
