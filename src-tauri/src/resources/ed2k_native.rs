@@ -31,6 +31,7 @@ const MAX_SERVER_COUNT: usize = 10_000;
 const MAX_PACKET_SIZE: usize = 8 * 1024 * 1024;
 const MAX_RESULTS_PER_PACKET: usize = 20_000;
 const MAX_TAGS_PER_RECORD: usize = 512;
+const OLD_MAX_FILE_SIZE: u64 = 4_290_048_000;
 
 const OP_EDONKEYPROT: u8 = 0xE3;
 const OP_PACKEDPROT: u8 = 0xD4;
@@ -1109,11 +1110,11 @@ fn source_request_payload(
     tcp_flags: u32,
 ) -> Result<Vec<u8>, String> {
     let mut payload = Vec::with_capacity(
-        16 + if size > u32::MAX as u64 { 12 } else { 4 },
+        16 + if size > OLD_MAX_FILE_SIZE { 12 } else { 4 },
     );
     payload.extend_from_slice(hash);
 
-    if size > u32::MAX as u64 {
+    if size > OLD_MAX_FILE_SIZE {
         if tcp_flags & SRV_TCPFLG_LARGEFILES == 0 {
             return Err(
                 "ED2K server does not advertise large-file source lookup support."
@@ -1928,9 +1929,21 @@ mod tests {
     }
 
     #[test]
+    fn old_max_file_size_still_uses_regular_server_request() {
+        let hash = [0xB1; 16];
+        let payload =
+            source_request_payload(&hash, OLD_MAX_FILE_SIZE, 0).unwrap();
+        assert_eq!(payload.len(), 20);
+        assert_eq!(
+            &payload[16..20],
+            &(OLD_MAX_FILE_SIZE as u32).to_le_bytes(),
+        );
+    }
+
+    #[test]
     fn encodes_large_server_source_request_when_supported() {
         let hash = [0xB2; 16];
-        let size = (u32::MAX as u64) + 123;
+        let size = OLD_MAX_FILE_SIZE + 1;
         let payload = source_request_payload(
             &hash,
             size,
@@ -1946,7 +1959,7 @@ mod tests {
     #[test]
     fn rejects_large_server_source_request_without_capability() {
         let hash = [0xC3; 16];
-        let size = (u32::MAX as u64) + 1;
+        let size = OLD_MAX_FILE_SIZE + 1;
         assert!(source_request_payload(&hash, size, 0).is_err());
     }
 
