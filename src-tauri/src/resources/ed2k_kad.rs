@@ -1896,7 +1896,7 @@ mod tests {
         );
         push_u32_tag(&mut payload, TAG_SOURCEPORT, 4662);
 
-        assert!(parse_source_response(&payload, &target)
+        assert!(parse_source_response(&payload, &target, 12_345)
             .unwrap()
             .is_empty());
     }
