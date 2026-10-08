@@ -158,6 +158,10 @@ pub struct NativeEd2kSourceDiscoveryResponse {
     pub kad_source_queried: usize,
     pub kad_source_responded: usize,
     pub search_phase: String,
+    pub direct_sources: usize,
+    pub callback_sources: usize,
+    pub server_sources: usize,
+    pub kad_sources: usize,
     pub sources: Vec<NativeEd2kSource>,
     pub errors: Vec<String>,
 }
@@ -1527,6 +1531,18 @@ pub async fn resource_ed2k_native_discover_sources(
         );
     }
 
+    let sources = merge_sources(batches);
+    let direct_sources = sources.iter().filter(|source| source.direct).count();
+    let callback_sources = sources.len().saturating_sub(direct_sources);
+    let server_sources = sources
+        .iter()
+        .filter(|source| source.origin.split('+').any(|part| part == "server-tcp"))
+        .count();
+    let kad_sources = sources
+        .iter()
+        .filter(|source| source.origin.split('+').any(|part| part == "kad"))
+        .count();
+
     Ok(NativeEd2kSourceDiscoveryResponse {
         hash: normalized_hash,
         size,
@@ -1544,7 +1560,11 @@ pub async fn resource_ed2k_native_discover_sources(
         kad_source_queried,
         kad_source_responded,
         search_phase: "server+kad-source-lookup".to_string(),
-        sources: merge_sources(batches),
+        direct_sources,
+        callback_sources,
+        server_sources,
+        kad_sources,
+        sources,
         errors,
     })
 }
