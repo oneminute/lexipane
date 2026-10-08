@@ -77,6 +77,21 @@ export interface NativeEd2kSource {
   encryption?: number | null;
 }
 
+export interface NativeEd2kPeerHandshake {
+  address: string;
+  tcpPort: number;
+  userHash: string;
+  clientId: number;
+  advertisedPort: number;
+  userName?: string | null;
+  clientVersion?: number | null;
+  emuleVersion?: number | null;
+  serverAddress?: string | null;
+  serverPort?: number | null;
+  tagCount: number;
+  handshakePhase: string;
+}
+
 export interface NativeEd2kSourceDiscoveryResponse {
   hash: string;
   size: number;
@@ -187,6 +202,25 @@ export async function discoverNativeEd2kSources(
       size: result.size,
       serverHints: result.servers,
       maxServers,
+    },
+  );
+}
+
+export async function handshakeNativeEd2kPeer(
+  source: Pick<NativeEd2kSource, "address" | "tcpPort" | "direct">,
+): Promise<NativeEd2kPeerHandshake> {
+  requireDesktop();
+  if (!source.direct || !source.address) {
+    throw new Error(
+      "Native ED2K peer handshake requires a direct source with an IPv4 address.",
+    );
+  }
+
+  return invoke<NativeEd2kPeerHandshake>(
+    "resource_ed2k_native_handshake_peer",
+    {
+      address: source.address,
+      tcpPort: source.tcpPort,
     },
   );
 }
