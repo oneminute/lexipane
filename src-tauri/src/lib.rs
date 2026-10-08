@@ -44,6 +44,7 @@ pub fn run() {
             resources::ed2k_native::resource_ed2k_native_search,
             resources::ed2k_native::resource_ed2k_native_discover_sources,
             resources::ed2k_native::resource_ed2k_native_handshake_peer,
+            resources::ed2k_native::resource_ed2k_native_probe_peer_file,
             resources::ed2k::resource_ed2k_detect,
             resources::ed2k::resource_ed2k_auto_configure,
             resources::ed2k::resource_ed2k_status,
