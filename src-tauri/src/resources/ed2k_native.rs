@@ -39,11 +39,14 @@ const OP_LOGINREQUEST: u8 = 0x01;
 const OP_HELLO: u8 = 0x01;
 const OP_REJECT: u8 = 0x05;
 const OP_SEARCHREQUEST: u8 = 0x16;
+const OP_FILEREQANSNOFIL: u8 = 0x48;
 const OP_GETSOURCES: u8 = 0x19;
 const OP_SEARCHRESULT: u8 = 0x33;
 const OP_IDCHANGE: u8 = 0x40;
 const OP_FOUNDSOURCES: u8 = 0x42;
 const OP_HELLOANSWER: u8 = 0x4C;
+const OP_SETREQFILEID: u8 = 0x4F;
+const OP_FILESTATUS: u8 = 0x50;
 const OP_GLOBSEARCHREQ2: u8 = 0x92;
 const OP_GLOBSEARCHREQ: u8 = 0x98;
 const OP_GLOBSEARCHRES: u8 = 0x99;
@@ -157,6 +160,20 @@ pub struct NativeEd2kPeerHandshake {
     pub server_port: Option<u16>,
     pub tag_count: usize,
     pub handshake_phase: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeEd2kFileProbe {
+    pub address: String,
+    pub tcp_port: u16,
+    pub hash: String,
+    pub has_file: bool,
+    pub part_count: Option<u16>,
+    pub available_parts: Option<usize>,
+    pub complete_source: Option<bool>,
+    pub peer: NativeEd2kPeerHandshake,
+    pub probe_phase: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -718,10 +735,10 @@ fn parse_peer_hello_answer(
     })
 }
 
-async fn handshake_direct_peer(
+async fn connect_and_handshake_direct_peer(
     address: String,
     tcp_port: u16,
-) -> Result<NativeEd2kPeerHandshake, String> {
+) -> Result<(TcpStream, NativeEd2kPeerHandshake), String> {
     let ip = address
         .parse::<Ipv4Addr>()
         .map_err(|_| "Direct ED2K peer address must be an IPv4 address.".to_string())?;
@@ -766,11 +783,12 @@ async fn handshake_direct_peer(
             })??;
 
         if packet.opcode == OP_HELLOANSWER {
-            return parse_peer_hello_answer(
+            let handshake = parse_peer_hello_answer(
                 &packet.payload,
                 &address,
                 tcp_port,
-            );
+            )?;
+            return Ok((stream, handshake));
         }
 
         if packet.opcode == OP_REJECT {
@@ -781,12 +799,167 @@ async fn handshake_direct_peer(
     }
 }
 
+async fn handshake_direct_peer(
+    address: String,
+    tcp_port: u16,
+) -> Result<NativeEd2kPeerHandshake, String> {
+    let (_, handshake) =
+        connect_and_handshake_direct_peer(address, tcp_port).await?;
+    Ok(handshake)
+}
+
+fn parse_peer_file_status(
+    payload: &[u8],
+    expected_hash: &[u8; 16],
+) -> Result<(u16, usize, bool), String> {
+    let mut cursor = ByteCursor::new(payload);
+    if cursor.bytes(16)? != expected_hash {
+        return Err(
+            "ED2K FILESTATUS hash does not match the requested file."
+                .to_string(),
+        );
+    }
+
+    let part_count = cursor.u16()?;
+    let status_bytes = (part_count as usize).div_ceil(8);
+    if cursor.remaining() != status_bytes {
+        return Err(format!(
+            "ED2K FILESTATUS has an invalid bitfield length: expected {status_bytes}, got {}.",
+            cursor.remaining()
+        ));
+    }
+
+    if part_count == 0 {
+        return Ok((0, 0, true));
+    }
+
+    let status = cursor.bytes(status_bytes)?;
+    let mut available_parts = 0usize;
+    for part in 0..part_count as usize {
+        let byte = status[part / 8];
+        if byte & (1 << (part % 8)) != 0 {
+            available_parts += 1;
+        }
+    }
+
+    Ok((
+        part_count,
+        available_parts,
+        available_parts == part_count as usize,
+    ))
+}
+
+fn parse_peer_no_file(
+    payload: &[u8],
+    expected_hash: &[u8; 16],
+) -> Result<(), String> {
+    if payload.len() != 16 {
+        return Err(format!(
+            "ED2K NOFILE response has an invalid length: {}.",
+            payload.len()
+        ));
+    }
+    if payload != expected_hash {
+        return Err(
+            "ED2K NOFILE hash does not match the requested file.".to_string(),
+        );
+    }
+    Ok(())
+}
+
+async fn probe_direct_peer_file(
+    address: String,
+    tcp_port: u16,
+    hash: [u8; 16],
+) -> Result<NativeEd2kFileProbe, String> {
+    let endpoint = format!("{address}:{tcp_port}");
+    let (mut stream, peer) =
+        connect_and_handshake_direct_peer(address.clone(), tcp_port).await?;
+
+    let request = encode_packet(OP_SETREQFILEID, &hash)?;
+    timeout(Duration::from_secs(3), stream.write_all(&request))
+        .await
+        .map_err(|_| {
+            format!("File probe write to ED2K peer {endpoint} timed out.")
+        })?
+        .map_err(|error| {
+            format!("Unable to send file probe to ED2K peer {endpoint}: {error}")
+        })?;
+
+    let deadline = Instant::now() + Duration::from_secs(7);
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "File status from ED2K peer {endpoint} timed out."
+            ));
+        }
+
+        let packet = timeout(deadline - now, read_packet(&mut stream))
+            .await
+            .map_err(|_| {
+                format!("File status from ED2K peer {endpoint} timed out.")
+            })??;
+
+        match packet.opcode {
+            OP_FILESTATUS => {
+                let (part_count, available_parts, complete_source) =
+                    parse_peer_file_status(&packet.payload, &hash)?;
+                return Ok(NativeEd2kFileProbe {
+                    address,
+                    tcp_port,
+                    hash: hash_hex(&hash),
+                    has_file: true,
+                    part_count: Some(part_count),
+                    available_parts: Some(available_parts),
+                    complete_source: Some(complete_source),
+                    peer,
+                    probe_phase: "file-status".to_string(),
+                });
+            }
+            OP_FILEREQANSNOFIL => {
+                parse_peer_no_file(&packet.payload, &hash)?;
+                return Ok(NativeEd2kFileProbe {
+                    address,
+                    tcp_port,
+                    hash: hash_hex(&hash),
+                    has_file: false,
+                    part_count: None,
+                    available_parts: None,
+                    complete_source: None,
+                    peer,
+                    probe_phase: "no-file".to_string(),
+                });
+            }
+            OP_REJECT => {
+                return Err(format!(
+                    "ED2K peer {endpoint} rejected the file probe."
+                ));
+            }
+            _ => {
+                // Extended client-info packets may arrive around the standard
+                // hello/file-request exchange and are not part of this probe.
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn resource_ed2k_native_handshake_peer(
     address: String,
     tcp_port: u16,
 ) -> Result<NativeEd2kPeerHandshake, String> {
     handshake_direct_peer(address, tcp_port).await
+}
+
+#[tauri::command]
+pub async fn resource_ed2k_native_probe_peer_file(
+    address: String,
+    tcp_port: u16,
+    hash: String,
+) -> Result<NativeEd2kFileProbe, String> {
+    let hash = parse_ed2k_hash(&hash)?;
+    probe_direct_peer_file(address, tcp_port, hash).await
 }
 
 fn query_terms(query: &str) -> Result<Vec<&str>, String> {
@@ -2051,6 +2224,59 @@ mod tests {
         assert!(
             parse_peer_hello_answer(&payload, "8.8.8.8", 4662).is_err()
         );
+    }
+
+    #[test]
+    fn parses_complete_peer_file_status() {
+        let hash = [0x31; 16];
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&hash);
+        push_u16(&mut payload, 0);
+
+        let (parts, available, complete) =
+            parse_peer_file_status(&payload, &hash).unwrap();
+        assert_eq!(parts, 0);
+        assert_eq!(available, 0);
+        assert!(complete);
+    }
+
+    #[test]
+    fn parses_partial_peer_file_status_bitfield() {
+        let hash = [0x42; 16];
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&hash);
+        push_u16(&mut payload, 10);
+        payload.extend_from_slice(&[0b0101_0101, 0b0000_0011]);
+
+        let (parts, available, complete) =
+            parse_peer_file_status(&payload, &hash).unwrap();
+        assert_eq!(parts, 10);
+        assert_eq!(available, 6);
+        assert!(!complete);
+    }
+
+    #[test]
+    fn rejects_peer_file_status_with_wrong_hash_or_length() {
+        let hash = [0x53; 16];
+
+        let mut wrong_hash = Vec::new();
+        wrong_hash.extend_from_slice(&[0x54; 16]);
+        push_u16(&mut wrong_hash, 0);
+        assert!(parse_peer_file_status(&wrong_hash, &hash).is_err());
+
+        let mut truncated = Vec::new();
+        truncated.extend_from_slice(&hash);
+        push_u16(&mut truncated, 9);
+        truncated.push(0xFF);
+        assert!(parse_peer_file_status(&truncated, &hash).is_err());
+    }
+
+    #[test]
+    fn validates_peer_no_file_identity() {
+        let hash = [0x64; 16];
+        assert!(parse_peer_no_file(&hash, &hash).is_ok());
+        assert!(parse_peer_no_file(&[0x65; 16], &hash).is_err());
+        assert!(parse_peer_no_file(&hash[..15], &hash).is_err());
     }
 
     #[test]
