@@ -1339,6 +1339,52 @@ async fn load_server_met(app: &AppHandle) -> Result<(Vec<u8>, String), String> {
     }
 }
 
+fn server_endpoint_label(server: &NativeEd2kServer) -> String {
+    format!("{}:{}", server.address, server.port)
+}
+
+fn select_source_servers(
+    servers: &[NativeEd2kServer],
+    hints: &[String],
+    limit: usize,
+) -> Vec<NativeEd2kServer> {
+    let hinted = hints
+        .iter()
+        .filter(|hint| !hint.starts_with("Kad "))
+        .map(|hint| hint.trim().to_ascii_lowercase())
+        .collect::<std::collections::HashSet<_>>();
+
+    let mut selected = Vec::with_capacity(limit);
+    let mut selected_keys = std::collections::HashSet::new();
+
+    for server in servers.iter().filter(|server| {
+        server.failed_count < 10
+            && hinted.contains(
+                &server_endpoint_label(server).to_ascii_lowercase(),
+            )
+    }) {
+        let key = server_endpoint_label(server);
+        if selected_keys.insert(key) {
+            selected.push(server.clone());
+            if selected.len() >= limit {
+                return selected;
+            }
+        }
+    }
+
+    for server in servers.iter().filter(|server| server.failed_count < 10) {
+        let key = server_endpoint_label(server);
+        if selected_keys.insert(key) {
+            selected.push(server.clone());
+            if selected.len() >= limit {
+                break;
+            }
+        }
+    }
+
+    selected
+}
+
 fn merge_results(
     batches: Vec<Vec<NativeEd2kSearchResult>>,
 ) -> Vec<NativeEd2kSearchResult> {
@@ -1379,6 +1425,7 @@ pub async fn resource_ed2k_native_discover_sources(
     app: AppHandle,
     hash: String,
     size: u64,
+    server_hints: Option<Vec<String>>,
     max_servers: Option<usize>,
 ) -> Result<NativeEd2kSourceDiscoveryResponse, String> {
     if size == 0 {
@@ -1405,12 +1452,8 @@ pub async fn resource_ed2k_native_discover_sources(
     let limit = max_servers
         .unwrap_or(DEFAULT_QUERY_SERVERS.saturating_add(2))
         .clamp(1, MAX_QUERY_SERVERS);
-    let selected = servers
-        .iter()
-        .filter(|server| server.failed_count < 10)
-        .take(limit)
-        .cloned()
-        .collect::<Vec<_>>();
+    let hints = server_hints.unwrap_or_default();
+    let selected = select_source_servers(&servers, &hints, limit);
     let servers_queried = selected.len();
     let server_hash = hash_bytes;
     let tasks = selected
@@ -1792,6 +1835,66 @@ mod tests {
             "11111111111111111111111111111111"
         );
         assert!(results[0].ed2k_link.starts_with("ed2k://|file|"));
+    }
+
+    #[test]
+    fn prioritizes_servers_that_reported_selected_result() {
+        fn server(address: &str, port: u16) -> NativeEd2kServer {
+            NativeEd2kServer {
+                address: address.to_string(),
+                port,
+                name: None,
+                users: None,
+                files: None,
+                failed_count: 0,
+                preference: 0,
+                udp_flags: 0,
+            }
+        }
+
+        let servers = vec![
+            server("1.1.1.1", 4661),
+            server("2.2.2.2", 4661),
+            server("3.3.3.3", 4661),
+        ];
+        let hints = vec![
+            "Kad 9.9.9.9:4672".to_string(),
+            "3.3.3.3:4661".to_string(),
+        ];
+        let selected = select_source_servers(&servers, &hints, 2);
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[0].address, "3.3.3.3");
+        assert_eq!(selected[1].address, "1.1.1.1");
+    }
+
+    #[test]
+    fn source_server_selection_skips_failed_hints() {
+        let servers = vec![
+            NativeEd2kServer {
+                address: "4.4.4.4".to_string(),
+                port: 4661,
+                name: None,
+                users: None,
+                files: None,
+                failed_count: 12,
+                preference: 0,
+                udp_flags: 0,
+            },
+            NativeEd2kServer {
+                address: "5.5.5.5".to_string(),
+                port: 4661,
+                name: None,
+                users: None,
+                files: None,
+                failed_count: 0,
+                preference: 0,
+                udp_flags: 0,
+            },
+        ];
+        let hints = vec!["4.4.4.4:4661".to_string()];
+        let selected = select_source_servers(&servers, &hints, 1);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].address, "5.5.5.5");
     }
 
     #[test]
