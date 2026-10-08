@@ -2636,8 +2636,6 @@ export function ResourceHubView({ onOpenBook }: Props) {
         [key]: response,
       }));
 
-      const direct = response.sources.filter((source) => source.direct).length;
-      const callback = response.sources.length - direct;
       setMessage(
         response.sources.length +
           " native source" +
@@ -2645,10 +2643,14 @@ export function ResourceHubView({ onOpenBook }: Props) {
           " discovered for " +
           result.name +
           " (" +
-          direct +
+          response.directSources +
           " direct, " +
-          callback +
-          " callback/firewalled).",
+          response.callbackSources +
+          " callback/firewalled; " +
+          response.serverSources +
+          " via server, " +
+          response.kadSources +
+          " via Kad).",
       );
     } catch (error) {
       setMessage(
@@ -3693,16 +3695,14 @@ export function ResourceHubView({ onOpenBook }: Props) {
                             nativeEd2kSourceResponses[
                               nativeEd2kSourceKey(result)
                             ];
-                          const directSources =
-                            sourceResponse.sources.filter(
-                              (source) => source.direct,
-                            ).length;
                           return (
                             <>
                               <p>
-                                {directSources} direct ·{" "}
-                                {sourceResponse.sources.length - directSources}{" "}
-                                callback/firewalled · server responses{" "}
+                                {sourceResponse.directSources} direct ·{" "}
+                                {sourceResponse.callbackSources}{" "}
+                                callback/firewalled · provenance{" "}
+                                {sourceResponse.serverSources} server /{" "}
+                                {sourceResponse.kadSources} Kad · server responses{" "}
                                 {sourceResponse.serversResponded}/
                                 {sourceResponse.serversQueried} · Kad source{" "}
                                 {sourceResponse.kadSourceResponded}/
