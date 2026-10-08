@@ -36,12 +36,14 @@ pub(crate) const OLD_MAX_FILE_SIZE: u64 = 4_290_048_000;
 const OP_EDONKEYPROT: u8 = 0xE3;
 const OP_PACKEDPROT: u8 = 0xD4;
 const OP_LOGINREQUEST: u8 = 0x01;
+const OP_HELLO: u8 = 0x01;
 const OP_REJECT: u8 = 0x05;
 const OP_SEARCHREQUEST: u8 = 0x16;
 const OP_GETSOURCES: u8 = 0x19;
 const OP_SEARCHRESULT: u8 = 0x33;
 const OP_IDCHANGE: u8 = 0x40;
 const OP_FOUNDSOURCES: u8 = 0x42;
+const OP_HELLOANSWER: u8 = 0x4C;
 const OP_GLOBSEARCHREQ2: u8 = 0x92;
 const OP_GLOBSEARCHREQ: u8 = 0x98;
 const OP_GLOBSEARCHRES: u8 = 0x99;
@@ -138,6 +140,23 @@ pub struct NativeEd2kSource {
     pub buddy_id: Option<String>,
     pub source_type: Option<u8>,
     pub encryption: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeEd2kPeerHandshake {
+    pub address: String,
+    pub tcp_port: u16,
+    pub user_hash: String,
+    pub client_id: u32,
+    pub advertised_port: u16,
+    pub user_name: Option<String>,
+    pub client_version: Option<u64>,
+    pub emule_version: Option<u64>,
+    pub server_address: Option<String>,
+    pub server_port: Option<u16>,
+    pub tag_count: usize,
+    pub handshake_phase: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -604,6 +623,170 @@ async fn read_packet(stream: &mut TcpStream) -> Result<Ed2kPacket, String> {
         opcode: header[5],
         payload,
     })
+}
+
+fn peer_hello_payload(user_hash: [u8; 16]) -> Result<Vec<u8>, String> {
+    let mut payload = Vec::with_capacity(96);
+    payload.push(16);
+    payload.extend_from_slice(&user_hash);
+    push_u32(&mut payload, 0);
+    push_u16(&mut payload, 4662);
+    push_u32(&mut payload, 3);
+    push_old_string_tag(&mut payload, CT_NAME, "LexiPane")?;
+    push_old_u32_tag(&mut payload, CT_VERSION, EDONKEY_VERSION);
+    push_old_u32_tag(
+        &mut payload,
+        CT_EMULE_VERSION,
+        LEXIPANE_EMULE_VERSION,
+    );
+    push_u32(&mut payload, 0);
+    push_u16(&mut payload, 0);
+    Ok(payload)
+}
+
+fn parse_peer_hello_answer(
+    payload: &[u8],
+    address: &str,
+    tcp_port: u16,
+) -> Result<NativeEd2kPeerHandshake, String> {
+    let mut cursor = ByteCursor::new(payload);
+    let user_hash = hash_hex(cursor.bytes(16)?);
+    let client_id = cursor.u32()?;
+    let advertised_port = cursor.u16()?;
+    let tag_count = cursor.u32()? as usize;
+    if tag_count > MAX_TAGS_PER_RECORD {
+        return Err(format!(
+            "ED2K peer hello has too many tags: {tag_count}."
+        ));
+    }
+
+    let mut user_name = None;
+    let mut client_version = None;
+    let mut emule_version = None;
+
+    for _ in 0..tag_count {
+        let tag = read_tag(&mut cursor)?;
+        match tag.name_id {
+            Some(CT_NAME) => {
+                if let Some(value) = tag_string(&tag) {
+                    user_name = Some(value.to_string());
+                }
+            }
+            Some(CT_VERSION) => {
+                client_version = tag_integer(&tag);
+            }
+            Some(CT_EMULE_VERSION) => {
+                emule_version = tag_integer(&tag);
+            }
+            _ => {}
+        }
+    }
+
+    if cursor.remaining() < 6 {
+        return Err(
+            "ED2K peer hello answer is missing server endpoint metadata."
+                .to_string(),
+        );
+    }
+
+    let raw_server_ip = cursor.u32()?;
+    let raw_server_port = cursor.u16()?;
+    let server_address = if raw_server_ip == 0 {
+        None
+    } else {
+        Some(Ipv4Addr::from(raw_server_ip.to_le_bytes()).to_string())
+    };
+    let server_port = if raw_server_port == 0 {
+        None
+    } else {
+        Some(raw_server_port)
+    };
+
+    Ok(NativeEd2kPeerHandshake {
+        address: address.to_string(),
+        tcp_port,
+        user_hash,
+        client_id,
+        advertised_port,
+        user_name,
+        client_version,
+        emule_version,
+        server_address,
+        server_port,
+        tag_count,
+        handshake_phase: "hello-answer".to_string(),
+    })
+}
+
+async fn handshake_direct_peer(
+    address: String,
+    tcp_port: u16,
+) -> Result<NativeEd2kPeerHandshake, String> {
+    let ip = address
+        .parse::<Ipv4Addr>()
+        .map_err(|_| "Direct ED2K peer address must be an IPv4 address.".to_string())?;
+    if !valid_remote_source_address(ip) {
+        return Err(
+            "Direct ED2K peer address must be a public unicast IPv4 address."
+                .to_string(),
+        );
+    }
+    if tcp_port == 0 {
+        return Err("Direct ED2K peer TCP port must be non-zero.".to_string());
+    }
+
+    let endpoint = format!("{address}:{tcp_port}");
+    let mut stream = timeout(
+        Duration::from_secs(5),
+        TcpStream::connect(&endpoint),
+    )
+    .await
+    .map_err(|_| format!("Connection to ED2K peer {endpoint} timed out."))?
+    .map_err(|error| format!("Unable to connect to ED2K peer {endpoint}: {error}"))?;
+
+    let hello = encode_packet(OP_HELLO, &peer_hello_payload(make_user_hash())?)?;
+    timeout(Duration::from_secs(3), stream.write_all(&hello))
+        .await
+        .map_err(|_| format!("Hello write to ED2K peer {endpoint} timed out."))?
+        .map_err(|error| format!("Unable to send hello to ED2K peer {endpoint}: {error}"))?;
+
+    let deadline = Instant::now() + Duration::from_secs(7);
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "Hello answer from ED2K peer {endpoint} timed out."
+            ));
+        }
+
+        let packet = timeout(deadline - now, read_packet(&mut stream))
+            .await
+            .map_err(|_| {
+                format!("Hello answer from ED2K peer {endpoint} timed out.")
+            })??;
+
+        if packet.opcode == OP_HELLOANSWER {
+            return parse_peer_hello_answer(
+                &packet.payload,
+                &address,
+                tcp_port,
+            );
+        }
+
+        if packet.opcode == OP_REJECT {
+            return Err(format!(
+                "ED2K peer {endpoint} rejected the hello handshake."
+            ));
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn resource_ed2k_native_handshake_peer(
+    address: String,
+    tcp_port: u16,
+) -> Result<NativeEd2kPeerHandshake, String> {
+    handshake_direct_peer(address, tcp_port).await
 }
 
 fn query_terms(query: &str) -> Result<Vec<&str>, String> {
@@ -1768,6 +1951,106 @@ mod tests {
         assert_eq!(&packet[1..5], &4u32.to_le_bytes());
         assert_eq!(packet[5], OP_SEARCHREQUEST);
         assert_eq!(&packet[6..], &[1, 2, 3]);
+    }
+
+    #[test]
+    fn encodes_peer_hello_with_hash_size_and_identity_tags() {
+        let hash = [0x5A; 16];
+        let payload = peer_hello_payload(hash).unwrap();
+        let mut cursor = ByteCursor::new(&payload);
+
+        assert_eq!(cursor.u8().unwrap(), 16);
+        assert_eq!(cursor.bytes(16).unwrap(), &hash);
+        assert_eq!(cursor.u32().unwrap(), 0);
+        assert_eq!(cursor.u16().unwrap(), 4662);
+        assert_eq!(cursor.u32().unwrap(), 3);
+
+        let name = read_tag(&mut cursor).unwrap();
+        assert_eq!(name.name_id, Some(CT_NAME));
+        assert_eq!(tag_string(&name), Some("LexiPane"));
+
+        let version = read_tag(&mut cursor).unwrap();
+        assert_eq!(version.name_id, Some(CT_VERSION));
+        assert_eq!(tag_integer(&version), Some(EDONKEY_VERSION as u64));
+
+        let emule = read_tag(&mut cursor).unwrap();
+        assert_eq!(emule.name_id, Some(CT_EMULE_VERSION));
+        assert_eq!(
+            tag_integer(&emule),
+            Some(LEXIPANE_EMULE_VERSION as u64)
+        );
+
+        assert_eq!(cursor.u32().unwrap(), 0);
+        assert_eq!(cursor.u16().unwrap(), 0);
+        assert_eq!(cursor.remaining(), 0);
+    }
+
+    #[test]
+    fn parses_peer_hello_answer_metadata() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&[0xA5; 16]);
+        push_u32(
+            &mut payload,
+            u32::from_le_bytes([8, 8, 8, 8]),
+        );
+        push_u16(&mut payload, 4662);
+        push_u32(&mut payload, 3);
+        payload.extend_from_slice(&old_string_tag(
+            CT_NAME,
+            "Remote Peer",
+        ));
+        payload.extend_from_slice(&old_u32_tag(
+            CT_VERSION,
+            EDONKEY_VERSION,
+        ));
+        payload.extend_from_slice(&old_u32_tag(
+            CT_EMULE_VERSION,
+            LEXIPANE_EMULE_VERSION,
+        ));
+        push_u32(
+            &mut payload,
+            u32::from_le_bytes([1, 2, 3, 4]),
+        );
+        push_u16(&mut payload, 4661);
+
+        let hello =
+            parse_peer_hello_answer(&payload, "8.8.8.8", 4662).unwrap();
+        assert_eq!(hello.address, "8.8.8.8");
+        assert_eq!(hello.tcp_port, 4662);
+        assert_eq!(
+            hello.user_hash,
+            "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+        );
+        assert_eq!(hello.advertised_port, 4662);
+        assert_eq!(hello.user_name.as_deref(), Some("Remote Peer"));
+        assert_eq!(
+            hello.client_version,
+            Some(EDONKEY_VERSION as u64)
+        );
+        assert_eq!(
+            hello.emule_version,
+            Some(LEXIPANE_EMULE_VERSION as u64)
+        );
+        assert_eq!(hello.server_address.as_deref(), Some("1.2.3.4"));
+        assert_eq!(hello.server_port, Some(4661));
+        assert_eq!(hello.tag_count, 3);
+        assert_eq!(hello.handshake_phase, "hello-answer");
+    }
+
+    #[test]
+    fn rejects_peer_hello_answer_with_excessive_tags() {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&[0x11; 16]);
+        push_u32(&mut payload, 0);
+        push_u16(&mut payload, 4662);
+        push_u32(
+            &mut payload,
+            (MAX_TAGS_PER_RECORD as u32).saturating_add(1),
+        );
+
+        assert!(
+            parse_peer_hello_answer(&payload, "8.8.8.8", 4662).is_err()
+        );
     }
 
     #[test]
