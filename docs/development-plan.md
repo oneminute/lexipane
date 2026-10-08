@@ -105,13 +105,13 @@ Implementation summary:
 Validation / evidence:
 
 - CI run 37687595426 passed frontend checks, Linux cargo check + cargo test --lib, and Windows cargo check + cargo test --lib for the first complete Server+Kad callback-validation slice;
-- a later deterministic test expansion exposed one missed expected_size test argument on both Linux and Windows; commit a953abcf fixes that compile/test issue, and its frontend + Linux Rust gates have passed while the Windows Rust test gate is still running at this update;
+- a later deterministic test expansion exposed one missed expected_size test argument on both Linux and Windows; commit a953abcf fixed that compile/test issue, and its successor CI completed successfully across frontend, Linux Rust, and Windows Rust gates;
 - targeted tests now cover the exact ED2K legacy large-file boundary and Server source request encoding, large-file capability rejection, source-response parsing, public/private address filtering, source merging, result-server prioritization, Kad file-target conversion, Kad source request layout, HighID sources, firewalled buddy metadata, published-size identity guards, TCP-port requirements, and file-size/source-type compatibility;
-- later commits add protocol-correct Server filesize requests, server provenance prioritization, stricter Kad source validation, explicit source counts, and UI diagnostics; their final cross-platform CI runs are still executing and must pass before this milestone is marked COMPLETE.
+- later commits add protocol-correct Server filesize requests, server provenance prioritization, stricter Kad source validation, explicit source counts, UI diagnostics, and the exact 4,290,048,000-byte ED2K legacy large-file boundary; final CI run 37711492067 on main commit 505030cc completed successfully with Frontend checks, Rust check (Linux), and Rust check (Windows) all passing.
 
 Remaining verification:
 
-- wait for the latest frontend/Linux/Windows CI run on the final 006S code to complete successfully;
+- cross-platform CI is complete on the current main head; no CI blocker remains for RESOURCE-006S;
 - run one local Windows/Tauri live-network smoke test: perform native ED2K search, choose a real result, click **Find native sources**, and confirm that Server and/or Kad diagnostics return plausible source records or explicit network timeouts without starting a download;
 - live-network failure alone does not invalidate deterministic protocol completion when the local ED2K/Kad network is blocked, but the UI must surface that condition clearly.
 
