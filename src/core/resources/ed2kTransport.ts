@@ -172,7 +172,7 @@ export async function searchNativeEd2k(
 }
 
 export async function discoverNativeEd2kSources(
-  result: Pick<NativeEd2kSearchResult, "hash" | "size">,
+  result: Pick<NativeEd2kSearchResult, "hash" | "size" | "servers">,
   maxServers = 6,
 ): Promise<NativeEd2kSourceDiscoveryResponse> {
   requireDesktop();
@@ -181,6 +181,7 @@ export async function discoverNativeEd2kSources(
     {
       hash: result.hash,
       size: result.size,
+      serverHints: result.servers,
       maxServers,
     },
   );
