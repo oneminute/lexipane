@@ -3716,6 +3716,24 @@ export function ResourceHubView({ onOpenBook }: Props) {
                                     " timeout/error(s)"
                                   : ""}
                               </p>
+                              {sourceResponse.errors.length > 0 && (
+                                <div className="resource-diagnostic-list">
+                                  {sourceResponse.errors
+                                    .slice(0, 8)
+                                    .map((error, index) => (
+                                      <small key={error + ":" + index}>
+                                        {error}
+                                      </small>
+                                    ))}
+                                  {sourceResponse.errors.length > 8 && (
+                                    <small>
+                                      +
+                                      {sourceResponse.errors.length - 8} more
+                                      diagnostic(s)
+                                    </small>
+                                  )}
+                                </div>
+                              )}
                               {sourceResponse.sources
                                 .slice(0, 12)
                                 .map((source, index) => (
