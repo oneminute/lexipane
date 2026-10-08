@@ -10,6 +10,7 @@ pub fn run() {
         .manage(resources::ResourceTransferLimiter::default())
         .manage(resources::cloud::CloudTransferManager::default())
         .manage(resources::ed2k::Ed2kManager::default())
+        .manage(resources::ed2k_runtime::ManagedAmuleRuntimeManager::default())
         .manage(resources::http::HttpTransferManager::default())
         .manage(resources::torrent::TorrentManager::default())
         .manage(resources::webdav::WebDavTransferManager::default())
@@ -45,6 +46,9 @@ pub fn run() {
             resources::ed2k_native::resource_ed2k_native_discover_sources,
             resources::ed2k_native::resource_ed2k_native_handshake_peer,
             resources::ed2k_native::resource_ed2k_native_probe_peer_file,
+            resources::ed2k_runtime::resource_ed2k_runtime_status,
+            resources::ed2k_runtime::resource_ed2k_runtime_start,
+            resources::ed2k_runtime::resource_ed2k_runtime_stop,
             resources::ed2k::resource_ed2k_detect,
             resources::ed2k::resource_ed2k_auto_configure,
             resources::ed2k::resource_ed2k_status,
