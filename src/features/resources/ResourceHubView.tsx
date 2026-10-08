@@ -154,12 +154,15 @@ import {
 } from "../../core/resources/ed2kAdapter";
 import {
   discoverNativeEd2kSources,
+  handshakeNativeEd2kPeer,
   searchNativeEd2k,
   type Ed2kEnvironment,
   type Ed2kLinkMetadata,
   type Ed2kSearchResult,
+  type NativeEd2kPeerHandshake,
   type NativeEd2kSearchResponse,
   type NativeEd2kSearchResult,
+  type NativeEd2kSource,
   type NativeEd2kSourceDiscoveryResponse,
 } from "../../core/resources/ed2kTransport";
 import type {
@@ -519,6 +522,10 @@ export function ResourceHubView({ onOpenBook }: Props) {
     useState<string | null>(null);
   const [nativeEd2kSourceResponses, setNativeEd2kSourceResponses] =
     useState<Record<string, NativeEd2kSourceDiscoveryResponse>>({});
+  const [nativeEd2kPeerBusyKey, setNativeEd2kPeerBusyKey] =
+    useState<string | null>(null);
+  const [nativeEd2kPeerHandshakes, setNativeEd2kPeerHandshakes] =
+    useState<Record<string, NativeEd2kPeerHandshake>>({});
   const [ed2kSearchType, setEd2kSearchType] =
     useState<"global" | "kad" | "local">("global");
   const [ed2kResults, setEd2kResults] =
@@ -2576,6 +2583,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setNativeEd2kResponse(null);
     setNativeEd2kResults([]);
     setNativeEd2kSourceResponses({});
+    setNativeEd2kPeerBusyKey(null);
+    setNativeEd2kPeerHandshakes({});
 
     try {
       const response = await searchNativeEd2k(ed2kQuery, 6);
@@ -2660,6 +2669,54 @@ export function ResourceHubView({ onOpenBook }: Props) {
       );
     } finally {
       setNativeEd2kSourceBusyKey((current) =>
+        current === key ? null : current,
+      );
+    }
+  }
+
+  function nativeEd2kPeerKey(source: NativeEd2kSource) {
+    return (source.address ?? "lowid") + ":" + source.tcpPort;
+  }
+
+  async function runNativeEd2kPeerHandshake(
+    source: NativeEd2kSource,
+  ) {
+    if (
+      !source.direct ||
+      !source.address ||
+      nativeEd2kBusy ||
+      nativeEd2kSourceBusyKey !== null ||
+      nativeEd2kPeerBusyKey !== null
+    ) {
+      return;
+    }
+
+    const key = nativeEd2kPeerKey(source);
+    setNativeEd2kPeerBusyKey(key);
+    setMessage("");
+
+    try {
+      const response = await handshakeNativeEd2kPeer(source);
+      setNativeEd2kPeerHandshakes((current) => ({
+        ...current,
+        [key]: response,
+      }));
+      setMessage(
+        "ED2K peer handshake succeeded with " +
+          response.address +
+          ":" +
+          response.tcpPort +
+          (response.userName ? " (" + response.userName + ")" : "") +
+          ". No file data was requested.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Native ED2K peer handshake failed.",
+      );
+    } finally {
+      setNativeEd2kPeerBusyKey((current) =>
         current === key ? null : current,
       );
     }
@@ -3736,41 +3793,94 @@ export function ResourceHubView({ onOpenBook }: Props) {
                               )}
                               {sourceResponse.sources
                                 .slice(0, 12)
-                                .map((source, index) => (
-                                  <small
-                                    key={
-                                      (source.sourceId ??
-                                        source.address ??
-                                        "source") +
-                                      ":" +
-                                      source.tcpPort +
-                                      ":" +
-                                      index
-                                    }
-                                  >
-                                    {source.direct
-                                      ? "Direct"
-                                      : "Callback/firewalled"}{" "}
-                                    · {source.origin} ·{" "}
-                                    {source.address ?? "LowID"}
-                                    {source.tcpPort > 0
-                                      ? ":" + source.tcpPort
-                                      : ""}
-                                    {source.udpPort
-                                      ? " · UDP " + source.udpPort
-                                      : ""}
-                                    {source.sourceType
-                                      ? " · Kad type " + source.sourceType
-                                      : ""}
-                                    {source.buddyAddress
-                                      ? " · buddy " +
-                                        source.buddyAddress +
-                                        (source.buddyPort
-                                          ? ":" + source.buddyPort
-                                          : "")
-                                      : ""}
-                                  </small>
-                                ))}
+                                .map((source, index) => {
+                                  const peerKey =
+                                    nativeEd2kPeerKey(source);
+                                  const handshake =
+                                    nativeEd2kPeerHandshakes[peerKey];
+
+                                  return (
+                                    <div
+                                      className="ed2k-source-row"
+                                      key={
+                                        (source.sourceId ??
+                                          source.address ??
+                                          "source") +
+                                        ":" +
+                                        source.tcpPort +
+                                        ":" +
+                                        index
+                                      }
+                                    >
+                                      <small>
+                                        {source.direct
+                                          ? "Direct"
+                                          : "Callback/firewalled"}{" "}
+                                        · {source.origin} ·{" "}
+                                        {source.address ?? "LowID"}
+                                        {source.tcpPort > 0
+                                          ? ":" + source.tcpPort
+                                          : ""}
+                                        {source.udpPort
+                                          ? " · UDP " + source.udpPort
+                                          : ""}
+                                        {source.sourceType
+                                          ? " · Kad type " + source.sourceType
+                                          : ""}
+                                        {source.buddyAddress
+                                          ? " · buddy " +
+                                            source.buddyAddress +
+                                            (source.buddyPort
+                                              ? ":" + source.buddyPort
+                                              : "")
+                                          : ""}
+                                      </small>
+
+                                      {source.direct && source.address && (
+                                        <button
+                                          type="button"
+                                          className="ghost-button compact"
+                                          disabled={
+                                            nativeEd2kBusy ||
+                                            nativeEd2kSourceBusyKey !== null ||
+                                            nativeEd2kPeerBusyKey !== null
+                                          }
+                                          onClick={() =>
+                                            void runNativeEd2kPeerHandshake(
+                                              source,
+                                            )
+                                          }
+                                        >
+                                          {nativeEd2kPeerBusyKey === peerKey
+                                            ? "Connecting…"
+                                            : handshake
+                                              ? "Reconnect peer"
+                                              : "Test peer"}
+                                        </button>
+                                      )}
+
+                                      {handshake && (
+                                        <small className="ed2k-peer-handshake">
+                                          HELLO OK ·{" "}
+                                          {handshake.userName ??
+                                            "unnamed peer"}{" "}
+                                          · advertised TCP{" "}
+                                          {handshake.advertisedPort} · client ID{" "}
+                                          {handshake.clientId} · hash{" "}
+                                          {handshake.userHash.slice(0, 12)}…
+                                          {handshake.serverAddress
+                                            ? " · server " +
+                                              handshake.serverAddress +
+                                              (handshake.serverPort
+                                                ? ":" +
+                                                  handshake.serverPort
+                                                : "")
+                                            : ""}
+                                        </small>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               {sourceResponse.sources.length > 12 && (
                                 <small>
                                   +
