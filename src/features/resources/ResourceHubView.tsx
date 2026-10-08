@@ -2576,7 +2576,13 @@ export function ResourceHubView({ onOpenBook }: Props) {
   }
 
   async function runNativeEd2kSearch() {
-    if (!ed2kQuery.trim() || nativeEd2kSourceBusyKey !== null) return;
+    if (
+      !ed2kQuery.trim() ||
+      nativeEd2kSourceBusyKey !== null ||
+      nativeEd2kPeerBusyKey !== null
+    ) {
+      return;
+    }
 
     setNativeEd2kBusy(true);
     setMessage("");
@@ -2633,7 +2639,13 @@ export function ResourceHubView({ onOpenBook }: Props) {
   async function runNativeEd2kSourceDiscovery(
     result: NativeEd2kSearchResult,
   ) {
-    if (nativeEd2kBusy || nativeEd2kSourceBusyKey !== null) return;
+    if (
+      nativeEd2kBusy ||
+      nativeEd2kSourceBusyKey !== null ||
+      nativeEd2kPeerBusyKey !== null
+    ) {
+      return;
+    }
     const key = nativeEd2kSourceKey(result);
     setNativeEd2kSourceBusyKey(key);
     setMessage("");
@@ -3628,6 +3640,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                 disabled={
                   nativeEd2kBusy ||
                   nativeEd2kSourceBusyKey !== null ||
+                  nativeEd2kPeerBusyKey !== null ||
                   !ed2kQuery.trim()
                 }
                 onClick={() => void runNativeEd2kSearch()}
@@ -3706,7 +3719,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
                         }
                         disabled={
                           nativeEd2kBusy ||
-                          nativeEd2kSourceBusyKey !== null
+                          nativeEd2kSourceBusyKey !== null ||
+                          nativeEd2kPeerBusyKey !== null
                         }
                       >
                         {nativeEd2kSourceBusyKey ===
