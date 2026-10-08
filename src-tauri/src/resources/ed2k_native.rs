@@ -31,7 +31,7 @@ const MAX_SERVER_COUNT: usize = 10_000;
 const MAX_PACKET_SIZE: usize = 8 * 1024 * 1024;
 const MAX_RESULTS_PER_PACKET: usize = 20_000;
 const MAX_TAGS_PER_RECORD: usize = 512;
-const OLD_MAX_FILE_SIZE: u64 = 4_290_048_000;
+pub(crate) const OLD_MAX_FILE_SIZE: u64 = 4_290_048_000;
 
 const OP_EDONKEYPROT: u8 = 0xE3;
 const OP_PACKEDPROT: u8 = 0xD4;
