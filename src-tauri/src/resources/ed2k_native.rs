@@ -46,6 +46,7 @@ const OP_GLOBSEARCHREQ: u8 = 0x98;
 const OP_GLOBSEARCHRES: u8 = 0x99;
 
 const SRV_UDPFLG_EXT_GETFILES: u64 = 0x0000_0002;
+const SRV_TCPFLG_LARGEFILES: u32 = 0x0000_0100;
 
 const CT_NAME: u8 = 0x01;
 const CT_VERSION: u8 = 0x11;
@@ -459,6 +460,10 @@ fn push_u16(buffer: &mut Vec<u8>, value: u16) {
 }
 
 fn push_u32(buffer: &mut Vec<u8>, value: u32) {
+    buffer.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_u64(buffer: &mut Vec<u8>, value: u64) {
     buffer.extend_from_slice(&value.to_le_bytes());
 }
 
@@ -991,7 +996,7 @@ fn parse_udp_search_datagram(
     Ok(results)
 }
 
-async fn await_login(stream: &mut TcpStream) -> Result<(), String> {
+async fn await_login(stream: &mut TcpStream) -> Result<u32, String> {
     let deadline = Instant::now() + Duration::from_secs(7);
 
     loop {
@@ -1006,7 +1011,28 @@ async fn await_login(stream: &mut TcpStream) -> Result<(), String> {
             .map_err(|_| "ED2K server login timed out.".to_string())??;
 
         match packet.opcode {
-            OP_IDCHANGE => return Ok(()),
+            OP_IDCHANGE => {
+                if packet.payload.len() < 4 {
+                    return Err(
+                        "ED2K server returned a truncated IDCHANGE packet."
+                            .to_string(),
+                    );
+                }
+                let mut cursor = ByteCursor::new(&packet.payload);
+                let client_id = cursor.u32()?;
+                if client_id == 0 {
+                    return Err(
+                        "ED2K server rejected the login (no client ID assigned)."
+                            .to_string(),
+                    );
+                }
+                let tcp_flags = if cursor.remaining() >= 4 {
+                    cursor.u32()?
+                } else {
+                    0
+                };
+                return Ok(tcp_flags);
+            }
             OP_REJECT => {
                 return Err("ED2K server rejected the login request.".to_string())
             }
@@ -1037,7 +1063,7 @@ async fn search_one_server(
         .map_err(|_| format!("Login write to {endpoint} timed out."))?
         .map_err(|error| format!("Unable to send login to {endpoint}: {error}"))?;
 
-    await_login(&mut stream).await?;
+    let _tcp_flags = await_login(&mut stream).await?;
 
     let request = encode_packet(OP_SEARCHREQUEST, &search_payload(&query)?)?;
     timeout(Duration::from_secs(3), stream.write_all(&request))
@@ -1073,9 +1099,36 @@ async fn search_one_server(
     }
 }
 
+fn source_request_payload(
+    hash: &[u8; 16],
+    size: u64,
+    tcp_flags: u32,
+) -> Result<Vec<u8>, String> {
+    let mut payload = Vec::with_capacity(
+        16 + if size > u32::MAX as u64 { 12 } else { 4 },
+    );
+    payload.extend_from_slice(hash);
+
+    if size > u32::MAX as u64 {
+        if tcp_flags & SRV_TCPFLG_LARGEFILES == 0 {
+            return Err(
+                "ED2K server does not advertise large-file source lookup support."
+                    .to_string(),
+            );
+        }
+        push_u32(&mut payload, 0);
+        push_u64(&mut payload, size);
+    } else {
+        push_u32(&mut payload, size as u32);
+    }
+
+    Ok(payload)
+}
+
 async fn discover_sources_one_server(
     server: NativeEd2kServer,
     hash: [u8; 16],
+    size: u64,
 ) -> Result<Vec<NativeEd2kSource>, String> {
     let endpoint = format!("{}:{}", server.address, server.port);
     let mut stream = timeout(
@@ -1092,9 +1145,10 @@ async fn discover_sources_one_server(
         .map_err(|_| format!("Login write to {endpoint} timed out."))?
         .map_err(|error| format!("Unable to send login to {endpoint}: {error}"))?;
 
-    await_login(&mut stream).await?;
+    let tcp_flags = await_login(&mut stream).await?;
 
-    let request = encode_packet(OP_GETSOURCES, &hash)?;
+    let payload = source_request_payload(&hash, size, tcp_flags)?;
+    let request = encode_packet(OP_GETSOURCES, &payload)?;
     timeout(Duration::from_secs(3), stream.write_all(&request))
         .await
         .map_err(|_| format!("Source request write to {endpoint} timed out."))?
@@ -1361,7 +1415,7 @@ pub async fn resource_ed2k_native_discover_sources(
     let server_hash = hash_bytes;
     let tasks = selected
         .into_iter()
-        .map(|server| discover_sources_one_server(server, server_hash));
+        .map(|server| discover_sources_one_server(server, server_hash, size));
 
     let app_for_kad = app.clone();
     let (responses, kad_response) = tokio::join!(
@@ -1738,6 +1792,39 @@ mod tests {
             "11111111111111111111111111111111"
         );
         assert!(results[0].ed2k_link.starts_with("ed2k://|file|"));
+    }
+
+    #[test]
+    fn encodes_regular_server_source_request_with_u32_size() {
+        let hash = [0xA1; 16];
+        let payload =
+            source_request_payload(&hash, 12_345, 0).unwrap();
+        assert_eq!(payload.len(), 20);
+        assert_eq!(&payload[..16], &hash);
+        assert_eq!(&payload[16..20], &12_345u32.to_le_bytes());
+    }
+
+    #[test]
+    fn encodes_large_server_source_request_when_supported() {
+        let hash = [0xB2; 16];
+        let size = (u32::MAX as u64) + 123;
+        let payload = source_request_payload(
+            &hash,
+            size,
+            SRV_TCPFLG_LARGEFILES,
+        )
+        .unwrap();
+        assert_eq!(payload.len(), 28);
+        assert_eq!(&payload[..16], &hash);
+        assert_eq!(&payload[16..20], &0u32.to_le_bytes());
+        assert_eq!(&payload[20..28], &size.to_le_bytes());
+    }
+
+    #[test]
+    fn rejects_large_server_source_request_without_capability() {
+        let hash = [0xC3; 16];
+        let size = (u32::MAX as u64) + 1;
+        assert!(source_request_payload(&hash, size, 0).is_err());
     }
 
     #[test]
