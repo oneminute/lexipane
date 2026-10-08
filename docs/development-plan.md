@@ -77,12 +77,51 @@ This is a continuous implementation batch authorized to proceed without per-feat
 
 Two workstreams are tracked in this batch:
 
-1. **Resource Acquisition Platform** — HTTP/OPDS is complete; cloud accounts/shared links, BitTorrent, WebDAV, S3, SFTP, public/open discovery, federated search, and native ED2K Server/UDP Global/Kad search are implemented on the shared pipeline. Download Manager hardening remains partially open. Native ED2K/Kad search is implemented and awaiting one local live-network smoke test; the next code milestone is selected-file source discovery.
+1. **Resource Acquisition Platform** — HTTP/OPDS is complete; cloud accounts/shared links, BitTorrent, WebDAV, S3, SFTP, public/open discovery, federated search, and native ED2K Server/UDP Global/Kad search/source discovery are implemented on the shared pipeline. Download Manager hardening remains partially open. ED2K strategy now keeps LexiPane's native discovery path while moving full transfer/queue/hash/recovery work to a LexiPane-managed bundled aMule daemon runtime.
 2. **Reader AI persistence** — **COMPLETE** for the requested scope: every current-sentence explanation uses versioned SQLite history first, Regenerate appends immutable versions, Older/Newer browse saved versions without inference, configurable look-ahead pre-generation writes every successful result immediately, and history uses stable Library book identity when available.
 
 RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **IN_PROGRESS**. RESOURCE-006K remains **VERIFYING** only for a local Windows/Tauri live-network smoke test and no longer blocks implementation of the next native ED2K phase.
 
 ### Active product priority
+
+**RESOURCE-006R1 — Bundled aMule managed runtime lifecycle**
+
+Status: **VERIFYING**
+
+Strategy decision:
+
+- keep LexiPane's native ED2K Server Search, UDP Global Search, Kad keyword search, and selected-file source discovery;
+- stop expanding the native implementation into the complete ED2K transfer/queue/block/callback stack for now;
+- use a bundled, headless `amuled` process as the managed transfer runtime, controlled locally by LexiPane;
+- keep the aMule process separate from `LexiPane.exe` so the existing MIT codebase and the GPLv2+ runtime remain separate programs connected through local control interfaces.
+
+Implementation summary:
+
+- added `ManagedAmuleRuntimeManager` with explicit status/start/stop lifecycle commands;
+- the runtime resolver first accepts `LEXIPANE_AMULE_RUNTIME_DIR` for development/testing, then checks the installed Tauri resource directory, then the source-tree runtime directory for development;
+- managed aMule state is isolated under LexiPane AppData at `ed2k/amule-runtime/{config,incoming,temp}`;
+- runtime startup creates a dedicated `amule.conf` with ED2K/Kad autoconnect, localhost-only External Connections, an ephemeral control password hash, and managed Incoming/Temp directories;
+- `amuled` is intentionally started in the foreground as LexiPane's child process rather than with `--full-daemon`, allowing LexiPane to track and stop the exact process;
+- Windows startup uses a no-console creation flag so the managed daemon does not flash a console window;
+- added Tauri commands `resource_ed2k_runtime_status`, `resource_ed2k_runtime_start`, and `resource_ed2k_runtime_stop`;
+- added `src-tauri/runtime/amule` as a bundled Tauri resource root and pinned runtime metadata to aMule 3.1.0;
+- deterministic tests cover platform executable naming, generated control-password shape, and runtime availability detection.
+
+Current boundary:
+
+- this milestone establishes only runtime discovery and process lifecycle;
+- the official aMule binaries are not yet populated into the repository/runtime resource root by this change;
+- no ED2K download command has been rerouted to the managed runtime yet;
+- no Resource Hub UI has been changed in this milestone.
+
+Validation / evidence:
+
+- frontend checks for the runtime-manager integration are passing in the active CI runs;
+- Linux and Windows Rust gates are still executing for the final bundled-resource commit and must pass before this milestone is complete.
+
+Next selected task after validation:
+
+- **RESOURCE-006R2 — reproducible aMule runtime packaging**, beginning with the official aMule 3.1.0 Windows x64 portable archive and a pinned preparation script/checksum path; do not wire downloads until the packaged runtime can be started and stopped reliably.
 
 **RESOURCE-006S — Native ED2K/Kad source discovery**
 
