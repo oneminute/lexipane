@@ -1,11 +1,47 @@
 mod library_files;
 mod note_assets;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod ocr;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod resources;
 mod secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return run_mobile();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    run_desktop();
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn run_mobile() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_persisted_scope::init())
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_sql::Builder::default().build())
+        .invoke_handler(tauri::generate_handler![
+            library_files::book_file_sha256,
+            library_files::check_book_files,
+            library_files::copy_book_to_managed_library,
+            library_files::delete_managed_book_copy,
+            library_files::cleanup_managed_library,
+            note_assets::save_note_asset,
+            note_assets::delete_note_asset,
+            note_assets::cleanup_note_assets,
+            secrets::secret_set,
+            secrets::secret_get,
+            secrets::secret_has,
+            secrets::secret_delete
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running LexiPane mobile");
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn run_desktop() {
     tauri::Builder::default()
         .manage(resources::ResourceTransferLimiter::default())
         .manage(resources::cloud::CloudTransferManager::default())
