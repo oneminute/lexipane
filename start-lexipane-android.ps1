@@ -13,6 +13,20 @@ if ($Doctor) { & (Join-Path $root 'setup-android.ps1') -Doctor; exit $LASTEXITCO
 if (-not (Test-Path (Join-Path $sdk 'platform-tools\adb.exe'))) { throw 'Android SDK not installed. Run .\setup-android.ps1 first.' }
 $tauriCli = Join-Path $root 'node_modules\.bin\tauri.cmd'
 if (-not (Test-Path $tauriCli)) { throw 'Tauri CLI missing. Run npm ci or .\setup-android.ps1 first.' }
+# Tauri links the Android .so into jniLibs. Windows requires Developer Mode
+# or an elevated token to create that symbolic link.
+if ($Build -or $Install -or $Dev) {
+  $developerMode = $false
+  try {
+    $developerMode = ((Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -ErrorAction Stop).AllowDevelopmentWithoutDevLicense -eq 1)
+  } catch { }
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+  $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  if (-not ($developerMode -or $elevated)) {
+    Write-Warning 'Tauri Android build requires permission to create symbolic links. Enable Windows Developer Mode in Settings (For developers), reopen VS Code, or use an elevated PowerShell terminal.'
+  }
+}
 Push-Location $root
 try {
   if ($Build -or $Install) {
