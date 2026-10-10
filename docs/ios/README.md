@@ -4,7 +4,7 @@ The Windows desktop version remains the primary development environment. GitHub 
 
 ## Current status
 
-- IOS-001: iOS platform build scaffold (in progress; CI not yet verified).
+- IOS-001: iOS platform build scaffold (in progress; CI not yet verified). iOS and desktop Rust entrypoints are separated to keep desktop transfer daemons out of iOS builds.
 - IOS-002: local-network Ollama support (pending).
 - IOS-003: iPhone reader and document picker (pending).
 - IOS-004: Apple signing and TestFlight (pending).
@@ -23,3 +23,7 @@ The workflow `.github/workflows/ios.yml` checks the unsigned iOS build on GitHub
 ## Platform constraints
 
 Bundled aMule desktop runtime is excluded from iOS configuration. Resource-transfer features need mobile-specific gating before iOS can be considered supported. The first mobile scope is reading, EPUB/PDF import, AI explanation, caching, bookmarks and reading position.
+
+## Current verification gate
+
+Run the **iOS build (unsigned check)** workflow on the development PR and inspect its logs. A passing web typecheck is not proof of a successful native iOS build. Native code, Apple SDK/toolchain, Tauri capability permissions and simulator bundling remain unverified until the macOS job passes. This workflow does not produce a signed installable IPA.
