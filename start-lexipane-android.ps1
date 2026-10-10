@@ -11,10 +11,12 @@ if ($ndk) { $env:NDK_HOME=$ndk }
 $env:PATH="$sdk\platform-tools;$sdk\cmdline-tools\latest\bin;$env:PATH"
 if ($Doctor) { & (Join-Path $root 'setup-android.ps1') -Doctor; exit $LASTEXITCODE }
 if (-not (Test-Path (Join-Path $sdk 'platform-tools\adb.exe'))) { throw 'Android SDK not installed. Run .\setup-android.ps1 first.' }
+$tauriCli = Join-Path $root 'node_modules\.bin\tauri.cmd'
+if (-not (Test-Path $tauriCli)) { throw 'Tauri CLI missing. Run npm ci or .\setup-android.ps1 first.' }
 Push-Location $root
 try {
   if ($Build -or $Install) {
-    & npm run tauri -- android build --debug --apk --target aarch64
+    & (Join-Path $root 'node_modules\.bin\tauri.cmd') android build --debug --apk --target aarch64
     if ($LASTEXITCODE -ne 0) { throw 'Android APK build failed.' }
   }
   if ($Install) {
@@ -28,7 +30,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'APK installation failed.' }
   }
   if ($Dev) {
-    & npm run tauri -- android dev
+    & (Join-Path $root 'node_modules\.bin\tauri.cmd') android dev
     if ($LASTEXITCODE -ne 0) { throw 'Android dev failed.' }
   }
 } finally { Pop-Location }
