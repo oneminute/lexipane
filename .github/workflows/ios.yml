@@ -38,4 +38,4 @@ jobs:
       - name: Initialize iOS project
         run: npx tauri ios init --ci
       - name: Compile iOS simulator (no signing)
-        run: npx tauri ios build --target aarch64-sim --ci
+        run: npx tauri ios build --debug --target aarch64-sim --no-sign
