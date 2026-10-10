@@ -22,3 +22,7 @@ Use USB debugging and authorize the development computer on the phone; `-Install
 The current desktop resource downloader/aMule/Torrent bindings are not portable to Android as-is. Full Android Rust/UI portability and build verification remain tasks before shipping a usable reader.
 
 The planned Android Ollama URL is `http://10.0.0.99:12000`. The phone must have network access to that IP and the Android app must be configured for local-network cleartext HTTP access; this is a separate pending implementation task.
+
+## OpenSSL cross-compilation fix
+
+Android excludes desktop-only `ssh2` (which links native libssh2/OpenSSL) and `librqbit`, and uses a mobile Tauri entrypoint without desktop resource/OCR commands. The desktop entrypoint remains unchanged. The fix has not yet been validated by an actual Windows-to-Android build; after pulling the branch rerun `./start-lexipane-android.ps1 -Build`. Do not set host `OPENSSL_DIR` or `PKG_CONFIG_ALLOW_CROSS` as a workaround.
