@@ -1,0 +1,16 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "LexiPane",
+        "width": 390,
+        "height": 844,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "resources": []
+  }
+}
