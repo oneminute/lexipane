@@ -86,27 +86,35 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 **RESOURCE-006R2 — Reproducible aMule runtime packaging**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Selected scope:
+Implementation summary:
 
-- prepare only the official aMule 3.1.0 Windows x64 portable runtime;
-- pin the release asset URL and SHA-256 published by the upstream GitHub Release;
-- provide a repeatable PowerShell preparation script that downloads, verifies, extracts, and stages the runtime under `src-tauri/runtime/amule`;
-- keep generated binaries out of Git while retaining the runtime metadata/README;
-- require `amuled.exe` and `amulecmd.exe` to be present after staging;
-- do not route any LexiPane download command through the managed runtime in this task.
+- pinned the official aMule 3.1.0 Windows x64 portable asset in `src-tauri/runtime/amule/runtime.json`;
+- pinned upstream SHA-256 `81d3a024207c272524e4d992bfaf352a86256b00afac414f0405ce465642cfb7`;
+- added `scripts/windows/prepare-amule-runtime.ps1` as the single reproducible staging entrypoint;
+- the script downloads only the pinned official release URL, verifies SHA-256 before extraction, rejects unknown layouts, recursively locates `amuled.exe` and `amulecmd.exe`, requires both to share one runtime directory, and stages that directory into the Tauri runtime resource root;
+- the portable runtime's colocated DLLs, CA bundle, and other runtime files are copied with the headless executables;
+- the upstream aMule license is staged from the archive when present, with an exact-tag upstream fallback;
+- verified archives are cached under the repository's already-ignored `.cache/third-party/amule/<version>` directory; `-Force` redownloads and `-CleanArchive` removes the cache after staging;
+- generated third-party runtime binaries are ignored by Git while committed `README.md` and `runtime.json` remain tracked as reproducibility inputs;
+- CI now parses every `scripts/windows/*.ps1` file rather than only the LexiPane launcher.
 
-Upstream pin:
+Validation / evidence:
 
-- asset: `aMule-3.1.0-Windows-x64.zip`;
-- SHA-256: `81d3a024207c272524e4d992bfaf352a86256b00afac414f0405ce465642cfb7`;
-- source: official `amule-org/amule` GitHub Release 3.1.0.
+- the updated CI PowerShell parser has successfully parsed both the existing launcher and the new runtime-preparation script;
+- frontend typecheck, tests, and build are passing on the final R2 code path;
+- Linux and Windows Rust check/test jobs are still executing on the final CI run and have not reported a failure.
 
-Validation target:
+Remaining verification:
 
-- PowerShell syntax/logic review plus repository CI;
-- local Windows execution of the preparation script remains the final packaging smoke test if CI does not download the third-party runtime.
+- final Linux and Windows Rust jobs must complete successfully;
+- run `.\scripts\windows\prepare-amule-runtime.ps1` on Windows and confirm the pinned archive downloads, SHA-256 matches, and `src-tauri/runtime/amule/amuled.exe` plus `amulecmd.exe` and their runtime dependencies are staged;
+- after that smoke test, RESOURCE-006R2 can be marked COMPLETE; download routing remains outside this task.
+
+Next selected task after R2 verification:
+
+- **RESOURCE-006R3 — managed runtime readiness/control handshake**: start the staged `amuled`, verify local EC readiness using the bundled `amulecmd`, and stop it cleanly. Do not reroute normal ED2K downloads until readiness is proven.
 
 **RESOURCE-006R1 — Bundled aMule managed runtime lifecycle**
 
