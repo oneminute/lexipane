@@ -1,6 +1,6 @@
 param(
     [switch]$Force,
-    [switch]$KeepArchive
+    [switch]$CleanArchive
 )
 
 $ErrorActionPreference = "Stop"
@@ -152,7 +152,7 @@ Write-Host "Runtime : $RuntimeDir"
 Write-Host ("Files   : {0}" -f $StagedFiles.Count)
 Write-Host ("Size    : {0:N1} MiB" -f ($StagedBytes / 1MB))
 
-if (-not $KeepArchive) {
+if ($CleanArchive) {
     Remove-Item $ArchivePath -Force -ErrorAction SilentlyContinue
 }
 Remove-Item $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue
