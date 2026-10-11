@@ -200,7 +200,7 @@ Next:
 
 ## Phase 8 — Resource Acquisition Platform / Resource Hub
 
-Status: **active — RESOURCE-006R1 bundled aMule runtime lifecycle verifying**
+Status: **active — RESOURCE-006R2 reproducible aMule runtime packaging verifying**
 
 Purpose:
 
@@ -218,7 +218,7 @@ Milestones:
 - **RESOURCE-003 — Cloud accounts:** **verifying** — reusable Google Drive/Dropbox/OneDrive account/shared-link infrastructure is implemented; provider activation still depends on real OAuth credentials and live account smoke tests.
 - **RESOURCE-004 — Download Manager hardening:** **in progress** — persistent queue/recovery, pause/resume/cancel, concurrency controls, aggregate status and several transport-specific restart/control paths are implemented; remaining hardening continues after native ED2K acquisition work.
 - **RESOURCE-005 — BitTorrent:** **verifying** — native torrent metadata/file selection/transfer integration is present; broader live-network and restart behavior still needs smoke coverage.
-- **RESOURCE-006 — ED2K:** **verifying / active runtime integration** — native Rust Server Search, UDP Global Search, Kad keyword search, selected-file Server+Kad source discovery, Direct Peer HELLO, and file-identity probing are implemented. The transfer strategy has changed: LexiPane keeps native discovery but uses a LexiPane-managed bundled headless aMule runtime for the mature queue/part/block/callback/hash/recovery stack instead of continuing to reimplement all transfer semantics. RESOURCE-006R1 now provides isolated AppData layout plus bundled-runtime status/start/stop lifecycle; RESOURCE-006R2 will add reproducible packaging of the pinned aMule 3.1.0 runtime before downloads are routed through it.
+- **RESOURCE-006 — ED2K:** **verifying / active runtime integration** — native Rust Server Search, UDP Global Search, Kad keyword search, selected-file Server+Kad source discovery, Direct Peer HELLO, and file-identity probing are implemented. LexiPane keeps native discovery while delegating mature queue/part/block/callback/hash/recovery transfer behavior to a LexiPane-managed bundled headless aMule runtime. RESOURCE-006R1 lifecycle management is complete. RESOURCE-006R2 now pins the official aMule 3.1.0 Windows x64 portable asset and SHA-256 and provides a reproducible PowerShell staging pipeline; final CI and a Windows staging smoke test remain before runtime readiness/control work begins.
 - **RESOURCE-007 — Advanced Preview:** **planned** — progressive/partial preview where technically safe and supported.
 - **RESOURCE-008 — Federated Search:** **verifying** — parallel search, merge, filtering, cancellation and provider health/latency diagnostics are implemented; remaining work is provider/live-network hardening.
 - **RESOURCE-009 — Extended Providers:** **in progress** — WebDAV, S3-compatible storage, SFTP and public/open discovery paths are implemented on the shared Resource pipeline; additional providers remain optional extensions.
