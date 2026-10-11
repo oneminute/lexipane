@@ -71,3 +71,8 @@ Thumbs.db
 Desktop.ini
 src-tauri/Cargo.lock
 package-lock.json
+
+# Generated third-party runtimes (prepared locally before Tauri packaging)
+src-tauri/runtime/amule/*
+!src-tauri/runtime/amule/README.md
+!src-tauri/runtime/amule/runtime.json
