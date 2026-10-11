@@ -118,6 +118,87 @@ Cargo is normally installed under:
 }
 
 
+function Get-OllamaExecutable {
+    $Command = Get-Command ollama -ErrorAction SilentlyContinue
+    if ($Command) {
+        return $Command.Source
+    }
+
+    $Candidates = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"),
+        "C:\Program Files\Ollama\ollama.exe"
+    )
+
+    foreach ($Candidate in $Candidates) {
+        if (Test-Path $Candidate) {
+            return $Candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-OllamaBaseUrl {
+    $RawHost = $env:OLLAMA_HOST
+    if ([string]::IsNullOrWhiteSpace($RawHost)) {
+        $RawHost = "127.0.0.1:11434"
+    }
+
+    $RawHost = $RawHost.Trim()
+    if ($RawHost -notmatch "^https?://") {
+        $RawHost = "http://$RawHost"
+    }
+
+    return $RawHost.TrimEnd("/")
+}
+
+function Test-OllamaEndpoint([string]$BaseUrl) {
+    try {
+        $null = Invoke-WebRequest -Uri "$BaseUrl/api/tags" -UseBasicParsing -TimeoutSec 1
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Start-LocalOllamaBestEffort {
+    $BaseUrl = Get-OllamaBaseUrl
+
+    if (Test-OllamaEndpoint $BaseUrl) {
+        Write-Host "Ollama: already running at $BaseUrl"
+        return
+    }
+
+    $Executable = Get-OllamaExecutable
+    if (-not $Executable) {
+        Write-Host "Ollama: not found; continuing without local Ollama" -ForegroundColor Yellow
+        return
+    }
+
+    Write-Step "Starting local Ollama (best effort)"
+
+    try {
+        Start-Process -FilePath $Executable -ArgumentList "serve" -WindowStyle Hidden | Out-Null
+
+        # Give the server a short chance to bind its port, but never make
+        # Ollama availability a requirement for launching LexiPane.
+        for ($Attempt = 0; $Attempt -lt 8; $Attempt++) {
+            Start-Sleep -Milliseconds 250
+            if (Test-OllamaEndpoint $BaseUrl) {
+                Write-Host "Ollama: ready at $BaseUrl"
+                return
+            }
+        }
+
+        Write-Host "Ollama: start was attempted but it is not responding at $BaseUrl; continuing" -ForegroundColor Yellow
+    }
+    catch {
+        Write-Host "Ollama: could not be started ($($_.Exception.Message)); continuing" -ForegroundColor Yellow
+    }
+}
+
+
 function Get-TesseractExecutable {
     $Command = Get-Command tesseract -ErrorAction SilentlyContinue
     if ($Command) {
@@ -383,6 +464,8 @@ if (-not $SkipInstall) {
 else {
     Write-Step "Skipping npm dependency synchronization"
 }
+
+Start-LocalOllamaBestEffort
 
 if (-not $Web) {
     Ensure-LocalOcr
