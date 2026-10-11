@@ -84,9 +84,33 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 ### Active product priority
 
+**RESOURCE-006R2 — Reproducible aMule runtime packaging**
+
+Status: **IN_PROGRESS**
+
+Selected scope:
+
+- prepare only the official aMule 3.1.0 Windows x64 portable runtime;
+- pin the release asset URL and SHA-256 published by the upstream GitHub Release;
+- provide a repeatable PowerShell preparation script that downloads, verifies, extracts, and stages the runtime under `src-tauri/runtime/amule`;
+- keep generated binaries out of Git while retaining the runtime metadata/README;
+- require `amuled.exe` and `amulecmd.exe` to be present after staging;
+- do not route any LexiPane download command through the managed runtime in this task.
+
+Upstream pin:
+
+- asset: `aMule-3.1.0-Windows-x64.zip`;
+- SHA-256: `81d3a024207c272524e4d992bfaf352a86256b00afac414f0405ce465642cfb7`;
+- source: official `amule-org/amule` GitHub Release 3.1.0.
+
+Validation target:
+
+- PowerShell syntax/logic review plus repository CI;
+- local Windows execution of the preparation script remains the final packaging smoke test if CI does not download the third-party runtime.
+
 **RESOURCE-006R1 — Bundled aMule managed runtime lifecycle**
 
-Status: **VERIFYING**
+Status: **COMPLETE**
 
 Strategy decision:
 
@@ -116,12 +140,12 @@ Current boundary:
 
 Validation / evidence:
 
-- frontend checks for the runtime-manager integration are passing in the active CI runs;
-- Linux and Windows Rust gates are still executing for the final bundled-resource commit and must pass before this milestone is complete.
+- final CI run 37724644969 completed successfully with Frontend checks, Rust check (Linux), and Rust check (Windows) all passing for the bundled-runtime lifecycle/resource configuration;
+- the runtime lifecycle manager is therefore complete at the code/configuration level; real bundled-binary execution moves to RESOURCE-006R2.
 
-Next selected task after validation:
+Next selected task:
 
-- **RESOURCE-006R2 — reproducible aMule runtime packaging**, beginning with the official aMule 3.1.0 Windows x64 portable archive and a pinned preparation script/checksum path; do not wire downloads until the packaged runtime can be started and stopped reliably.
+- **RESOURCE-006R2 — reproducible aMule runtime packaging** is now active; downloads remain intentionally unwired until the packaged runtime can be prepared and launched reliably.
 
 **RESOURCE-006S — Native ED2K/Kad source discovery**
 
