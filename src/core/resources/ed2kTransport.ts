@@ -276,6 +276,28 @@ export async function startManagedAmuleLinkJob(
   );
 }
 
+export async function reattachManagedAmuleLinkJob(
+  jobId: string,
+  input: {
+    name: string;
+    size?: number;
+    hash: string;
+    paused?: boolean;
+  },
+): Promise<boolean> {
+  requireDesktop();
+  return invoke<boolean>(
+    "resource_ed2k_runtime_reattach_link_job",
+    {
+      jobId,
+      name: input.name,
+      size: input.size,
+      hash: input.hash,
+      paused: input.paused,
+    },
+  );
+}
+
 export async function addEd2kLink(
   jobId: string,
   config: Ed2kConnectionConfig,
