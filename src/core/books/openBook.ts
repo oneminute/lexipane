@@ -1,4 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
+import { appDataDir, join } from "@tauri-apps/api/path";
+import { mkdir, readFile, writeFile } from "@tauri-apps/plugin-fs";
 import { open } from "@tauri-apps/plugin-dialog";
 
 export const SUPPORTED_BOOK_EXTENSIONS = [
@@ -56,5 +58,17 @@ export async function chooseBookFile(): Promise<string | null> {
     ],
   });
 
-  return typeof selected === "string" ? selected : null;
+  if (typeof selected !== "string") return null;
+  // Android document URIs are not durable library paths.
+  if (!/Android/i.test(navigator.userAgent)) return selected;
+  const extension = getBookExtension(selected);
+  if (!SUPPORTED_BOOK_EXTENSIONS.includes(extension as SupportedBookExtension)) {
+    throw new Error("The selected Android document has no supported filename extension.");
+  }
+  const dir = await join(await appDataDir(), "library");
+  await mkdir(dir, { recursive: true });
+  const target = await join(dir, crypto.randomUUID() + "." + extension);
+  const bytes = await readFile(selected);
+  await writeFile(target, bytes);
+  return target;
 }
