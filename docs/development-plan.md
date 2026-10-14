@@ -126,6 +126,52 @@ Next selected task:
 Previous active ED2K work (paused by user priority) remains below:
 
 
+**RESOURCE-006R4.5 — Managed runtime restart/reattach recovery**
+
+Status: **VERIFYING**
+
+Implementation summary:
+
+- added a shared internal `attach_existing_ed2k_job` helper so both external-aMule and managed-runtime recovery rebuild the same `Ed2kManager/monitor_job` state instead of duplicating monitor logic;
+- added `resource_ed2k_runtime_reattach_link_job`, keyed by persisted job id + canonical file name/size/hash + paused state;
+- recovery never persists or reuses the old plaintext EC password: it starts the bundled runtime with the existing managed config/temp/incoming directories, generates a fresh ephemeral EC password, waits for EC readiness, and builds a new in-memory connection config;
+- recovery validates the persisted hash as exactly 32 hexadecimal characters and normalizes it before matching;
+- a persisted job is accepted for recovery when either the exact hash is present in managed `Show DL` or the expected completed file already exists in managed `Incoming` at the expected size; the latter lets the established monitor finish validation/import when aMule completed the transfer while LexiPane was not attached;
+- the managed `amuled` child now uses Tokio `kill_on_drop(true)` so a normal LexiPane process teardown does not intentionally leave the managed EC port owned by an untracked child;
+- added `reattachManagedAmuleLinkJob` to the TypeScript transport;
+- `reattachEd2kTransfer` now detects `resumeData.ed2kRuntime === "managed"` and uses managed recovery instead of looking for an external aMule account;
+- Pause/Resume/Cancel again share one frontend reattach path: after restart, managed recovery occurs first and then the already-validated common backend control command runs;
+- Resource Hub performs a one-attempt-per-job automatic recovery for persisted managed ED2K jobs in `queued`, `running`, or `paused` state. Repeated transfer refresh events do not repeatedly restart recovery because attempted job ids are tracked for the current UI session;
+- automatic recovery failures are non-destructive: the persisted TransferJob is not silently marked failed or canceled, and a later explicit control action can retry recovery;
+- deterministic tests cover persisted hash normalization and completed managed Incoming-file detection.
+
+Current boundary:
+
+- automatic recovery begins when Resource Hub initializes; no global background bootstrap outside Resource Hub has been added;
+- recovery is for managed direct-link jobs only; native ED2K/Kad search and external-aMule search-result jobs keep their existing paths;
+- a hard OS/process crash can still bypass normal Rust drop semantics; robust orphan-process takeover is not part of this slice;
+- the bundled runtime still has to be staged by the R2 packaging path before live recovery can succeed.
+
+Validation / evidence:
+
+- `628cfc7f` shares existing-job attachment;
+- `2e69a14b` adds managed restart recovery and child kill-on-drop;
+- `69c24ae7` / `69be5129` register and expose the recovery command;
+- `551e9530` routes managed frontend reattach through the new recovery path;
+- `fd1266ce` handles already-completed files in managed Incoming;
+- `c35e0d33` automatically attempts active managed-job recovery when Resource Hub initializes;
+- CI for the R4.5 commits is queued behind the existing repository workflow backlog; no failure has been reported.
+
+Remaining verification:
+
+- final Frontend, Linux Rust, and Windows Rust gates must pass;
+- live Windows smoke: start a real managed ED2K download, close/reopen LexiPane, open Resource Hub, confirm bundled aMule becomes ready with a new EC password, confirm the persisted hash is rediscovered, verify progress events resume, then test Pause/Resume/Cancel;
+- separately smoke the completed-while-detached case by confirming a completed file in managed Incoming is picked up and validated/imported even when its hash is no longer listed in `Show DL`.
+
+Next selected task after R4.5 verification:
+
+- **RESOURCE-006R4.6 — managed native-result download routing**: allow a Native ED2K/Kad search result's canonical ED2K link to use the same managed acquisition path, removing the need for a configured external-aMule fallback for that result type. Keep aMule-native search-result routing separate.
+
 **RESOURCE-006R4.4 — Managed ED2K link UI routing**
 
 Status: **VERIFYING**
