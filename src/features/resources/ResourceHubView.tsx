@@ -2882,7 +2882,12 @@ export function ResourceHubView({ onOpenBook }: Props) {
   async function acquireNativeEd2kWithManagedRuntime(
     result: NativeEd2kSearchResult,
   ) {
-    if (!result.bookCandidate) return;
+    if (!result.bookCandidate) {
+      setMessage(
+        "This native ED2K result is not a Reader-supported book format.",
+      );
+      return;
+    }
 
     setEd2kBusy(true);
     setMessage("");
