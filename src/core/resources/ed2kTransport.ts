@@ -265,6 +265,17 @@ export async function probeManagedAmuleAddLink(
   );
 }
 
+export async function startManagedAmuleLinkJob(
+  jobId: string,
+  link: string,
+): Promise<Ed2kStartResult> {
+  requireDesktop();
+  return invoke<Ed2kStartResult>(
+    "resource_ed2k_runtime_start_link_job",
+    { jobId, link },
+  );
+}
+
 export async function addEd2kLink(
   jobId: string,
   config: Ed2kConnectionConfig,
