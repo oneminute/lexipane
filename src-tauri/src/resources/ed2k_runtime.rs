@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager, State};
 use tokio::{
     process::{Child, Command},
     sync::Mutex,
-    time::{sleep, Duration},
+    time::{sleep, timeout, Duration},
 };
 
 const AMULE_RUNTIME_VERSION: &str = "3.1.0";
@@ -32,6 +32,9 @@ struct ManagedAmuleLayout {
 #[derive(Debug)]
 struct ManagedAmuleProcess {
     child: Child,
+    control_password: String,
+    ready: bool,
+    status_output: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -45,6 +48,7 @@ pub struct ManagedAmuleRuntimeStatus {
     pub version: String,
     pub available: bool,
     pub running: bool,
+    pub ready: bool,
     pub pid: Option<u32>,
     pub runtime_dir: String,
     pub daemon_path: String,
@@ -53,6 +57,7 @@ pub struct ManagedAmuleRuntimeStatus {
     pub incoming_dir: String,
     pub temp_dir: String,
     pub ec_port: u16,
+    pub status_output: Option<String>,
 }
 
 fn executable_name(name: &str) -> String {
@@ -118,12 +123,15 @@ fn layout(app: &AppHandle) -> Result<ManagedAmuleLayout, String> {
 fn status_from_layout(
     layout: &ManagedAmuleLayout,
     running: bool,
+    ready: bool,
     pid: Option<u32>,
+    status_output: Option<String>,
 ) -> ManagedAmuleRuntimeStatus {
     ManagedAmuleRuntimeStatus {
         version: AMULE_RUNTIME_VERSION.to_string(),
-        available: layout.daemon_path.is_file(),
+        available: layout.daemon_path.is_file() && layout.command_path.is_file(),
         running,
+        ready,
         pid,
         runtime_dir: path_string(&layout.runtime_dir),
         daemon_path: path_string(&layout.daemon_path),
@@ -135,6 +143,7 @@ fn status_from_layout(
         incoming_dir: path_string(&layout.incoming_dir),
         temp_dir: path_string(&layout.temp_dir),
         ec_port: EC_PORT,
+        status_output,
     }
 }
 
@@ -182,6 +191,91 @@ fn write_managed_config(
         .map_err(|error| format!("Unable to write managed aMule configuration: {error}"))
 }
 
+fn bounded_text(value: String) -> String {
+    const LIMIT: usize = 4096;
+    if value.len() <= LIMIT {
+        return value;
+    }
+
+    let mut end = LIMIT;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n… output truncated …", &value[..end])
+}
+
+async fn run_control_command(
+    layout: &ManagedAmuleLayout,
+    password: &str,
+    command_text: &str,
+) -> Result<String, String> {
+    if !layout.command_path.is_file() {
+        return Err(format!(
+            "Bundled amulecmd was not found at {}.",
+            path_string(&layout.command_path)
+        ));
+    }
+
+    let mut command = Command::new(&layout.command_path);
+    command
+        .arg("-h")
+        .arg("127.0.0.1")
+        .arg("-p")
+        .arg(EC_PORT.to_string())
+        .arg("-P")
+        .arg(password)
+        .arg("-c")
+        .arg(command_text)
+        .current_dir(&layout.runtime_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("LC_ALL", "C")
+        .env("LANG", "C");
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command
+            .as_std_mut()
+            .creation_flags(0x08000000);
+    }
+
+    let output = timeout(Duration::from_secs(3), command.output())
+        .await
+        .map_err(|_| {
+            format!(
+                "Timed out waiting for bundled amulecmd command: {command_text}"
+            )
+        })?
+        .map_err(|error| {
+            format!(
+                "Unable to run bundled amulecmd command {command_text}: {error}"
+            )
+        })?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let combined = [stdout.as_str(), stderr.as_str()]
+        .into_iter()
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if !output.status.success() {
+        return Err(if combined.is_empty() {
+            format!(
+                "Bundled amulecmd command {command_text} exited with status {}.",
+                output.status
+            )
+        } else {
+            bounded_text(combined)
+        });
+    }
+
+    Ok(bounded_text(combined))
+}
+
 impl ManagedAmuleRuntimeManager {
     async fn status(
         &self,
@@ -190,18 +284,32 @@ impl ManagedAmuleRuntimeManager {
         let layout = layout(app)?;
         let mut process = self.process.lock().await;
         let Some(managed) = process.as_mut() else {
-            return Ok(status_from_layout(&layout, false, None));
+            return Ok(status_from_layout(
+                &layout,
+                false,
+                false,
+                None,
+                None,
+            ));
         };
 
         match managed.child.try_wait() {
             Ok(None) => Ok(status_from_layout(
                 &layout,
                 true,
+                managed.ready,
                 managed.child.id(),
+                managed.status_output.clone(),
             )),
             Ok(Some(_)) => {
                 *process = None;
-                Ok(status_from_layout(&layout, false, None))
+                Ok(status_from_layout(
+                    &layout,
+                    false,
+                    false,
+                    None,
+                    None,
+                ))
             }
             Err(error) => Err(format!(
                 "Unable to inspect managed aMule process: {error}"
@@ -214,8 +322,14 @@ impl ManagedAmuleRuntimeManager {
         app: &AppHandle,
     ) -> Result<ManagedAmuleRuntimeStatus, String> {
         let layout = layout(app)?;
-        if !layout.daemon_path.is_file() {
-            return Ok(status_from_layout(&layout, false, None));
+        if !layout.daemon_path.is_file() || !layout.command_path.is_file() {
+            return Ok(status_from_layout(
+                &layout,
+                false,
+                false,
+                None,
+                None,
+            ));
         }
 
         let mut process = self.process.lock().await;
@@ -225,7 +339,9 @@ impl ManagedAmuleRuntimeManager {
                     return Ok(status_from_layout(
                         &layout,
                         true,
+                        managed.ready,
                         managed.child.id(),
+                        managed.status_output.clone(),
                     ))
                 }
                 Ok(Some(_)) => {
@@ -266,18 +382,89 @@ impl ManagedAmuleRuntimeManager {
             )
         })?;
 
-        *process = Some(ManagedAmuleProcess { child });
+        let pid = child.id();
+        *process = Some(ManagedAmuleProcess {
+            child,
+            control_password: control_password.clone(),
+            ready: false,
+            status_output: None,
+        });
         drop(process);
 
-        sleep(Duration::from_millis(250)).await;
-        let status = self.status(app).await?;
-        if !status.running {
-            return Err(
-                "Bundled amuled exited during startup. Check the managed aMule configuration and runtime dependencies."
-                    .to_string(),
-            );
+        let mut last_error = None;
+        for _ in 0..24 {
+            sleep(Duration::from_millis(250)).await;
+
+            {
+                let mut process = self.process.lock().await;
+                let Some(managed) = process.as_mut() else {
+                    return Err(
+                        "Managed aMule process disappeared during startup."
+                            .to_string(),
+                    );
+                };
+                match managed.child.try_wait() {
+                    Ok(None) => {}
+                    Ok(Some(status)) => {
+                        *process = None;
+                        return Err(format!(
+                            "Bundled amuled exited during startup with status {status}."
+                        ));
+                    }
+                    Err(error) => {
+                        return Err(format!(
+                            "Unable to inspect bundled amuled during startup: {error}"
+                        ));
+                    }
+                }
+            }
+
+            match run_control_command(
+                &layout,
+                &control_password,
+                "Status",
+            )
+            .await
+            {
+                Ok(output) => {
+                    let mut process = self.process.lock().await;
+                    let Some(managed) = process.as_mut() else {
+                        return Err(
+                            "Managed aMule process disappeared after EC readiness."
+                                .to_string(),
+                        );
+                    };
+                    if managed.child.id() != pid {
+                        return Err(
+                            "Managed aMule process changed during readiness check."
+                                .to_string(),
+                        );
+                    }
+                    managed.ready = true;
+                    managed.status_output = Some(output.clone());
+                    return Ok(status_from_layout(
+                        &layout,
+                        true,
+                        true,
+                        managed.child.id(),
+                        Some(output),
+                    ));
+                }
+                Err(error) => {
+                    last_error = Some(error);
+                }
+            }
         }
-        Ok(status)
+
+        let mut process = self.process.lock().await;
+        if let Some(mut managed) = process.take() {
+            let _ = managed.child.kill().await;
+            let _ = managed.child.wait().await;
+        }
+        Err(format!(
+            "Bundled amuled started but its local External Connections endpoint did not become ready: {}",
+            last_error.unwrap_or_else(|| "no Status response".to_string())
+        ))
     }
 
     async fn stop(
@@ -287,20 +474,56 @@ impl ManagedAmuleRuntimeManager {
         let layout = layout(app)?;
         let mut process = self.process.lock().await;
         let Some(mut managed) = process.take() else {
-            return Ok(status_from_layout(&layout, false, None));
+            return Ok(status_from_layout(
+                &layout,
+                false,
+                false,
+                None,
+                None,
+            ));
         };
+        drop(process);
 
         match managed.child.try_wait() {
             Ok(Some(_)) => {}
             Ok(None) => {
-                managed
-                    .child
-                    .kill()
-                    .await
-                    .map_err(|error| {
-                        format!("Unable to stop managed aMule runtime: {error}")
-                    })?;
-                let _ = managed.child.wait().await;
+                let _ = run_control_command(
+                    &layout,
+                    &managed.control_password,
+                    "Shutdown",
+                )
+                .await;
+
+                let mut exited = false;
+                for _ in 0..30 {
+                    match managed.child.try_wait() {
+                        Ok(Some(_)) => {
+                            exited = true;
+                            break;
+                        }
+                        Ok(None) => {
+                            sleep(Duration::from_millis(100)).await;
+                        }
+                        Err(error) => {
+                            return Err(format!(
+                                "Unable to inspect managed aMule process while stopping it: {error}"
+                            ));
+                        }
+                    }
+                }
+
+                if !exited {
+                    managed
+                        .child
+                        .kill()
+                        .await
+                        .map_err(|error| {
+                            format!(
+                                "Unable to stop managed aMule runtime after graceful shutdown timeout: {error}"
+                            )
+                        })?;
+                    let _ = managed.child.wait().await;
+                }
             }
             Err(error) => {
                 return Err(format!(
@@ -309,7 +532,13 @@ impl ManagedAmuleRuntimeManager {
             }
         }
 
-        Ok(status_from_layout(&layout, false, None))
+        Ok(status_from_layout(
+            &layout,
+            false,
+            false,
+            None,
+            None,
+        ))
     }
 }
 
@@ -352,6 +581,17 @@ mod tests {
     }
 
     #[test]
+    fn bounded_control_output_limits_large_responses() {
+        let short = bounded_text("ok".to_string());
+        assert_eq!(short, "ok");
+
+        let large = "x".repeat(5000);
+        let bounded = bounded_text(large);
+        assert!(bounded.len() < 4200);
+        assert!(bounded.contains("output truncated"));
+    }
+
+    #[test]
     fn generated_control_password_is_nonempty_and_hex() {
         let password = generate_control_password();
         assert_eq!(password.len(), 32);
@@ -376,9 +616,50 @@ mod tests {
             temp_dir: root.join("data").join("temp"),
         };
 
-        assert!(!status_from_layout(&layout, false, None).available);
+        assert!(
+            !status_from_layout(
+                &layout,
+                false,
+                false,
+                None,
+                None,
+            )
+            .available
+        );
         fs::write(&layout.daemon_path, b"stub").unwrap();
-        assert!(status_from_layout(&layout, false, None).available);
+        assert!(
+            !status_from_layout(
+                &layout,
+                false,
+                false,
+                None,
+                None,
+            )
+            .available
+        );
+        fs::write(&layout.command_path, b"stub").unwrap();
+        assert!(
+            status_from_layout(
+                &layout,
+                false,
+                false,
+                None,
+                None,
+            )
+            .available
+        );
+
+        let ready = status_from_layout(
+            &layout,
+            true,
+            true,
+            Some(123),
+            Some("ready".to_string()),
+        );
+        assert!(ready.running);
+        assert!(ready.ready);
+        assert_eq!(ready.pid, Some(123));
+        assert_eq!(ready.status_output.as_deref(), Some("ready"));
 
         let _ = fs::remove_dir_all(root);
     }
