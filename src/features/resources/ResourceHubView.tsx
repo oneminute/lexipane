@@ -19,6 +19,7 @@ import {
   browseCloudAccount,
   cancelCloudDownload,
   connectCloudAccount,
+  connectDropboxWithAuthorizationCode,
   disconnectCloudAccount,
   discardCloudTransfer,
   listConnectedCloudAccounts,
@@ -34,6 +35,7 @@ import {
   type CloudEntry,
   type CloudProviderId,
 } from "../../core/resources/cloudTransport";
+import { createDropboxPkceAuthorization } from "../../core/resources/dropboxOAuth";
 import {
   browseWebDavAccount,
   cancelWebDavDownload,
@@ -433,13 +435,17 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [cloudQuery, setCloudQuery] = useState("");
   const [cloudBusy, setCloudBusy] = useState(false);
   const [connectProvider, setConnectProvider] =
-    useState<CloudProviderId>("google-drive");
+    useState<CloudProviderId>("dropbox");
   const [connectDisplayName, setConnectDisplayName] = useState("");
   const [connectToken, setConnectToken] = useState("");
   const [connectRefreshToken, setConnectRefreshToken] = useState("");
   const [connectClientId, setConnectClientId] = useState("");
   const [connectClientSecret, setConnectClientSecret] = useState("");
   const [connectTenant, setConnectTenant] = useState("common");
+  const [dropboxPkceVerifier, setDropboxPkceVerifier] = useState("");
+  const [dropboxAuthorizeUrl, setDropboxAuthorizeUrl] = useState("");
+  const [dropboxAuthorizationCode, setDropboxAuthorizationCode] =
+    useState("");
   const [webDavAccounts, setWebDavAccounts] =
     useState<ConnectedWebDavAccount[]>([]);
   const [activeWebDavAccountId, setActiveWebDavAccountId] =
@@ -1616,6 +1622,88 @@ export function ResourceHubView({ onOpenBook }: Props) {
         (account) => account.id === activeCloudAccountId,
       ) ?? null
     );
+  }
+
+  async function beginDropboxAuthorization() {
+    setMessage("");
+
+    try {
+      const authorization = await createDropboxPkceAuthorization(
+        connectClientId,
+      );
+      setDropboxPkceVerifier(authorization.codeVerifier);
+      setDropboxAuthorizeUrl(authorization.authorizeUrl);
+      setDropboxAuthorizationCode("");
+
+      const opened = window.open(
+        authorization.authorizeUrl,
+        "_blank",
+        "noopener,noreferrer",
+      );
+      if (!opened) {
+        setMessage(
+          "Dropbox authorization link created. Open the link shown below in your browser.",
+        );
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to create Dropbox authorization link.",
+      );
+    }
+  }
+
+  async function connectDropboxAuthorization() {
+    if (
+      !connectClientId.trim() ||
+      !dropboxPkceVerifier.trim() ||
+      !dropboxAuthorizationCode.trim()
+    ) {
+      return;
+    }
+
+    setCloudBusy(true);
+    setMessage("");
+
+    try {
+      const account = await connectDropboxWithAuthorizationCode(
+        connectDisplayName,
+        dropboxAuthorizationCode,
+        connectClientId,
+        dropboxPkceVerifier,
+      );
+
+      setDropboxAuthorizationCode("");
+      setDropboxPkceVerifier("");
+      setDropboxAuthorizeUrl("");
+      setConnectToken("");
+      setConnectRefreshToken("");
+      setConnectClientSecret("");
+      setConnectDisplayName("");
+
+      await refreshResourceCore();
+      setActiveCloudAccountId(account.id);
+
+      const result = await browseCloudAccount(account);
+      setCloudEntries(result.entries);
+      setCloudFolder(undefined);
+      setCloudFolderStack([{ label: "Root" }]);
+      setCloudQuery("");
+      setTab("browse");
+      setMessage(
+        (account.displayName || "Dropbox") +
+          " connected. Dropbox refresh credentials are stored in the native secure credential store.",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to connect Dropbox.",
+      );
+    } finally {
+      setCloudBusy(false);
+    }
   }
 
   async function connectCloud() {
@@ -5694,12 +5782,87 @@ export function ResourceHubView({ onOpenBook }: Props) {
               }
             />
 
+            {connectProvider === "dropbox" && (
+              <div className="dropbox-oauth-card">
+                <strong>Recommended: connect Dropbox with PKCE</strong>
+                <small>
+                  Enter your Dropbox app key. LexiPane opens Dropbox
+                  authorization without requiring a client secret, then stores
+                  the returned refresh token in the native secure credential
+                  store.
+                </small>
+                <input
+                  value={connectClientId}
+                  disabled={cloudBusy}
+                  placeholder="Dropbox app key (client id)"
+                  onChange={(event) =>
+                    setConnectClientId(event.target.value)
+                  }
+                />
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={cloudBusy || !connectClientId.trim()}
+                  onClick={() => void beginDropboxAuthorization()}
+                >
+                  1. Authorize in Dropbox
+                </button>
+
+                {dropboxAuthorizeUrl && (
+                  <>
+                    <a
+                      className="ghost-button"
+                      href={dropboxAuthorizeUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open Dropbox authorization
+                    </a>
+                    <input
+                      value={dropboxAuthorizeUrl}
+                      readOnly
+                      aria-label="Dropbox authorization URL"
+                    />
+                    <input
+                      value={dropboxAuthorizationCode}
+                      disabled={cloudBusy}
+                      autoComplete="off"
+                      placeholder="Paste the authorization code shown by Dropbox"
+                      onChange={(event) =>
+                        setDropboxAuthorizationCode(event.target.value)
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={
+                        cloudBusy ||
+                        !dropboxAuthorizationCode.trim() ||
+                        !dropboxPkceVerifier.trim()
+                      }
+                      onClick={() =>
+                        void connectDropboxAuthorization()
+                      }
+                    >
+                      {cloudBusy
+                        ? "Connecting…"
+                        : "2. Connect Dropbox"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             <input
               value={connectToken}
               disabled={cloudBusy}
               type="password"
               autoComplete="off"
-              placeholder="OAuth access token (optional if refresh token is configured)"
+              placeholder={
+                connectProvider === "dropbox"
+                  ? "Manual Dropbox access token (advanced)"
+                  : "OAuth access token (optional if refresh token is configured)"
+              }
               onChange={(event) =>
                 setConnectToken(event.target.value)
               }
@@ -5723,14 +5886,16 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   setConnectRefreshToken(event.target.value)
                 }
               />
-              <input
-                value={connectClientId}
-                disabled={cloudBusy}
-                placeholder="OAuth client id"
-                onChange={(event) =>
-                  setConnectClientId(event.target.value)
-                }
-              />
+              {connectProvider !== "dropbox" && (
+                <input
+                  value={connectClientId}
+                  disabled={cloudBusy}
+                  placeholder="OAuth client id"
+                  onChange={(event) =>
+                    setConnectClientId(event.target.value)
+                  }
+                />
+              )}
               <input
                 value={connectClientSecret}
                 disabled={cloudBusy}
