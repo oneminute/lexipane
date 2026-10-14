@@ -156,6 +156,16 @@ export interface Ed2kStartResult {
   started: boolean;
 }
 
+export interface ManagedAmuleEnqueueProbe {
+  name: string;
+  size: number;
+  hash: string;
+  runtimeReady: boolean;
+  addOutput: string;
+  queueVerified: boolean;
+  queueOutput: string;
+}
+
 function requireDesktop() {
   if (!isTauri()) {
     throw new Error("ED2K sidecar control requires the desktop application.");
@@ -243,6 +253,16 @@ export async function searchEd2k(
     query,
     searchType,
   });
+}
+
+export async function probeManagedAmuleAddLink(
+  link: string,
+): Promise<ManagedAmuleEnqueueProbe> {
+  requireDesktop();
+  return invoke<ManagedAmuleEnqueueProbe>(
+    "resource_ed2k_runtime_probe_add_link",
+    { link },
+  );
 }
 
 export async function addEd2kLink(
