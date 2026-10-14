@@ -63,6 +63,14 @@
       ]
     },
     "sql:default",
-    "sql:allow-execute"
+    "sql:allow-execute",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://www.dropbox.com/oauth2/authorize*"
+        }
+      ]
+    }
   ]
 }
