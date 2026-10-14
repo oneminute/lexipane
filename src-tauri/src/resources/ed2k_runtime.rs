@@ -238,6 +238,22 @@ fn queue_contains_hash(output: &str, hash: &str) -> bool {
         .any(|token| token.trim().eq_ignore_ascii_case(&target))
 }
 
+fn incoming_file_complete(
+    path: &Path,
+    expected_size: Option<u64>,
+) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+
+    expected_size
+        .map(|expected| metadata.len() >= expected)
+        .unwrap_or(metadata.len() > 0)
+}
+
 fn bounded_text(value: String) -> String {
     const LIMIT: usize = 4096;
     if value.len() <= LIMIT {
@@ -838,11 +854,30 @@ pub async fn resource_ed2k_runtime_reattach_link_job(
     let queue_output = runtime_manager
         .run_ready_command(&app, "Show DL")
         .await?;
-    if !queue_contains_hash(&queue_output, &normalized_hash) {
+    let config = runtime_manager.connection_config(&app).await?;
+    let incoming_complete = config
+        .incoming_dir
+        .as_deref()
+        .map(PathBuf::from)
+        .map(|directory| directory.join(&name))
+        .map(|path| incoming_file_complete(&path, size))
+        .unwrap_or(false);
+
+    let in_queue = queue_contains_hash(&queue_output, &normalized_hash);
+    if !in_queue && !incoming_complete {
         return Ok(false);
     }
 
-    let config = runtime_manager.connection_config(&app).await?;
+    let requested_paused = paused.unwrap_or(false);
+    if in_queue && requested_paused {
+        runtime_manager
+            .run_ready_command(
+                &app,
+                &format!("Pause {normalized_hash}"),
+            )
+            .await?;
+    }
+
     attach_existing_ed2k_job(
         app,
         manager,
@@ -851,7 +886,7 @@ pub async fn resource_ed2k_runtime_reattach_link_job(
         name,
         size,
         Some(normalized_hash),
-        paused.unwrap_or(false),
+        requested_paused && in_queue,
     )
     .await
 }
@@ -879,6 +914,24 @@ mod tests {
         let bounded = bounded_text(large);
         assert!(bounded.len() < 4200);
         assert!(bounded.contains("output truncated"));
+    }
+
+    #[test]
+    fn recognizes_completed_managed_incoming_files() {
+        let root = std::env::temp_dir().join(format!(
+            "lexipane-managed-incoming-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("Book.epub");
+        fs::write(&path, vec![0_u8; 16]).unwrap();
+
+        assert!(incoming_file_complete(&path, Some(16)));
+        assert!(!incoming_file_complete(&path, Some(17)));
+        assert!(incoming_file_complete(&path, None));
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
