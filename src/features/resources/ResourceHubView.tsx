@@ -1,3 +1,4 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelHttpDownload,
@@ -1670,31 +1671,79 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
   async function beginDropboxAuthorization() {
     setMessage("");
+    if (!isTauri()) {
+      setMessage("Dropbox automatic sign-in requires the LexiPane desktop application.");
+      return;
+    }
+    if (!connectClientId.trim()) {
+      setMessage("Configure the Dropbox app key before signing in.");
+      return;
+    }
 
+    setCloudBusy(true);
     try {
+      const redirectUri = "http://127.0.0.1:53682/dropbox/callback";
       const authorization = await createDropboxPkceAuthorization(
         connectClientId,
+        redirectUri,
       );
+      if (!authorization.state) {
+        throw new Error("Dropbox authorization state is missing.");
+      }
+
+      const listener = await invoke<{ redirectUri: string }>(
+        "resource_dropbox_oauth_start",
+        { state: authorization.state },
+      );
+      if (listener.redirectUri !== redirectUri) {
+        throw new Error("Unexpected Dropbox callback redirect URI.");
+      }
       setDropboxPkceVerifier(authorization.codeVerifier);
       setDropboxAuthorizeUrl(authorization.authorizeUrl);
       setDropboxAuthorizationCode("");
 
-      const opened = window.open(
+      window.open(
         authorization.authorizeUrl,
         "_blank",
         "noopener,noreferrer",
       );
-      if (!opened) {
-        setMessage(
-          "Dropbox authorization link created. Open the link shown below in your browser.",
-        );
-      }
+      setMessage("Complete Dropbox authorization in the browser; LexiPane will connect automatically.");
+
+      const code = await invoke<string>(
+        "resource_dropbox_oauth_wait",
+        { state: authorization.state },
+      );
+      const account = await connectDropboxWithAuthorizationCode(
+        connectDisplayName,
+        code,
+        connectClientId,
+        authorization.codeVerifier,
+        redirectUri,
+      );
+      setDropboxAuthorizationCode("");
+      setDropboxPkceVerifier("");
+      setDropboxAuthorizeUrl("");
+      setConnectToken("");
+      setConnectRefreshToken("");
+      setConnectClientSecret("");
+      setConnectDisplayName("");
+      await refreshResourceCore();
+      setActiveCloudAccountId(account.id);
+      const result = await browseCloudAccount(account);
+      setCloudEntries(result.entries);
+      setCloudFolder(undefined);
+      setCloudFolderStack([{ label: "Root" }]);
+      setCloudQuery("");
+      setTab("browse");
+      setMessage("Dropbox connected. Your books are ready to browse.");
     } catch (error) {
       setMessage(
         error instanceof Error
           ? error.message
-          : "Unable to create Dropbox authorization link.",
+          : "Unable to complete Dropbox sign-in.",
       );
+    } finally {
+      setCloudBusy(false);
     }
   }
 
@@ -5822,10 +5871,10 @@ export function ResourceHubView({ onOpenBook }: Props) {
               <div className="dropbox-oauth-card">
                 <strong>Recommended: connect Dropbox with PKCE</strong>
                 <small>
-                  Enter your Dropbox app key. LexiPane opens Dropbox
-                  authorization without requiring a client secret, then stores
-                  the returned refresh token in the native secure credential
-                  store.
+                  Sign in through your system browser. LexiPane receives the
+                  authorization callback automatically and stores the refresh
+                  token securely. The Dropbox app key is configured once by
+                  the developer.
                 </small>
                 <input
                   value={connectClientId}
@@ -5841,7 +5890,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   disabled={cloudBusy || !connectClientId.trim()}
                   onClick={() => void beginDropboxAuthorization()}
                 >
-                  1. Authorize in Dropbox
+                  Sign in with Dropbox
                 </button>
 
                 {dropboxAuthorizeUrl && (
@@ -5863,7 +5912,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       value={dropboxAuthorizationCode}
                       disabled={cloudBusy}
                       autoComplete="off"
-                      placeholder="Paste the authorization code shown by Dropbox"
+                      placeholder="Manual fallback: paste Dropbox authorization code"
                       onChange={(event) =>
                         setDropboxAuthorizationCode(event.target.value)
                       }
