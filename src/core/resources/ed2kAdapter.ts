@@ -11,6 +11,7 @@ import {
   downloadEd2kSearchResult,
   getEd2kStatus,
   pauseEd2kJob,
+  reattachManagedAmuleLinkJob,
   resumeEd2kJob,
   searchEd2k,
   startManagedAmuleLinkJob,
@@ -639,13 +640,6 @@ function isManagedRuntimeJob(job: TransferJob): boolean {
   return job.resumeData?.ed2kRuntime === "managed";
 }
 
-function managedJobUnavailableMessage(): string {
-  return (
-    "This managed ED2K job is no longer attached to the current LexiPane " +
-    "runtime session. Restart recovery will be added in a later milestone."
-  );
-}
-
 async function accountForJob(
   job: TransferJob,
 ): Promise<Ed2kEngineAccount> {
@@ -669,7 +663,6 @@ export async function reattachEd2kTransfer(
   job: TransferJob,
   paused = false,
 ): Promise<boolean> {
-  const account = await accountForJob(job);
   const name =
     typeof job.resumeData?.name === "string"
       ? job.resumeData.name
@@ -685,6 +678,17 @@ export async function reattachEd2kTransfer(
 
   if (!name) return false;
 
+  if (isManagedRuntimeJob(job)) {
+    if (!hash) return false;
+    return reattachManagedAmuleLinkJob(job.id, {
+      name,
+      size,
+      hash,
+      paused,
+    });
+  }
+
+  const account = await accountForJob(job);
   return attachEd2kJob(
     job.id,
     await ed2kConfigForAccount(account),
@@ -695,14 +699,6 @@ export async function reattachEd2kTransfer(
 export async function pauseEd2kTransfer(
   job: TransferJob,
 ): Promise<void> {
-  if (isManagedRuntimeJob(job)) {
-    const paused = await pauseEd2kJob(job.id);
-    if (!paused) {
-      throw new Error(managedJobUnavailableMessage());
-    }
-    return;
-  }
-
   const attached = await reattachEd2kTransfer(job, false);
   if (!attached) {
     throw new Error("The ED2K job is no longer present in aMule.");
@@ -713,21 +709,14 @@ export async function pauseEd2kTransfer(
 export async function resumeEd2kTransfer(
   job: TransferJob,
 ): Promise<void> {
-  if (isManagedRuntimeJob(job)) {
-    const resumed = await resumeEd2kJob(job.id);
-    if (!resumed) {
-      throw new Error(managedJobUnavailableMessage());
-    }
-  } else {
-    const attached = await reattachEd2kTransfer(job, true);
-    if (!attached) {
-      throw new Error(
-        "The ED2K job is no longer present in aMule. Re-add the link or search result.",
-      );
-    }
-    await resumeEd2kJob(job.id);
+  const attached = await reattachEd2kTransfer(job, true);
+  if (!attached) {
+    throw new Error(
+      "The ED2K job is no longer present in aMule. Re-add the link or search result.",
+    );
   }
 
+  await resumeEd2kJob(job.id);
   await updateTransferJob(job.id, {
     state: "running",
     error: null,
@@ -738,16 +727,9 @@ export async function resumeEd2kTransfer(
 export async function cancelEd2kTransfer(
   job: TransferJob,
 ): Promise<void> {
-  if (isManagedRuntimeJob(job)) {
-    const canceled = await cancelEd2kJob(job.id);
-    if (!canceled) {
-      throw new Error(managedJobUnavailableMessage());
-    }
-  } else {
-    const attached = await reattachEd2kTransfer(job, false);
-    if (attached) {
-      await cancelEd2kJob(job.id);
-    }
+  const attached = await reattachEd2kTransfer(job, false);
+  if (attached) {
+    await cancelEd2kJob(job.id);
   }
 
   await updateTransferJob(job.id, {
