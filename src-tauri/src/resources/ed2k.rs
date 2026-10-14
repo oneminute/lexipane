@@ -1314,6 +1314,50 @@ pub async fn resource_ed2k_download_result(
     })
 }
 
+pub(crate) async fn ed2k_job_is_attached(
+    manager: &Ed2kManager,
+    job_id: &str,
+) -> bool {
+    manager.get(job_id).await.is_some()
+}
+
+pub(crate) async fn attach_existing_ed2k_job(
+    app: AppHandle,
+    manager: Ed2kManager,
+    job_id: String,
+    config: Ed2kConnectionConfig,
+    name: String,
+    size: Option<u64>,
+    hash: Option<String>,
+    paused: bool,
+) -> Result<bool, String> {
+    if manager.get(&job_id).await.is_some() {
+        return Ok(true);
+    }
+
+    manager
+        .insert(
+            job_id.clone(),
+            Ed2kRuntimeJob {
+                config: config.clone(),
+                name: name.clone(),
+                size,
+                hash,
+                incoming_path: incoming_path(&config, &name),
+                paused,
+            },
+        )
+        .await?;
+
+    let spawned_manager = manager.clone();
+    let spawned_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        monitor_job(spawned_app, spawned_manager, job_id).await;
+    });
+
+    Ok(true)
+}
+
 #[tauri::command]
 pub async fn resource_ed2k_attach(
     app: AppHandle,
@@ -1344,27 +1388,17 @@ pub async fn resource_ed2k_attach(
         return Ok(false);
     }
 
-    manager
-        .insert(
-            job_id.clone(),
-            Ed2kRuntimeJob {
-                config: config.clone(),
-                name: name.clone(),
-                size,
-                hash,
-                incoming_path: incoming_path(&config, &name),
-                paused: paused.unwrap_or(false),
-            },
-        )
-        .await?;
-
-    let spawned_manager = manager.clone();
-    let spawned_app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        monitor_job(spawned_app, spawned_manager, job_id).await;
-    });
-
-    Ok(true)
+    attach_existing_ed2k_job(
+        app,
+        manager,
+        job_id,
+        config,
+        name,
+        size,
+        hash,
+        paused.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]
