@@ -1,3 +1,4 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1704,14 +1705,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
       setDropboxAuthorizeUrl(authorization.authorizeUrl);
       setDropboxAuthorizationCode("");
 
-      const opened = window.open(
-        authorization.authorizeUrl,
-        "_blank",
-        "noopener,noreferrer",
-      );
-      setMessage(opened
-        ? "Complete Dropbox authorization in the browser; LexiPane will connect automatically."
-        : "Open the Dropbox authorization link below to finish signing in; LexiPane will connect automatically.");
+      await openUrl(authorization.authorizeUrl);
+      setMessage("Complete Dropbox authorization in your default browser; LexiPane will connect automatically.");
 
       const code = await invoke<string>(
         "resource_dropbox_oauth_wait",
