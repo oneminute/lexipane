@@ -5425,8 +5425,14 @@ button { cursor: pointer; }
 .mobile-reader-tabs { display: none; }
 @media (max-width: 760px) {
   .app-shell {
+    /* Android 15+ draws WebView underneath system bars. Reserve their real
+       reported insets once, at the shell boundary, before splitting panels. */
     height: 100dvh;
+    min-height: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
   }
   .app-shell:not(.app-shell-reading) .sidebar {
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
@@ -5469,7 +5475,21 @@ button { cursor: pointer; }
   }
   .reader-page .ai-pane-header { padding: 8px 12px; }
   .reader-page .ask-box {
-    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    padding-bottom: 10px;
   }
   .reader-page .reader-statusbar { min-height: 30px; }
+}
+
+/* The reader lives in the padded viewport; fixed menus also avoid the status bar. */
+@media (max-width: 760px) {
+  .app-shell-reading .reader-navigation-panel {
+    max-height: calc(100% - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+  .reader-settings-panel,
+  .ai-settings-panel {
+    top: calc(60px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    max-height: calc(100dvh - 84px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
 }
