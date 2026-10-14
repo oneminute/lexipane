@@ -444,7 +444,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [connectDisplayName, setConnectDisplayName] = useState("");
   const [connectToken, setConnectToken] = useState("");
   const [connectRefreshToken, setConnectRefreshToken] = useState("");
-  const [connectClientId, setConnectClientId] = useState("");
+  const [connectClientId, setConnectClientId] = useState(
+    import.meta.env.VITE_DROPBOX_APP_KEY ?? "",
+  );
   const [connectClientSecret, setConnectClientSecret] = useState("");
   const [connectTenant, setConnectTenant] = useState("common");
   const [dropboxPkceVerifier, setDropboxPkceVerifier] = useState("");
@@ -1702,12 +1704,14 @@ export function ResourceHubView({ onOpenBook }: Props) {
       setDropboxAuthorizeUrl(authorization.authorizeUrl);
       setDropboxAuthorizationCode("");
 
-      window.open(
+      const opened = window.open(
         authorization.authorizeUrl,
         "_blank",
         "noopener,noreferrer",
       );
-      setMessage("Complete Dropbox authorization in the browser; LexiPane will connect automatically.");
+      setMessage(opened
+        ? "Complete Dropbox authorization in the browser; LexiPane will connect automatically."
+        : "Open the Dropbox authorization link below to finish signing in; LexiPane will connect automatically.");
 
       const code = await invoke<string>(
         "resource_dropbox_oauth_wait",
@@ -5876,14 +5880,16 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   token securely. The Dropbox app key is configured once by
                   the developer.
                 </small>
-                <input
-                  value={connectClientId}
-                  disabled={cloudBusy}
-                  placeholder="Dropbox app key (client id)"
-                  onChange={(event) =>
-                    setConnectClientId(event.target.value)
-                  }
-                />
+                {!import.meta.env.VITE_DROPBOX_APP_KEY && (
+                  <input
+                    value={connectClientId}
+                    disabled={cloudBusy}
+                    placeholder="Dropbox app key (developer setup)"
+                    onChange={(event) =>
+                      setConnectClientId(event.target.value)
+                    }
+                  />
+                )}
                 <button
                   type="button"
                   className="ghost-button"
