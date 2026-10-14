@@ -84,6 +84,18 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 ### Active product priority
 
+**RESOURCE-006R3 — Managed aMule runtime readiness/control handshake**
+
+Status: **IN_PROGRESS**
+
+Selected scope:
+
+- use the staged bundled `amulecmd` to prove the managed `amuled` External Connections endpoint is actually ready after process start;
+- execute `Status` with the same ephemeral control password used to generate the managed `amule.conf`;
+- expose readiness and the latest bounded status output through the existing runtime status response;
+- stop the managed core with the official `Shutdown` command first, then fall back to terminating the tracked child only when graceful shutdown does not complete;
+- keep this milestone strictly at lifecycle/control readiness: do not add ED2K links, searches, queue control, or normal download routing.
+
 **RESOURCE-006R2 — Reproducible aMule runtime packaging**
 
 Status: **VERIFYING**
@@ -104,17 +116,16 @@ Validation / evidence:
 
 - the updated CI PowerShell parser has successfully parsed both the existing launcher and the new runtime-preparation script;
 - frontend typecheck, tests, and build are passing on the final R2 code path;
-- Linux and Windows Rust check/test jobs are still executing on the final CI run and have not reported a failure.
+- final repository CI completed successfully for the R2 code path, including Frontend checks, PowerShell parsing, Linux Rust check/tests, and Windows Rust check/tests.
 
 Remaining verification:
 
-- final Linux and Windows Rust jobs must complete successfully;
 - run `.\scripts\windows\prepare-amule-runtime.ps1` on Windows and confirm the pinned archive downloads, SHA-256 matches, and `src-tauri/runtime/amule/amuled.exe` plus `amulecmd.exe` and their runtime dependencies are staged;
 - after that smoke test, RESOURCE-006R2 can be marked COMPLETE; download routing remains outside this task.
 
-Next selected task after R2 verification:
+R2 remaining local verification:
 
-- **RESOURCE-006R3 — managed runtime readiness/control handshake**: start the staged `amuled`, verify local EC readiness using the bundled `amulecmd`, and stop it cleanly. Do not reroute normal ED2K downloads until readiness is proven.
+- the repository/CI implementation is complete; only the real Windows staging smoke remains. That smoke does not block implementing the R3 control path, but R2 remains VERIFYING until it is executed.
 
 **RESOURCE-006R1 — Bundled aMule managed runtime lifecycle**
 
