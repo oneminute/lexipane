@@ -718,29 +718,30 @@ export function ResourceHubView({ onOpenBook }: Props) {
       return !managedEd2kRestoreAttemptedRef.current.has(job.id);
     });
 
-    await Promise.all(
-      candidates.map(async (job) => {
-        managedEd2kRestoreAttemptedRef.current.add(job.id);
-        try {
-          const attached = await reattachEd2kTransfer(
-            job,
-            job.state === "paused",
-          );
-          if (!attached) {
-            console.warn(
-              "Managed ED2K job could not be recovered from queue or Incoming:",
-              job.id,
-            );
-          }
-        } catch (error) {
+    for (const job of candidates) {
+      managedEd2kRestoreAttemptedRef.current.add(job.id);
+    }
+
+    for (const job of candidates) {
+      try {
+        const attached = await reattachEd2kTransfer(
+          job,
+          job.state === "paused",
+        );
+        if (!attached) {
           console.warn(
-            "Unable to restore managed ED2K job after restart:",
+            "Managed ED2K job could not be recovered from queue or Incoming:",
             job.id,
-            error,
           );
         }
-      }),
-    );
+      } catch (error) {
+        console.warn(
+          "Unable to restore managed ED2K job after restart:",
+          job.id,
+          error,
+        );
+      }
+    }
   }
 
   async function refreshResourceCore() {
