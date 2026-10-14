@@ -1,4 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
+import { appDataDir, join } from "@tauri-apps/api/path";
 import { initializeDatabase } from "../db/database";
 import { computeBookFileHash } from "./fileIdentity";
 import {
@@ -54,6 +55,8 @@ export async function registerBookFile(path: string): Promise<LibraryBook | null
   if (!db) return null;
 
   const now = new Date().toISOString();
+  const managedLibrary = await join(await appDataDir(), "library");
+  const isManagedImport = /Android/i.test(navigator.userAgent) && path.startsWith(managedLibrary + (managedLibrary.includes("\\") ? "\\" : "/"));
   const format = getBookExtension(path) || "unknown";
   const title = titleFromPath(path);
 
@@ -68,8 +71,8 @@ export async function registerBookFile(path: string): Promise<LibraryBook | null
 
     await db.execute(
       "UPDATE books SET format = $2, file_hash = COALESCE(file_hash, $3), " +
-        "last_opened_at = $4 WHERE id = $1",
-      [existingPath[0].id, format, fileHash, now],
+        "last_opened_at = $4, managed_copy = CASE WHEN $5 = 1 THEN 1 ELSE managed_copy END WHERE id = $1",
+      [existingPath[0].id, format, fileHash, now, isManagedImport ? 1 : 0],
     );
 
     const rows = await db.select<LibraryBook[]>(
@@ -98,8 +101,8 @@ export async function registerBookFile(path: string): Promise<LibraryBook | null
         await db.execute(
           "UPDATE books SET file_path = $2, format = $3, " +
             "title = CASE WHEN title IS NULL OR TRIM(title) = '' THEN $4 ELSE title END, " +
-            "last_opened_at = $5 WHERE id = $1",
-          [existingHash[0].id, path, format, title, now],
+            "last_opened_at = $5, managed_copy = $6 WHERE id = $1",
+          [existingHash[0].id, path, format, title, now, isManagedImport ? 1 : 0],
         );
       }
 
@@ -116,9 +119,9 @@ export async function registerBookFile(path: string): Promise<LibraryBook | null
 
   await db.execute(
     "INSERT INTO books " +
-      "(id, file_path, file_hash, format, title, added_at, last_opened_at) " +
-      "VALUES ($1, $2, $3, $4, $5, $6, $6)",
-    [id, path, fileHash, format, title, now],
+      "(id, file_path, file_hash, format, title, added_at, last_opened_at, managed_copy) " +
+      "VALUES ($1, $2, $3, $4, $5, $6, $6, $7)",
+    [id, path, fileHash, format, title, now, isManagedImport ? 1 : 0],
   );
 
   const rows = await db.select<LibraryBook[]>(
@@ -181,15 +184,18 @@ export async function relinkLibraryBook(
     throw new Error("That file is already linked to another library entry.");
   }
 
+  const managedDir = await join(await appDataDir(), "library");
+  const importedManaged = /Android/i.test(navigator.userAgent) && path.startsWith(managedDir + (managedDir.includes("\\") ? "\\" : "/"));
   await db.execute(
     "UPDATE books SET file_path = $2, file_hash = $3, format = $4, " +
-      "managed_copy = 0, last_opened_at = $5 WHERE id = $1",
+      "managed_copy = $6, last_opened_at = $5 WHERE id = $1",
     [
       bookId,
       path,
       fileHash,
       getBookExtension(path) || book.format,
       new Date().toISOString(),
+      importedManaged ? 1 : 0,
     ],
   );
 

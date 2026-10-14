@@ -16,7 +16,6 @@ tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-ssh2 = "0.9"
 futures-util = "0.3"
 flate2 = "1"
 fs2 = "0.4"
@@ -24,7 +23,6 @@ hmac = "0.12"
 md-5 = "0.10"
 md4 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-librqbit = "9.0.1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json", "gzip", "brotli", "deflate"] }
 roxmltree = "0.20"
 tokio = { version = "1", features = ["fs", "io-util", "sync", "time", "process", "net"] }
@@ -36,6 +34,12 @@ tauri-plugin-fs = "2"
 tauri-plugin-http = { version = "2", features = ["unsafe-headers"] }
 tauri-plugin-persisted-scope = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+
+# Desktop-only transfer engines. ssh2 pulls in native OpenSSL/libssh2,
+# which cannot be linked from the Windows host for an Android target.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+ssh2 = "0.9"
+librqbit = "9.0.1"
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }

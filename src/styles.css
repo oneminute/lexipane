@@ -5455,3 +5455,77 @@ button { cursor: pointer; }
     max-height: calc(100% - 28px);
   }
 }
+
+
+/* Mobile layout: simultaneous reading + AI, each independently scrollable. */
+.mobile-reader-tabs { display: none; }
+@media (max-width: 760px) {
+  .app-shell {
+    /* Android 15+ draws WebView underneath system bars. Reserve their real
+       reported insets once, at the shell boundary, before splitting panels. */
+    height: 100dvh;
+    min-height: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .app-shell:not(.app-shell-reading) .sidebar {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .app-shell-reading .sidebar { display: none; }
+  .app-shell-reading .main-content {
+    height: 100%;
+    min-height: 0;
+    padding-bottom: 0;
+  }
+  .app-shell-reading .reader-page {
+    display: grid;
+    grid-template-rows: 52px minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+  }
+  .reader-page .split-reader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .reader-page .document-pane,
+  .reader-page .ai-pane {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .reader-page .document-pane { border-bottom: 1px solid #dfe1e6; }
+  .reader-page .document-stage { min-height: 0; overflow: auto; }
+  .reader-page .ai-pane {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    border: 0;
+  }
+  .reader-page .ai-pane-header { padding: 8px 12px; }
+  .reader-page .ask-box {
+    padding-bottom: 10px;
+  }
+  .reader-page .reader-statusbar { min-height: 30px; }
+}
+
+/* The reader lives in the padded viewport; fixed menus also avoid the status bar. */
+@media (max-width: 760px) {
+  .app-shell-reading .reader-navigation-panel {
+    max-height: calc(100% - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+  .reader-settings-panel,
+  .ai-settings-panel {
+    top: calc(60px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    max-height: calc(100dvh - 84px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
+}

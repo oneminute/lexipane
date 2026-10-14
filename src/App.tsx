@@ -88,9 +88,15 @@ export default function App() {
   );
 
   const openBook = useCallback(async () => {
-    const path = await chooseBookFile();
-    if (!path) return;
-    await openBookPath(path);
+    try {
+      const path = await chooseBookFile();
+      if (!path) return;
+      await openBookPath(path);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error("Unable to import book", error);
+      window.alert("Unable to import this book: " + detail);
+    }
   }, [openBookPath]);
 
   useEffect(() => {
@@ -118,7 +124,7 @@ export default function App() {
   }, [openBookPath]);
 
   return (
-    <div className="app-shell">
+    <div className={view === "reader" ? "app-shell app-shell-reading" : "app-shell"}>
       <AppSidebar activeView={view} onNavigate={setView} onOpenBook={openBook} />
 
       <main className="main-content">

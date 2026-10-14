@@ -25,6 +25,28 @@
         }
       ]
     },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        {
+          "path": "$APPDATA/library/*"
+        },
+        {
+          "path": "$APPDATA/library/**/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        {
+          "path": "$APPDATA/library"
+        },
+        {
+          "path": "$APPDATA/library/**/*"
+        }
+      ]
+    },
     "fs:allow-write-text-file",
     {
       "identifier": "http:default",
