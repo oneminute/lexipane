@@ -228,7 +228,6 @@ export function ReaderView({
   onOpenBook,
   onBackToLibrary,
 }: Props) {
-  const [mobileReaderTab, setMobileReaderTab] = useState<"book" | "ai">("book");
   const [scale, setScale] = useState(1.1);
   const [epubFontScale, setEpubFontScale] = useState<number>(
     APP_DEFAULTS.reading.ebook.fontScale,
@@ -2699,7 +2698,7 @@ export function ReaderView({
   }
 
   return (
-    <section className={`reader-page mobile-reader-${mobileReaderTab}`}>
+    <section className="reader-page">
       <header className="reader-toolbar">
         <div className="reader-title">
           <button className="text-button" onClick={onBackToLibrary}>
@@ -2890,10 +2889,6 @@ export function ReaderView({
         </div>
       </header>
 
-      <nav className="mobile-reader-tabs" aria-label="Reader panels">
-        <button type="button" className={mobileReaderTab === "book" ? "active" : ""} aria-pressed={mobileReaderTab === "book"} onClick={() => setMobileReaderTab("book")}>Book</button>
-        <button type="button" className={mobileReaderTab === "ai" ? "active" : ""} aria-pressed={mobileReaderTab === "ai"} onClick={() => setMobileReaderTab("ai")}>AI assistant</button>
-      </nav>
       <div className="split-reader">
         <section className="document-pane">
           {(tocOpen || bookmarksOpen) && (
