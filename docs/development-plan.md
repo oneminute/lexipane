@@ -84,6 +84,19 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 ### Active product priority
 
+**RESOURCE-006R4.1 — Managed aMule link enqueue probe**
+
+Status: **IN_PROGRESS**
+
+Selected scope:
+
+- reuse the existing ED2K link parser to validate one canonical file link;
+- ensure the managed aMule runtime is EC-ready;
+- submit the link through bundled `amulecmd Add`;
+- query `Show DL` and verify the expected ED2K hash appears in the managed queue;
+- expose the probe through one backend command and one TypeScript transport wrapper;
+- do not attach the job to `Ed2kManager`, monitor progress, modify Download Manager UI, or reroute normal ED2K downloads yet.
+
 **RESOURCE-006R3 — Managed aMule runtime readiness/control handshake**
 
 Status: **VERIFYING**
@@ -107,16 +120,15 @@ Current boundary:
 Validation / evidence:
 
 - commit `b9bf3cdb` contains the R3 readiness/control implementation;
-- active CI has begun for the final code commit; frontend typecheck/tests are passing so far, while frontend build and Linux/Windows Rust gates are still running.
+- final CI run 38501701896 for commit `b9bf3cdb` completed successfully with Frontend checks, Linux Rust check/tests, and Windows Rust check/tests all passing.
 
 Remaining verification:
 
-- final Frontend, Linux Rust, and Windows Rust CI gates must complete successfully;
 - on Windows, run the R2 preparation script, start the managed runtime through LexiPane, confirm `ready=true` and a real `Status` response, then stop it and confirm the daemon exits without fallback termination.
 
-Next selected task after R3 live verification:
+R3 remaining local verification:
 
-- **RESOURCE-006R4 — managed transfer adapter**: reuse the existing ED2K transfer UI/contracts but construct its control configuration from the managed runtime, beginning with adding one known ED2K link and reading its queue state. Do not remove the native discovery path.
+- cross-platform code/CI verification is complete; a live Windows staged-runtime smoke remains. R4.1 may proceed because it builds on the same bounded EC control path, but R3 stays VERIFYING until the real bundled runtime is exercised.
 
 **RESOURCE-006R2 — Reproducible aMule runtime packaging**
 
