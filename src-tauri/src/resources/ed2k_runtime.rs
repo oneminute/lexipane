@@ -863,10 +863,19 @@ pub async fn resource_ed2k_runtime_reattach_link_job(
         .map(|path| incoming_file_complete(&path, size))
         .unwrap_or(false);
 
-    if !queue_contains_hash(&queue_output, &normalized_hash)
-        && !incoming_complete
-    {
+    let in_queue = queue_contains_hash(&queue_output, &normalized_hash);
+    if !in_queue && !incoming_complete {
         return Ok(false);
+    }
+
+    let requested_paused = paused.unwrap_or(false);
+    if in_queue && requested_paused {
+        runtime_manager
+            .run_ready_command(
+                &app,
+                &format!("Pause {normalized_hash}"),
+            )
+            .await?;
     }
 
     attach_existing_ed2k_job(
@@ -877,7 +886,7 @@ pub async fn resource_ed2k_runtime_reattach_link_job(
         name,
         size,
         Some(normalized_hash),
-        paused.unwrap_or(false),
+        requested_paused && in_queue,
     )
     .await
 }
