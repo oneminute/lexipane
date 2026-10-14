@@ -849,18 +849,20 @@ mod tests {
             temp_dir: root.join("temp"),
         };
 
+        let expected_command = path_string(&layout.command_path);
+        let expected_incoming = path_string(&layout.incoming_dir);
         let config =
             managed_connection_config(&layout, "secret".to_string());
         assert_eq!(
             config.executable.as_deref(),
-            Some(path_string(&layout.command_path).as_str())
+            Some(expected_command.as_str())
         );
         assert_eq!(config.host.as_deref(), Some("127.0.0.1"));
         assert_eq!(config.port, Some(EC_PORT));
         assert_eq!(config.password.as_deref(), Some("secret"));
         assert_eq!(
             config.incoming_dir.as_deref(),
-            Some(path_string(&layout.incoming_dir).as_str())
+            Some(expected_incoming.as_str())
         );
     }
 
