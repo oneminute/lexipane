@@ -5421,50 +5421,55 @@ button { cursor: pointer; }
 }
 
 
-/* Android/phone reader: show either document or AI in the available viewport. */
+/* Mobile layout: simultaneous reading + AI, each independently scrollable. */
 .mobile-reader-tabs { display: none; }
 @media (max-width: 760px) {
-  .reader-page {
-    grid-template-rows: 56px 44px minmax(0, 1fr);
+  .app-shell {
+    height: 100dvh;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .app-shell:not(.app-shell-reading) .sidebar {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .app-shell-reading .sidebar { display: none; }
+  .app-shell-reading .main-content {
+    height: 100%;
+    min-height: 0;
     padding-bottom: 0;
   }
-  .mobile-reader-tabs {
+  .app-shell-reading .reader-page {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    padding: 5px 12px;
-    background: #fff;
-    border-bottom: 1px solid #dfe1e6;
+    grid-template-rows: 52px minmax(0, 1fr);
+    height: 100%;
     min-height: 0;
+    padding: 0;
   }
-  .mobile-reader-tabs button {
-    border: 0;
-    border-radius: 8px;
-    color: #545969;
-    background: #f0f1f5;
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .mobile-reader-tabs button.active { color: #fff; background: #4e5384; }
   .reader-page .split-reader {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    min-height: 0;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     height: 100%;
+    min-height: 0;
     overflow: hidden;
   }
-  .mobile-reader-book .ai-pane,
-  .mobile-reader-ai .document-pane { display: none; }
-  .mobile-reader-ai .ai-pane {
+  .reader-page .document-pane,
+  .reader-page .ai-pane {
     display: grid;
+    width: 100%;
     height: 100%;
+    min-width: 0;
     min-height: 0;
-    border-left: 0;
-    border-top: 0;
+    overflow: hidden;
   }
-  .mobile-reader-book .document-pane {
-    height: 100%;
-    min-height: 0;
+  .reader-page .document-pane { border-bottom: 1px solid #dfe1e6; }
+  .reader-page .document-stage { min-height: 0; overflow: auto; }
+  .reader-page .ai-pane {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    border: 0;
   }
-  .mobile-reader-ai .ai-pane-header { padding: 9px 12px; }
+  .reader-page .ai-pane-header { padding: 8px 12px; }
+  .reader-page .ask-box {
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  }
+  .reader-page .reader-statusbar { min-height: 30px; }
 }
