@@ -184,15 +184,18 @@ export async function relinkLibraryBook(
     throw new Error("That file is already linked to another library entry.");
   }
 
+  const managedDir = await join(await appDataDir(), "library");
+  const importedManaged = /Android/i.test(navigator.userAgent) && path.startsWith(managedDir + (managedDir.includes("\\") ? "\\" : "/"));
   await db.execute(
     "UPDATE books SET file_path = $2, file_hash = $3, format = $4, " +
-      "managed_copy = 0, last_opened_at = $5 WHERE id = $1",
+      "managed_copy = $6, last_opened_at = $5 WHERE id = $1",
     [
       bookId,
       path,
       fileHash,
       getBookExtension(path) || book.format,
       new Date().toISOString(),
+      importedManaged ? 1 : 0,
     ],
   );
 
