@@ -6,6 +6,7 @@ import {
   cancelCloudDownload,
   cleanupCloudTransfer,
   cloudEntryIsBook,
+  exchangeCloudAuthorizationCode,
   listCloudEntries,
   pauseCloudDownload,
   refreshCloudAccessToken,
@@ -82,6 +83,49 @@ export async function listConnectedCloudAccounts(): Promise<
     (account): account is ConnectedCloudAccount =>
       isCloudProvider(account.providerId) &&
       account.status === "connected",
+  );
+}
+
+export async function connectDropboxWithAuthorizationCode(
+  displayName: string,
+  authorizationCode: string,
+  appKey: string,
+  codeVerifier: string,
+): Promise<ConnectedCloudAccount> {
+  const normalizedCode = authorizationCode.trim();
+  const normalizedAppKey = appKey.trim();
+  const normalizedVerifier = codeVerifier.trim();
+
+  if (!normalizedCode || !normalizedAppKey || !normalizedVerifier) {
+    throw new Error(
+      "Dropbox authorization code, app key, and PKCE verifier are required.",
+    );
+  }
+
+  const token = await exchangeCloudAuthorizationCode(
+    "dropbox",
+    normalizedCode,
+    normalizedAppKey,
+    normalizedVerifier,
+  );
+
+  if (!token.refreshToken) {
+    throw new Error(
+      "Dropbox did not return a refresh token. Re-authorize with offline access.",
+    );
+  }
+
+  return connectCloudAccount(
+    "dropbox",
+    displayName,
+    token.accessToken,
+    {
+      refreshToken: token.refreshToken,
+      clientId: normalizedAppKey,
+      expiresAt: token.expiresIn
+        ? Date.now() + token.expiresIn * 1000
+        : undefined,
+    },
   );
 }
 
