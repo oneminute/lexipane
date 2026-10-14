@@ -124,7 +124,7 @@ export default function App() {
   }, [openBookPath]);
 
   return (
-    <div className="app-shell">
+    <div className={view === "reader" ? "app-shell app-shell-reading" : "app-shell"}>
       <AppSidebar activeView={view} onNavigate={setView} onOpenBook={openBook} />
 
       <main className="main-content">
