@@ -1,4 +1,5 @@
 pub mod cloud;
+pub mod dropbox_oauth;
 pub mod ed2k;
 pub mod ed2k_native;
 pub mod ed2k_runtime;
