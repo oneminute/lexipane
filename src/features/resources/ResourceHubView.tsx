@@ -151,7 +151,6 @@ import {
   reattachEd2kTransfer,
   resumeEd2kTransfer,
   searchEd2kEngine,
-  startEd2kLinkAcquisition,
   startEd2kSearchResultAcquisition,
   startManagedEd2kLinkAcquisition,
   type Ed2kEngineAccount,
@@ -1242,19 +1241,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
 
     if (result.ed2k) {
       if (result.ed2k.nativeResult) {
-        const nativeResult = result.ed2k.nativeResult;
-        const engine =
-          activeEd2kEngine() ?? ed2kEngines[0] ?? null;
-
-        if (!engine) {
-          await copyNativeEd2kLink(nativeResult);
-          setMessage(
-            "Native ED2K search works without aMule. The ED2K link was copied because the native download engine is the next implementation phase.",
-          );
-          return;
-        }
-
-        await acquireNativeEd2kThroughFallback(nativeResult);
+        await acquireNativeEd2kWithManagedRuntime(
+          result.ed2k.nativeResult,
+        );
         return;
       }
 
@@ -2890,22 +2879,18 @@ export function ResourceHubView({ onOpenBook }: Props) {
     }
   }
 
-  async function acquireNativeEd2kThroughFallback(
+  async function acquireNativeEd2kWithManagedRuntime(
     result: NativeEd2kSearchResult,
   ) {
-    const engine = activeEd2kEngine();
-    if (!engine) {
-      await copyNativeEd2kLink(result);
-      return;
-    }
+    if (!result.bookCandidate) return;
 
     setEd2kBusy(true);
     setMessage("");
 
     try {
-      await startEd2kLinkAcquisition(engine, result.ed2kLink);
+      await startManagedEd2kLinkAcquisition(result.ed2kLink);
       setMessage(
-        "Native search result passed to the configured aMule fallback for downloading.",
+        "Native ED2K search result started with LexiPane's bundled aMule runtime.",
       );
       setTab("downloads");
       await refreshResourceCore();
@@ -2913,7 +2898,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       setMessage(
         error instanceof Error
           ? error.message
-          : "Unable to pass the ED2K result to the download fallback.",
+          : "Unable to start the native ED2K result with the bundled aMule runtime.",
       );
     } finally {
       setEd2kBusy(false);
@@ -3866,16 +3851,16 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       >
                         Copy ED2K link
                       </button>
-                      {result.bookCandidate && ed2kEngines.length > 0 && (
+                      {result.bookCandidate && (
                         <button
                           type="button"
                           className="primary-button compact"
                           disabled={ed2kBusy}
                           onClick={() =>
-                            void acquireNativeEd2kThroughFallback(result)
+                            void acquireNativeEd2kWithManagedRuntime(result)
                           }
                         >
-                          Download via aMule fallback
+                          Download
                         </button>
                       )}
                     </div>
@@ -4049,27 +4034,30 @@ export function ResourceHubView({ onOpenBook }: Props) {
                   <p>
                     Try fewer or broader keywords. Server, UDP Global Search,
                     Kad keyword search, and selected-file source discovery are
-                    active. Native part/block transfer is the next ED2K phase.
+                    active. Reader-compatible results can download through
+                    LexiPane's bundled aMule runtime.
                   </p>
                 </div>
               )
             )}
 
             <details className="resource-safety-note">
-              <summary>aMule fallback / compatibility backend</summary>
+              <summary>External aMule compatibility backend</summary>
               {ed2kEngines.length === 0 ? (
                 <div>
                   <p>
-                    Native ED2K search does not need aMule. Configure it only
-                    if you want to hand a search result to aMule while the
-                    native download engine is still under development.
+                    Native ED2K/Kad search and native-result downloading use
+                    LexiPane's bundled runtime and do not require an external
+                    aMule account. Configure one here only if you want to use
+                    aMule's own search interface as an optional compatibility
+                    path.
                   </p>
                   <button
                     type="button"
                     className="ghost-button"
                     onClick={() => setTab("accounts")}
                   >
-                    Configure optional aMule fallback
+                    Configure optional external aMule
                   </button>
                 </div>
               ) : (
