@@ -91,6 +91,7 @@ export async function connectDropboxWithAuthorizationCode(
   authorizationCode: string,
   appKey: string,
   codeVerifier: string,
+  redirectUri?: string,
 ): Promise<ConnectedCloudAccount> {
   const normalizedCode = authorizationCode.trim();
   const normalizedAppKey = appKey.trim();
@@ -107,6 +108,7 @@ export async function connectDropboxWithAuthorizationCode(
     normalizedCode,
     normalizedAppKey,
     normalizedVerifier,
+    redirectUri,
   );
 
   if (!token.refreshToken) {
