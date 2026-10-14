@@ -466,6 +466,95 @@ async fn list_or_search(
 }
 
 #[tauri::command]
+pub async fn resource_cloud_exchange_authorization_code(
+    provider: String,
+    authorization_code: String,
+    client_id: String,
+    code_verifier: String,
+    redirect_uri: Option<String>,
+) -> Result<CloudTokenRefreshResult, String> {
+    let provider = provider_id(&provider)?;
+    if provider != "dropbox" {
+        return Err(
+            "Authorization-code exchange is currently implemented for Dropbox only."
+                .to_string(),
+        );
+    }
+
+    let authorization_code = authorization_code.trim();
+    let client_id = client_id.trim();
+    let code_verifier = code_verifier.trim();
+
+    if authorization_code.is_empty()
+        || client_id.is_empty()
+        || code_verifier.is_empty()
+    {
+        return Err(
+            "Dropbox authorization code, app key, and PKCE verifier are required."
+                .to_string(),
+        );
+    }
+
+    let client = client()?;
+    let mut form = vec![
+        ("code", authorization_code.to_string()),
+        ("grant_type", "authorization_code".to_string()),
+        ("client_id", client_id.to_string()),
+        ("code_verifier", code_verifier.to_string()),
+    ];
+
+    if let Some(uri) = redirect_uri
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        form.push(("redirect_uri", uri.to_string()));
+    }
+
+    let response = client
+        .post("https://api.dropboxapi.com/oauth2/token")
+        .form(&form)
+        .send()
+        .await
+        .map_err(|error| {
+            format!("Dropbox authorization-code exchange failed: {error}")
+        })?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| {
+            format!(
+                "Unable to read Dropbox authorization response: {error}"
+            )
+        })?;
+
+    if !status.is_success() {
+        return Err(format!(
+            "Dropbox authorization returned HTTP {}: {}",
+            status.as_u16(),
+            body.chars().take(300).collect::<String>()
+        ));
+    }
+
+    let value: Value = serde_json::from_str(&body).map_err(|error| {
+        format!("Dropbox authorization returned invalid JSON: {error}")
+    })?;
+
+    let access_token = string_field(&value, "access_token").ok_or_else(|| {
+        "Dropbox authorization response did not include access_token."
+            .to_string()
+    })?;
+
+    Ok(CloudTokenRefreshResult {
+        access_token,
+        refresh_token: string_field(&value, "refresh_token"),
+        expires_in: u64_field(&value, "expires_in"),
+    })
+}
+
+#[tauri::command]
 pub async fn resource_cloud_refresh_token(
     provider: String,
     refresh_token: String,
