@@ -21,6 +21,7 @@ fn run_mobile() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             library_files::book_file_sha256,
@@ -57,6 +58,7 @@ fn run_desktop() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             library_files::book_file_sha256,
