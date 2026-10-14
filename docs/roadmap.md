@@ -200,7 +200,7 @@ Next:
 
 ## Phase 8 — Resource Acquisition Platform / Resource Hub
 
-Status: **active — RESOURCE-006R4.3 managed ED2K controls verifying**
+Status: **active — RESOURCE-006R4.4 managed ED2K link UI routing verifying**
 
 Purpose:
 
@@ -218,7 +218,7 @@ Milestones:
 - **RESOURCE-003 — Cloud accounts:** **verifying** — reusable Google Drive/Dropbox/OneDrive account/shared-link infrastructure is implemented; provider activation still depends on real OAuth credentials and live account smoke tests.
 - **RESOURCE-004 — Download Manager hardening:** **in progress** — persistent queue/recovery, pause/resume/cancel, concurrency controls, aggregate status and several transport-specific restart/control paths are implemented; remaining hardening continues after native ED2K acquisition work.
 - **RESOURCE-005 — BitTorrent:** **verifying** — native torrent metadata/file selection/transfer integration is present; broader live-network and restart behavior still needs smoke coverage.
-- **RESOURCE-006 — ED2K:** **verifying / active runtime integration** — native Rust Server Search, UDP Global Search, Kad keyword search, selected-file Server+Kad source discovery, Direct Peer HELLO, and file-identity probing are implemented. LexiPane keeps native discovery while delegating mature queue/part/block/callback/hash/recovery transfer behavior to a LexiPane-managed bundled headless aMule runtime. RESOURCE-006R1 lifecycle management is complete; RESOURCE-006R2 reproducibly stages the pinned Windows x64 runtime; RESOURCE-006R3 proves EC readiness and graceful shutdown; RESOURCE-006R4.1 adds isolated `Add` + `Show DL` hash verification; RESOURCE-006R4.2 attaches verified managed downloads to the existing monitor path; RESOURCE-006R4.3 now hardens the shared Pause/Resume/Cancel path around stable ED2K hash selectors with legacy numeric fallback. UI rerouting remains intentionally unwired.
+- **RESOURCE-006 — ED2K:** **verifying / active runtime integration** — native Rust Server Search, UDP Global Search, Kad keyword search, selected-file Server+Kad source discovery, Direct Peer HELLO, and file-identity probing are implemented. LexiPane keeps native discovery while delegating mature queue/part/block/callback/hash/recovery transfer behavior to a LexiPane-managed bundled headless aMule runtime. RESOURCE-006R1 lifecycle management is complete; RESOURCE-006R2 reproducibly stages the pinned Windows x64 runtime; RESOURCE-006R3 proves EC readiness and graceful shutdown; RESOURCE-006R4.1 adds isolated `Add` + `Show DL` hash verification; RESOURCE-006R4.2 attaches verified managed downloads to the existing monitor path; RESOURCE-006R4.3 hardens shared Pause/Resume/Cancel around stable hash selectors; RESOURCE-006R4.4 now routes only the direct ED2K-link UI through the bundled runtime while keeping native search and external-aMule search-result flows unchanged. Restart reattach remains the next runtime gap.
 - **RESOURCE-007 — Advanced Preview:** **planned** — progressive/partial preview where technically safe and supported.
 - **RESOURCE-008 — Federated Search:** **verifying** — parallel search, merge, filtering, cancellation and provider health/latency diagnostics are implemented; remaining work is provider/live-network hardening.
 - **RESOURCE-009 — Extended Providers:** **in progress** — WebDAV, S3-compatible storage, SFTP and public/open discovery paths are implemented on the shared Resource pipeline; additional providers remain optional extensions.
