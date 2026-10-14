@@ -1,3 +1,4 @@
+use crate::resources::ed2k::parse_ed2k_file_link;
 use md5::{Digest, Md5};
 use serde::Serialize;
 use sha2::Sha256;
@@ -58,6 +59,18 @@ pub struct ManagedAmuleRuntimeStatus {
     pub temp_dir: String,
     pub ec_port: u16,
     pub status_output: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedAmuleEnqueueProbe {
+    pub name: String,
+    pub size: u64,
+    pub hash: String,
+    pub runtime_ready: bool,
+    pub add_output: String,
+    pub queue_verified: bool,
+    pub queue_output: String,
 }
 
 fn executable_name(name: &str) -> String {
@@ -189,6 +202,13 @@ fn write_managed_config(
 
     fs::write(layout.config_dir.join("amule.conf"), content)
         .map_err(|error| format!("Unable to write managed aMule configuration: {error}"))
+}
+
+fn queue_contains_hash(output: &str, hash: &str) -> bool {
+    let target = hash.trim().to_ascii_lowercase();
+    output
+        .split_whitespace()
+        .any(|token| token.trim().eq_ignore_ascii_case(&target))
 }
 
 fn bounded_text(value: String) -> String {
@@ -467,6 +487,61 @@ impl ManagedAmuleRuntimeManager {
         ))
     }
 
+    async fn run_ready_command(
+        &self,
+        app: &AppHandle,
+        command_text: &str,
+    ) -> Result<String, String> {
+        let status = self.start(app).await?;
+        if !status.available {
+            return Err(
+                "Bundled aMule runtime is not prepared. Run the runtime preparation step first."
+                    .to_string(),
+            );
+        }
+        if !status.running || !status.ready {
+            return Err(
+                "Managed aMule runtime is not ready for External Connections."
+                    .to_string(),
+            );
+        }
+
+        let layout = layout(app)?;
+        let password = {
+            let mut process = self.process.lock().await;
+            let Some(managed) = process.as_mut() else {
+                return Err(
+                    "Managed aMule process disappeared before the control command."
+                        .to_string(),
+                );
+            };
+
+            match managed.child.try_wait() {
+                Ok(None) if managed.ready => managed.control_password.clone(),
+                Ok(None) => {
+                    return Err(
+                        "Managed aMule process is running but EC is not ready."
+                            .to_string(),
+                    )
+                }
+                Ok(Some(_)) => {
+                    *process = None;
+                    return Err(
+                        "Managed aMule process exited before the control command."
+                            .to_string(),
+                    );
+                }
+                Err(error) => {
+                    return Err(format!(
+                        "Unable to inspect managed aMule process before the control command: {error}"
+                    ))
+                }
+            }
+        };
+
+        run_control_command(&layout, &password, command_text).await
+    }
+
     async fn stop(
         &self,
         app: &AppHandle,
@@ -566,6 +641,60 @@ pub async fn resource_ed2k_runtime_stop(
     manager.stop(&app).await
 }
 
+#[tauri::command]
+pub async fn resource_ed2k_runtime_probe_add_link(
+    app: AppHandle,
+    manager: State<'_, ManagedAmuleRuntimeManager>,
+    link: String,
+) -> Result<ManagedAmuleEnqueueProbe, String> {
+    let trimmed = link.trim();
+    if trimmed.contains('\n') || trimmed.contains('\r') {
+        return Err("ED2K link contains invalid line breaks.".to_string());
+    }
+
+    let metadata = parse_ed2k_file_link(trimmed)?;
+    if !metadata.book_candidate {
+        return Err(
+            "LexiPane currently imports PDF/EPUB/MOBI/AZW/AZW3 files from ED2K."
+                .to_string(),
+        );
+    }
+
+    let add_output = manager
+        .run_ready_command(&app, &format!("Add {trimmed}"))
+        .await?;
+
+    let mut queue_output = String::new();
+    let mut queue_verified = false;
+    for attempt in 0..4 {
+        if attempt > 0 {
+            sleep(Duration::from_millis(250)).await;
+        }
+        queue_output = manager.run_ready_command(&app, "Show DL").await?;
+        if queue_contains_hash(&queue_output, &metadata.hash) {
+            queue_verified = true;
+            break;
+        }
+    }
+
+    if !queue_verified {
+        return Err(format!(
+            "Managed aMule accepted the ED2K Add command, but the expected hash {} did not appear in Show DL.",
+            metadata.hash
+        ));
+    }
+
+    Ok(ManagedAmuleEnqueueProbe {
+        name: metadata.name,
+        size: metadata.size,
+        hash: metadata.hash,
+        runtime_ready: true,
+        add_output,
+        queue_verified,
+        queue_output,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -589,6 +718,20 @@ mod tests {
         let bounded = bounded_text(large);
         assert!(bounded.len() < 4200);
         assert!(bounded.contains("output truncated"));
+    }
+
+    #[test]
+    fn queue_hash_match_is_case_insensitive_and_token_bounded() {
+        let hash = "0123456789abcdef0123456789abcdef";
+        let output = format!(
+            "{}\tBook.epub\n\t [0.0%] 0/4",
+            hash.to_ascii_uppercase()
+        );
+        assert!(queue_contains_hash(&output, hash));
+        assert!(!queue_contains_hash(
+            "x0123456789abcdef0123456789abcdefy Book.epub",
+            hash,
+        ));
     }
 
     #[test]
