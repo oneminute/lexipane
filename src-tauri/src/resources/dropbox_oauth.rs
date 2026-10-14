@@ -28,7 +28,7 @@ fn get_callback_code(request: &str, expected_state: &str) -> Result<Option<Strin
         ["GET", target, _] => *target,
         _ => return Err("Invalid Dropbox callback request.".into()),
     };
-    let url = url::Url::parse(&format!("http://127.0.0.1:{CALLBACK_PORT}{target}"))
+    let url = reqwest::Url::parse(&format!("http://127.0.0.1:{CALLBACK_PORT}{target}"))
         .map_err(|_| "Invalid Dropbox callback URL.".to_string())?;
     if url.path() != CALLBACK_PATH {
         return Ok(None);
