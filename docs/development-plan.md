@@ -683,11 +683,11 @@ Network-resource batch priorities:
 
 ## Next selected task
 
-**RESOURCE-006S — Native ED2K/Kad source discovery**
+**RESOURCE-003D1 — Dropbox OAuth + book loading first-class path**
 
-Status: **VERIFYING**
+Status: **IN_PROGRESS**
 
-Implementation is feature-complete for the selected discovery-only scope. Keep 006S selected until the latest frontend/Linux/Windows CI gates pass and one local Windows/Tauri live-network source-discovery smoke test is recorded. Do not start native part/block transfer under 006S; that is the following ED2K milestone.
+Finish the Dropbox PKCE connection slice first: validate frontend/Rust gates, verify that authorization-code exchange yields a refresh token, then perform one local Windows/Tauri smoke test that connects Dropbox, browses the root folder, and starts acquisition of a Reader-supported book. Resume ED2K expansion only after this Dropbox priority slice reaches VERIFYING or COMPLETE.
 
 
 ## Core principles
@@ -1306,7 +1306,7 @@ Acceptance criteria:
 
 ## RESOURCE-003 — Cloud accounts
 
-Status: **VERIFYING**
+Status: **IN_PROGRESS**
 
 Goal: connect user-owned cloud storage.
 
