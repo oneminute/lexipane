@@ -86,26 +86,42 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 **RESOURCE-003D1 — Dropbox OAuth + book loading first-class path**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Priority change requested **2026-10-13**: pause new ED2K expansion work and make Dropbox the next user-facing acquisition priority. Existing ED2K work remains recorded below and can resume after this Dropbox slice.
+Implementation summary:
 
-Intended scope for this slice:
+- reused the existing RESOURCE-003 cloud browse/search/download pipeline instead of adding a Dropbox-specific Reader downloader;
+- added native Dropbox authorization-code exchange with PKCE through `resource_cloud_exchange_authorization_code`; no Dropbox client secret is required for this public-client flow;
+- added Web Crypto PKCE generation and a Dropbox authorization URL requesting `token_access_type=offline`, so a successful connection can retain a refresh token for automatic renewal;
+- added `connectDropboxWithAuthorizationCode` to persist the access/refresh credential bundle only through the existing operating-system secure credential store;
+- changed the cloud-account UI default to Dropbox and added a guided two-step connection flow: enter Dropbox app key → authorize → paste returned code → connect;
+- preserved the existing manual access-token / refresh-token controls as an advanced fallback;
+- successful connection immediately browses the Dropbox root using the existing account model;
+- existing Dropbox browse/search, temporary-link download, Resource Core persistence, SHA-256 duplicate detection, managed-Library ingestion, transfer recovery, and Downloads → Open behavior remain shared with the established cloud pipeline;
+- added targeted Vitest coverage for the PKCE URL, verifier/challenge generation, offline access request, and missing-app-key validation.
 
-- reuse the existing RESOURCE-003 cloud browse/search/download/ingestion pipeline rather than creating a Reader-specific Dropbox path;
-- add a Dropbox authorization-code + PKCE connection flow that does not require a client secret in the desktop app;
-- request offline access so the existing secure credential bundle can retain a refresh token and renew short-lived access tokens;
-- use Dropbox's no-redirect authorization-code presentation for this first slice, avoiding a localhost callback/deep-link dependency;
-- after connection, immediately browse the Dropbox root and keep Reader-supported PDF/EPUB/MOBI/AZW/AZW3 acquisition on the existing verified Library ingestion path;
-- preserve the existing manual access-token / refresh-token connection controls as an advanced fallback;
-- add targeted tests for the PKCE authorization and token-exchange helpers where practical.
+Validation / evidence:
 
-Dependencies / risks:
+- implementation commits include `37bc900f`, `01308f6b`, `619a4d1c`, `3ac9c938`, `5824afe2`, `b2186bcc`, `2b11258a`, and `a309b49b`;
+- static review confirms the new Tauri command is registered and the frontend uses the existing cloud account/download APIs;
+- CI run `38504775923` for the final code commit is queued with Frontend checks, Linux Rust check, and Windows Rust check all awaiting GitHub runners; no validation failure has been reported;
+- a later plan-only CI run is also queued and does not supersede the code validation requirement.
 
-- Dropbox OAuth requires an application key (client id). The app key is public configuration, not a secret; the UI/configuration must make the missing-key state explicit.
-- access/refresh tokens must remain in the operating-system credential store and must not be written to SQLite or logs.
-- this slice deliberately avoids introducing a local callback listener; a later slice can make authorization one-click by adding a registered loopback/deep-link callback if needed.
-- no new cloud schema is expected; existing RESOURCE-003 account metadata and transfer provenance should be reused.
+Remaining verification:
+
+- complete `npm run typecheck`, `npm test`, `npm run build`, Linux Rust check/tests, and Windows Rust check/tests when the queued CI receives runners;
+- perform one local Windows/Tauri live smoke: enter a real Dropbox app key, authorize with PKCE, confirm a refresh token-backed account connects, browse the root, select a PDF/EPUB, complete ingestion, and open it from Downloads/Library.
+
+Known limitations / follow-up:
+
+- the first OAuth slice deliberately uses Dropbox's no-redirect authorization-code presentation, so the user pastes the returned code; a later loopback/deep-link callback can reduce this to one click;
+- the Dropbox list/search implementation currently returns the first bounded result page and does not yet follow Dropbox cursors;
+- external-browser launch currently uses the WebView/browser link with a visible authorization-URL fallback; native shell-opening can be added if local Tauri behavior is inconsistent;
+- current generic ingestion validation is strongest for PDF/EPUB; Kindle/MOBI support should be verified separately before claiming all Reader formats through the cloud acquisition pipeline.
+
+Next selected task:
+
+- keep **RESOURCE-003D1** selected until the queued cross-platform gates and one local Dropbox/Tauri smoke are recorded; after that, prioritize Dropbox cursor pagination and book-focused browsing before resuming new ED2K expansion.
 
 Previous active ED2K work (paused by user priority) remains below:
 
@@ -685,7 +701,7 @@ Network-resource batch priorities:
 
 **RESOURCE-003D1 — Dropbox OAuth + book loading first-class path**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
 Finish the Dropbox PKCE connection slice first: validate frontend/Rust gates, verify that authorization-code exchange yields a refresh token, then perform one local Windows/Tauri smoke test that connects Dropbox, browses the root folder, and starts acquisition of a Reader-supported book. Resume ED2K expansion only after this Dropbox priority slice reaches VERIFYING or COMPLETE.
 
