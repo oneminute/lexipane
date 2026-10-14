@@ -45,6 +45,7 @@ fn run_desktop() {
     tauri::Builder::default()
         .manage(resources::ResourceTransferLimiter::default())
         .manage(resources::cloud::CloudTransferManager::default())
+        .manage(resources::dropbox_oauth::DropboxOAuthManager::default())
         .manage(resources::ed2k::Ed2kManager::default())
         .manage(resources::ed2k_runtime::ManagedAmuleRuntimeManager::default())
         .manage(resources::http::HttpTransferManager::default())
@@ -71,6 +72,8 @@ fn run_desktop() {
             resources::resource_runtime_capabilities,
             resources::resource_transfer_set_concurrency,
             resources::resource_transfer_concurrency,
+            resources::dropbox_oauth::resource_dropbox_oauth_start,
+            resources::dropbox_oauth::resource_dropbox_oauth_wait,
             resources::cloud::resource_cloud_refresh_token,
             resources::cloud::resource_cloud_exchange_authorization_code,
             resources::cloud::resource_cloud_list,
