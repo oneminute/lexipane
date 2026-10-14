@@ -4475,6 +4475,38 @@ button { cursor: pointer; }
   outline: none;
 }
 
+.dropbox-oauth-card {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  background: white;
+  border: 1px solid #dde0e7;
+  border-radius: 10px;
+}
+
+.dropbox-oauth-card > strong,
+.dropbox-oauth-card > small,
+.dropbox-oauth-card > input[aria-label="Dropbox authorization URL"] {
+  grid-column: 1 / -1;
+}
+
+.dropbox-oauth-card > small {
+  color: #74798a;
+  line-height: 1.45;
+}
+
+.cloud-oauth-advanced {
+  grid-column: 1 / -1;
+}
+
+.cloud-oauth-advanced > p {
+  margin: 8px 0;
+  color: #74798a;
+}
+
 .cloud-account-list,
 .cloud-entry-list {
   display: grid;
@@ -4602,6 +4634,10 @@ button { cursor: pointer; }
 
 @media (max-width: 850px) {
   .cloud-connect-card {
+    grid-template-columns: 1fr;
+  }
+
+  .dropbox-oauth-card {
     grid-template-columns: 1fr;
   }
 
