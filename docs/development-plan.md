@@ -84,6 +84,41 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 ### Active product priority
 
+**RESOURCE-006R4.2 — Managed ED2K job attach/monitor bridge**
+
+Status: **VERIFYING**
+
+Implementation summary:
+
+- extracted the existing post-enqueue ED2K job creation path into the internal `attach_started_ed2k_link` helper; the legacy `resource_ed2k_add_link` now reuses the same helper, so its behavior remains unchanged;
+- the managed runtime can now derive an in-memory `Ed2kConnectionConfig` from the verified bundled `amulecmd`, loopback EC endpoint, current ephemeral EC password, and managed Incoming directory;
+- added `resource_ed2k_runtime_start_link_job`: it validates the canonical file link, performs the existing managed `Add` + exact-hash `Show DL` verification, snapshots the ready managed control configuration, then creates the normal `Ed2kManager` job;
+- the attached job uses the existing `monitor_job` loop rather than a second monitoring implementation, so queue polling, progress events, completed-file detection, book validation, and final transfer events stay on the established ED2K path;
+- added `startManagedAmuleLinkJob(jobId, link)` to the TypeScript transport;
+- the managed EC plaintext password remains process-memory only; it is copied only into the in-memory runtime job configuration required by the existing monitor;
+- deterministic coverage verifies that the managed connection config points at the bundled command executable, loopback EC port, managed incoming directory, and supplied ephemeral password.
+
+Current boundary:
+
+- no Resource Hub or Download Manager UI calls `startManagedAmuleLinkJob` automatically yet;
+- pause/resume/cancel behavior has not been switched or separately validated for managed-runtime jobs in this slice;
+- restart/persistence recovery for a managed daemon whose ephemeral EC password changes remains outside R4.2.
+
+Validation / evidence:
+
+- implementation commits: `8f4afc87`, `adba164c`, `6d501233`, `0dd88a55`, `359b91e4`, and `a56437ae`;
+- frontend checks are passing on the core R4.2 implementation commits;
+- Linux/Windows Rust gates for the final R4.2 head are still queued/running and have not reported a failure.
+
+Remaining verification:
+
+- final Frontend, Linux Rust, and Windows Rust CI gates must pass;
+- live Windows smoke requires the staged runtime and a real ED2K link: start a managed link job and confirm normal `resource-transfer-event` progress is emitted from the managed `Show DL` queue.
+
+Next selected task after R4.2 verification:
+
+- **RESOURCE-006R4.3 — managed pause/resume/cancel control**: validate the existing job selectors and commands against managed aMule, with no UI rerouting until those controls are proven.
+
 **RESOURCE-006R4.1 — Managed aMule link enqueue probe**
 
 Status: **VERIFYING**
