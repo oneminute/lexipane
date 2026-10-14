@@ -112,15 +112,36 @@ Previous active ED2K work (paused by user priority) remains below:
 
 **RESOURCE-006R4.3 — Managed ED2K pause/resume/cancel control**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Selected scope:
+Implementation summary:
 
-- keep using the existing `resource_ed2k_pause`, `resource_ed2k_resume`, and `resource_ed2k_cancel` commands for managed jobs rather than creating duplicate managed-only commands;
-- harden and deterministically test the shared selector/control-command path;
-- prove that hash-backed managed jobs use the stable ED2K hash directly and never depend on queue position;
-- preserve the legacy numeric queue-index fallback only for older/search-result jobs that do not have a hash;
-- do not reroute Resource Hub UI or implement restart recovery in this slice.
+- confirmed that managed R4.2 jobs carry the canonical ED2K file hash, so the shared control path can use a stable hash selector and does not depend on aMule queue positions;
+- added `validated_hash_selector` so hash selectors must be exactly 32 hexadecimal characters and are normalized to lowercase before control commands are sent;
+- preserved the existing numeric `Show DL` queue-index fallback only for legacy/search-result jobs that do not have a valid hash;
+- introduced the internal `Ed2kControlAction` command formatter and routed Pause, Resume, and Cancel through it, keeping one shared command path for external and managed aMule jobs;
+- existing state transitions remain unchanged: paused is set only after a successful Pause command, resumed only after a successful Resume command, and canceled jobs are removed only after a successful Cancel command;
+- deterministic tests cover hash validation/normalization, exact Pause/Resume/Cancel command syntax, legacy numeric queue fallback, and prove that a hash-backed job resolves its selector without attempting to execute a queue lookup.
+
+Current boundary:
+
+- no managed-only Pause/Resume/Cancel Tauri commands were added because the existing public commands already operate on the managed job's in-memory connection config;
+- Resource Hub / Download Manager UI routing is still unchanged;
+- restart recovery and replacement of the managed runtime's ephemeral EC password remain outside this slice.
+
+Validation / evidence:
+
+- commit `87692fbe` contains the shared selector/control hardening and tests;
+- CI for the R4.3 implementation is queued behind earlier repository runs; no failure has been reported.
+
+Remaining verification:
+
+- final Frontend, Linux Rust, and Windows Rust gates must pass;
+- live Windows smoke should start one managed ED2K job, Pause it by hash, verify the queue state, Resume it, then Cancel it and confirm the same hash disappears from `Show DL`.
+
+Next selected task after R4.3 verification:
+
+- **RESOURCE-006R4.4 — managed transfer UI routing**: switch only the ED2K-link download entrypoint to `startManagedAmuleLinkJob`, keep native discovery/search unchanged, and surface bundled-runtime preparation/readiness errors. Search-result routing and restart recovery remain later slices.
 
 **RESOURCE-006R4.2 — Managed ED2K job attach/monitor bridge**
 
