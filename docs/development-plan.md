@@ -86,16 +86,40 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 **RESOURCE-006R4.1 — Managed aMule link enqueue probe**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Selected scope:
+Implementation summary:
 
-- reuse the existing ED2K link parser to validate one canonical file link;
-- ensure the managed aMule runtime is EC-ready;
-- submit the link through bundled `amulecmd Add`;
-- query `Show DL` and verify the expected ED2K hash appears in the managed queue;
-- expose the probe through one backend command and one TypeScript transport wrapper;
-- do not attach the job to `Ed2kManager`, monitor progress, modify Download Manager UI, or reroute normal ED2K downloads yet.
+- added `resource_ed2k_runtime_probe_add_link` as an isolated managed-runtime probe command;
+- the command reuses the existing canonical ED2K file-link parser, rejects line breaks, and keeps LexiPane's supported-book format guard;
+- the probe calls the managed runtime readiness path first, so `Add` is never sent unless bundled `amuled` is running and EC-ready;
+- added an internal `run_ready_command` bridge that snapshots the in-memory managed EC password only after verifying the tracked daemon is still alive and ready, then invokes bundled `amulecmd` without holding the runtime mutex across the subprocess await;
+- after `Add <ed2k-link>`, the probe reads `Show DL` up to four times and verifies the exact expected ED2K hash appears as a queue token before reporting success;
+- queue verification is case-insensitive and token-bounded so substring collisions do not count;
+- added `ManagedAmuleEnqueueProbe` with file identity, Add output, bounded queue output, runtime readiness, and queue verification fields;
+- registered the Tauri command and exposed `probeManagedAmuleAddLink(link)` in the TypeScript ED2K transport;
+- the existing `addEd2kLink()`, Download Manager flow, `Ed2kManager`, native discovery path, and UI are unchanged.
+
+Current boundary:
+
+- this is deliberately a probe, not the production transfer adapter;
+- invoking the probe can cause aMule to begin the queued transfer, but no LexiPane monitor/persistence/control job is attached yet;
+- normal Resource Hub download actions still use their existing path and do not call this probe automatically.
+
+Validation / evidence:
+
+- backend commit `64d06d0a` adds the enqueue/queue verification path and deterministic queue-hash test;
+- commits `b14802e8` and `55f63091` register the command and TypeScript wrapper;
+- active final CI has started; frontend typecheck has passed, while frontend tests/build and Linux/Windows Rust gates are still running.
+
+Remaining verification:
+
+- final Frontend, Linux Rust, and Windows Rust gates must pass;
+- live Windows smoke requires the staged aMule runtime: invoke the probe with a real supported ED2K file link and confirm `queueVerified=true` with the same hash visible in `Show DL`.
+
+Next selected task after R4.1 verification:
+
+- **RESOURCE-006R4.2 — managed ED2K job attach/monitor bridge**: create the normal LexiPane `Ed2kManager` job only after the managed enqueue is verified, then read progress from the managed queue. Keep pause/resume/cancel and UI rerouting for later slices.
 
 **RESOURCE-006R3 — Managed aMule runtime readiness/control handshake**
 
