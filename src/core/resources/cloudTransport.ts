@@ -27,6 +27,31 @@ export interface CloudTokenRefreshResult {
   expiresIn?: number;
 }
 
+export async function exchangeCloudAuthorizationCode(
+  provider: CloudProviderId,
+  authorizationCode: string,
+  clientId: string,
+  codeVerifier: string,
+  redirectUri?: string,
+): Promise<CloudTokenRefreshResult> {
+  if (!isTauri()) {
+    throw new Error(
+      "Cloud authorization-code exchange requires the desktop application.",
+    );
+  }
+
+  return invoke<CloudTokenRefreshResult>(
+    "resource_cloud_exchange_authorization_code",
+    {
+      provider,
+      authorizationCode,
+      clientId,
+      codeVerifier,
+      redirectUri,
+    },
+  );
+}
+
 export async function refreshCloudAccessToken(
   provider: CloudProviderId,
   refreshToken: string,
