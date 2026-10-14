@@ -100,6 +100,27 @@ pub struct Ed2kStartResult {
     pub started: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ed2kControlAction {
+    Pause,
+    Resume,
+    Cancel,
+}
+
+impl Ed2kControlAction {
+    fn keyword(self) -> &'static str {
+        match self {
+            Self::Pause => "Pause",
+            Self::Resume => "Resume",
+            Self::Cancel => "Cancel",
+        }
+    }
+
+    fn command(self, selector: &str) -> String {
+        format!("{} {}", self.keyword(), selector)
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Ed2kRuntimeJob {
     config: Ed2kConnectionConfig,
@@ -956,9 +977,23 @@ fn transfer_event(
     }
 }
 
+fn validated_hash_selector(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.len() != 32
+        || !trimmed.chars().all(|ch| ch.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase())
+}
+
 async fn command_selector(job: &Ed2kRuntimeJob) -> Result<String, String> {
-    if let Some(hash) = job.hash.as_deref() {
-        return Ok(hash.to_string());
+    if let Some(hash) = job
+        .hash
+        .as_deref()
+        .and_then(validated_hash_selector)
+    {
+        return Ok(hash);
     }
 
     let queue = run_amulecmd(&job.config, "Show DL").await?;
@@ -1343,7 +1378,11 @@ pub async fn resource_ed2k_pause(
         return Ok(false);
     };
     let selector = command_selector(&job).await?;
-    run_amulecmd(&job.config, &format!("Pause {selector}")).await?;
+    run_amulecmd(
+        &job.config,
+        &Ed2kControlAction::Pause.command(&selector),
+    )
+    .await?;
     manager.set_paused(&job_id, true).await;
 
     let mut event = transfer_event(&job_id, "paused", job.size, 0);
@@ -1363,7 +1402,11 @@ pub async fn resource_ed2k_resume(
         return Ok(false);
     };
     let selector = command_selector(&job).await?;
-    run_amulecmd(&job.config, &format!("Resume {selector}")).await?;
+    run_amulecmd(
+        &job.config,
+        &Ed2kControlAction::Resume.command(&selector),
+    )
+    .await?;
     manager.set_paused(&job_id, false).await;
 
     let mut event = transfer_event(&job_id, "running", job.size, 0);
@@ -1383,7 +1426,11 @@ pub async fn resource_ed2k_cancel(
         return Ok(false);
     };
     let selector = command_selector(&job).await?;
-    run_amulecmd(&job.config, &format!("Cancel {selector}")).await?;
+    run_amulecmd(
+        &job.config,
+        &Ed2kControlAction::Cancel.command(&selector),
+    )
+    .await?;
     manager.remove(&job_id).await;
 
     let mut event = transfer_event(&job_id, "canceled", job.size, 0);
@@ -1395,6 +1442,81 @@ pub async fn resource_ed2k_cancel(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validates_and_normalizes_hash_control_selectors() {
+        assert_eq!(
+            validated_hash_selector(
+                "0123456789ABCDEF0123456789ABCDEF"
+            )
+            .as_deref(),
+            Some("0123456789abcdef0123456789abcdef")
+        );
+        assert!(validated_hash_selector("1234").is_none());
+        assert!(
+            validated_hash_selector(
+                "0123456789abcdef0123456789abcdeg"
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn formats_amule_control_commands_from_stable_selectors() {
+        let selector = "0123456789abcdef0123456789abcdef";
+        assert_eq!(
+            Ed2kControlAction::Pause.command(selector),
+            format!("Pause {selector}")
+        );
+        assert_eq!(
+            Ed2kControlAction::Resume.command(selector),
+            format!("Resume {selector}")
+        );
+        assert_eq!(
+            Ed2kControlAction::Cancel.command(selector),
+            format!("Cancel {selector}")
+        );
+    }
+
+    #[test]
+    fn legacy_control_selector_can_fall_back_to_queue_number() {
+        let queue =
+            "7. Example Book.epub [12.0%] 2/5\n8. Other.pdf [4.0%] 1/3";
+        assert_eq!(
+            parse_download_number(queue, "Example Book.epub").as_deref(),
+            Some("7")
+        );
+        assert!(
+            parse_download_number(queue, "Missing.epub").is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn hash_backed_job_selector_does_not_require_queue_lookup() {
+        let job = Ed2kRuntimeJob {
+            config: Ed2kConnectionConfig {
+                executable: Some(
+                    "definitely-not-a-real-amulecmd".to_string(),
+                ),
+                host: Some("127.0.0.1".to_string()),
+                port: Some(4712),
+                password: Some("unused".to_string()),
+                incoming_dir: None,
+            },
+            name: "Example Book.epub".to_string(),
+            size: Some(1234),
+            hash: Some(
+                "0123456789ABCDEF0123456789ABCDEF".to_string(),
+            ),
+            incoming_path: None,
+            paused: false,
+        };
+
+        assert_eq!(
+            command_selector(&job).await.unwrap(),
+            "0123456789abcdef0123456789abcdef"
+        );
+    }
 
     #[test]
     fn parses_ed2k_file_links() {
