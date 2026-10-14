@@ -86,10 +86,21 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 **RESOURCE-003D2 — Dropbox automatic desktop OAuth callback**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Requested 2026-10-13: replace manual authorization-code copying with browser OAuth PKCE and automatic desktop callback. Scope: native loopback callback listener, state verification, PKCE code exchange, UI one-click flow and manual fallback; document Dropbox redirect registration and app-key dependency. Risk: registered fixed loopback URI / occupied port, browser-opening behavior, Android requires separate app-link flow. No changes to existing download/Library pipeline.
+Implemented 2026-10-13:
 
+- desktop Rust loopback listener binds `127.0.0.1:53682`, validates a random OAuth `state`, receives the authorization code, and completes within a bounded 180-second session;
+- registered `resource_dropbox_oauth_start` and `resource_dropbox_oauth_wait` on the desktop-only Tauri command surface;
+- the Dropbox PKCE URL now includes a registered redirect URI and random state, while token exchange passes the identical redirect URI;
+- one-click `Sign in with Dropbox` initiates the callback, opens browser authorization, receives code automatically, exchanges for refresh credentials, and navigates to cloud Browse;
+- manual authorization-code fallback and the previous manual token connection remain available;
+- `VITE_DROPBOX_APP_KEY` may be set at build time, avoiding end-user app-key entry; an empty key leaves a developer setup input;
+- added Rust callback parsing/state tests and TypeScript redirect-URI/state tests.
+
+Verification pending: GitHub Actions frontend typecheck/test/build and Linux/Windows Rust tests are queued. Local Windows/Tauri Dropbox OAuth smoke must be performed with a registered Dropbox app key and matching `http://127.0.0.1:53682/dropbox/callback` redirect URI. Browser launching through the current WebView `window.open` needs on-device verification. Android requires a separate app-link/deep-link implementation; this loopback listener is intentionally desktop-only. This work does not change downloads or Library ingestion.
+
+Next: resolve any CI failures, exercise native Windows callback and end-to-end book import, then implement Android callback as a separate slice.
 
 **RESOURCE-003D1 — Dropbox OAuth + book loading first-class path**
 
