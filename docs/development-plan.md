@@ -126,6 +126,45 @@ Next selected task:
 Previous active ED2K work (paused by user priority) remains below:
 
 
+**RESOURCE-006R4.6 — Managed native-result download routing**
+
+Status: **VERIFYING**
+
+Implementation summary:
+
+- Native ED2K/Kad search results now reuse the same persisted managed acquisition path as pasted ED2K file links by passing each result's canonical `ed2kLink` to `startManagedEd2kLinkAcquisition`;
+- the Native Search result Download button no longer requires `ed2kEngines.length > 0` and is available for every Reader-compatible native result;
+- federated-search native ED2K results now route directly to the bundled managed runtime instead of requiring a configured external aMule engine or falling back to Copy Link;
+- the existing **Copy ED2K link** action is retained as a manual convenience and does not affect download routing;
+- native Server/UDP Global/Kad discovery and selected-file native source discovery remain unchanged; only the acquisition handoff for a canonical native search result changed;
+- external aMule's own search interface and its numeric search-result download path remain unchanged and still use configured external aMule accounts;
+- Resource Hub copy now describes external aMule as an optional compatibility/search backend rather than the required download fallback for native results;
+- unsupported native results surface an explicit Reader-format message rather than silently doing nothing;
+- because native results enter the same managed `startManagedEd2kLinkAcquisition` path, they inherit R4.2 monitoring, R4.3 controls, R4.4 persisted managed-job metadata, and R4.5 restart/reattach recovery without a second implementation.
+
+Current boundary:
+
+- this milestone does not convert aMule-native search results to managed links because those results currently expose numeric aMule result indices rather than canonical ED2K links;
+- no native peer block-transfer implementation is resumed; bundled aMule remains the transfer engine;
+- runtime packaging/live Windows verification remains shared with R2-R4.5.
+
+Validation / evidence:
+
+- `449272b5` routes Native Search and federated native results to the managed runtime and removes the external-engine requirement from the Native Result Download button;
+- `387a7e60` adds explicit unsupported-format feedback;
+- source consistency confirms the old `acquireNativeEd2kThroughFallback` and Resource Hub `startEd2kLinkAcquisition` direct fallback call are gone, while `startEd2kSearchResultAcquisition` remains for the separate external-aMule search-result flow;
+- CI is queued behind the repository workflow backlog; no failure has been reported.
+
+Remaining verification:
+
+- final Frontend, Linux Rust, and Windows Rust gates must pass;
+- live Windows smoke: run Native ED2K/Kad search, choose a Reader-compatible result without configuring any external aMule account, click **Download**, confirm the bundled runtime starts/queues the canonical hash and the transfer appears in Downloads;
+- repeat from Federated Search for a native ED2K result and confirm it follows the same managed path.
+
+Next selected task after R4.6 verification:
+
+- **RESOURCE-006R4.7 — managed runtime packaging in normal Windows build flow**: ensure distributable/dev Windows builds invoke or require the pinned R2 runtime preparation step so users do not need to run the staging script manually before the bundled ED2K path can work. Keep external-aMule compatibility search untouched.
+
 **RESOURCE-006R4.5 — Managed runtime restart/reattach recovery**
 
 Status: **VERIFYING**
