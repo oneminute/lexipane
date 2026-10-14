@@ -1154,7 +1154,6 @@ pub async fn resource_ed2k_search(
     })
 }
 
-#[tauri::command]
 pub(crate) async fn attach_started_ed2k_link(
     app: AppHandle,
     manager: Ed2kManager,
