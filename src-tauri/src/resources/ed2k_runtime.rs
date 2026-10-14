@@ -1,4 +1,7 @@
-use crate::resources::ed2k::parse_ed2k_file_link;
+use crate::resources::ed2k::{
+    attach_started_ed2k_link, parse_ed2k_file_link, Ed2kConnectionConfig,
+    Ed2kLinkMetadata, Ed2kManager, Ed2kStartResult,
+};
 use md5::{Digest, Md5};
 use serde::Serialize;
 use sha2::Sha256;
@@ -157,6 +160,19 @@ fn status_from_layout(
         temp_dir: path_string(&layout.temp_dir),
         ec_port: EC_PORT,
         status_output,
+    }
+}
+
+fn managed_connection_config(
+    layout: &ManagedAmuleLayout,
+    control_password: String,
+) -> Ed2kConnectionConfig {
+    Ed2kConnectionConfig {
+        executable: Some(path_string(&layout.command_path)),
+        host: Some("127.0.0.1".to_string()),
+        port: Some(EC_PORT),
+        password: Some(control_password),
+        incoming_dir: Some(path_string(&layout.incoming_dir)),
     }
 }
 
@@ -487,6 +503,96 @@ impl ManagedAmuleRuntimeManager {
         ))
     }
 
+    async fn connection_config(
+        &self,
+        app: &AppHandle,
+    ) -> Result<Ed2kConnectionConfig, String> {
+        let status = self.start(app).await?;
+        if !status.available {
+            return Err(
+                "Bundled aMule runtime is not prepared. Run the runtime preparation step first."
+                    .to_string(),
+            );
+        }
+        if !status.running || !status.ready {
+            return Err(
+                "Managed aMule runtime is not ready for External Connections."
+                    .to_string(),
+            );
+        }
+
+        let layout = layout(app)?;
+        let mut process = self.process.lock().await;
+        let Some(managed) = process.as_mut() else {
+            return Err(
+                "Managed aMule process disappeared before creating its connection config."
+                    .to_string(),
+            );
+        };
+
+        match managed.child.try_wait() {
+            Ok(None) if managed.ready => Ok(managed_connection_config(
+                &layout,
+                managed.control_password.clone(),
+            )),
+            Ok(None) => Err(
+                "Managed aMule process is running but EC is not ready."
+                    .to_string(),
+            ),
+            Ok(Some(_)) => {
+                *process = None;
+                Err(
+                    "Managed aMule process exited before creating its connection config."
+                        .to_string(),
+                )
+            }
+            Err(error) => Err(format!(
+                "Unable to inspect managed aMule process before creating its connection config: {error}"
+            )),
+        }
+    }
+
+    async fn enqueue_link(
+        &self,
+        app: &AppHandle,
+        trimmed: &str,
+        metadata: &Ed2kLinkMetadata,
+    ) -> Result<ManagedAmuleEnqueueProbe, String> {
+        let add_output = self
+            .run_ready_command(app, &format!("Add {trimmed}"))
+            .await?;
+
+        let mut queue_output = String::new();
+        let mut queue_verified = false;
+        for attempt in 0..4 {
+            if attempt > 0 {
+                sleep(Duration::from_millis(250)).await;
+            }
+            queue_output = self.run_ready_command(app, "Show DL").await?;
+            if queue_contains_hash(&queue_output, &metadata.hash) {
+                queue_verified = true;
+                break;
+            }
+        }
+
+        if !queue_verified {
+            return Err(format!(
+                "Managed aMule accepted the ED2K Add command, but the expected hash {} did not appear in Show DL.",
+                metadata.hash
+            ));
+        }
+
+        Ok(ManagedAmuleEnqueueProbe {
+            name: metadata.name.clone(),
+            size: metadata.size,
+            hash: metadata.hash.clone(),
+            runtime_ready: true,
+            add_output,
+            queue_verified,
+            queue_output,
+        })
+    }
+
     async fn run_ready_command(
         &self,
         app: &AppHandle,
@@ -641,18 +747,13 @@ pub async fn resource_ed2k_runtime_stop(
     manager.stop(&app).await
 }
 
-#[tauri::command]
-pub async fn resource_ed2k_runtime_probe_add_link(
-    app: AppHandle,
-    manager: State<'_, ManagedAmuleRuntimeManager>,
-    link: String,
-) -> Result<ManagedAmuleEnqueueProbe, String> {
-    let trimmed = link.trim();
+fn validate_managed_link(link: &str) -> Result<(String, Ed2kLinkMetadata), String> {
+    let trimmed = link.trim().to_string();
     if trimmed.contains('\n') || trimmed.contains('\r') {
         return Err("ED2K link contains invalid line breaks.".to_string());
     }
 
-    let metadata = parse_ed2k_file_link(trimmed)?;
+    let metadata = parse_ed2k_file_link(&trimmed)?;
     if !metadata.book_candidate {
         return Err(
             "LexiPane currently imports PDF/EPUB/MOBI/AZW/AZW3 files from ED2K."
@@ -660,39 +761,41 @@ pub async fn resource_ed2k_runtime_probe_add_link(
         );
     }
 
-    let add_output = manager
-        .run_ready_command(&app, &format!("Add {trimmed}"))
+    Ok((trimmed, metadata))
+}
+
+#[tauri::command]
+pub async fn resource_ed2k_runtime_probe_add_link(
+    app: AppHandle,
+    manager: State<'_, ManagedAmuleRuntimeManager>,
+    link: String,
+) -> Result<ManagedAmuleEnqueueProbe, String> {
+    let (trimmed, metadata) = validate_managed_link(&link)?;
+    manager.enqueue_link(&app, &trimmed, &metadata).await
+}
+
+#[tauri::command]
+pub async fn resource_ed2k_runtime_start_link_job(
+    app: AppHandle,
+    runtime_manager: State<'_, ManagedAmuleRuntimeManager>,
+    ed2k_manager: State<'_, Ed2kManager>,
+    job_id: String,
+    link: String,
+) -> Result<Ed2kStartResult, String> {
+    let (trimmed, metadata) = validate_managed_link(&link)?;
+    runtime_manager
+        .enqueue_link(&app, &trimmed, &metadata)
         .await?;
 
-    let mut queue_output = String::new();
-    let mut queue_verified = false;
-    for attempt in 0..4 {
-        if attempt > 0 {
-            sleep(Duration::from_millis(250)).await;
-        }
-        queue_output = manager.run_ready_command(&app, "Show DL").await?;
-        if queue_contains_hash(&queue_output, &metadata.hash) {
-            queue_verified = true;
-            break;
-        }
-    }
-
-    if !queue_verified {
-        return Err(format!(
-            "Managed aMule accepted the ED2K Add command, but the expected hash {} did not appear in Show DL.",
-            metadata.hash
-        ));
-    }
-
-    Ok(ManagedAmuleEnqueueProbe {
-        name: metadata.name,
-        size: metadata.size,
-        hash: metadata.hash,
-        runtime_ready: true,
-        add_output,
-        queue_verified,
-        queue_output,
-    })
+    let config = runtime_manager.connection_config(&app).await?;
+    attach_started_ed2k_link(
+        app,
+        ed2k_manager.inner().clone(),
+        job_id,
+        config,
+        metadata,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -732,6 +835,33 @@ mod tests {
             "x0123456789abcdef0123456789abcdefy Book.epub",
             hash,
         ));
+    }
+
+    #[test]
+    fn managed_connection_config_uses_bundled_control_endpoint() {
+        let root = std::env::temp_dir().join("lexipane-managed-config-test");
+        let layout = ManagedAmuleLayout {
+            runtime_dir: root.clone(),
+            daemon_path: root.join(executable_name("amuled")),
+            command_path: root.join(executable_name("amulecmd")),
+            config_dir: root.join("config"),
+            incoming_dir: root.join("incoming"),
+            temp_dir: root.join("temp"),
+        };
+
+        let config =
+            managed_connection_config(&layout, "secret".to_string());
+        assert_eq!(
+            config.executable.as_deref(),
+            Some(path_string(&layout.command_path).as_str())
+        );
+        assert_eq!(config.host.as_deref(), Some("127.0.0.1"));
+        assert_eq!(config.port, Some(EC_PORT));
+        assert_eq!(config.password.as_deref(), Some("secret"));
+        assert_eq!(
+            config.incoming_dir.as_deref(),
+            Some(path_string(&layout.incoming_dir).as_str())
+        );
     }
 
     #[test]
