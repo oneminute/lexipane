@@ -50,6 +50,7 @@ pub fn run() {
             resources::ed2k_runtime::resource_ed2k_runtime_start,
             resources::ed2k_runtime::resource_ed2k_runtime_stop,
             resources::ed2k_runtime::resource_ed2k_runtime_probe_add_link,
+            resources::ed2k_runtime::resource_ed2k_runtime_start_link_job,
             resources::ed2k::resource_ed2k_detect,
             resources::ed2k::resource_ed2k_auto_configure,
             resources::ed2k::resource_ed2k_status,
