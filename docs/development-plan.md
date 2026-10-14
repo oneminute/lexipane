@@ -96,9 +96,10 @@ Implemented 2026-10-13:
 - one-click `Sign in with Dropbox` initiates the callback, opens browser authorization, receives code automatically, exchanges for refresh credentials, and navigates to cloud Browse;
 - manual authorization-code fallback and the previous manual token connection remain available;
 - `VITE_DROPBOX_APP_KEY` may be set at build time, avoiding end-user app-key entry; an empty key leaves a developer setup input;
-- added Rust callback parsing/state tests and TypeScript redirect-URI/state tests.
+- added Rust callback parsing/state tests and TypeScript redirect-URI/state tests;
+- added the official Tauri Opener plugin to launch the Dropbox authorization page in the system default browser rather than the embedded WebView.
 
-Verification pending: GitHub Actions frontend typecheck/test/build and Linux/Windows Rust tests are queued. Local Windows/Tauri Dropbox OAuth smoke must be performed with a registered Dropbox app key and matching `http://127.0.0.1:53682/dropbox/callback` redirect URI. Browser launching through the current WebView `window.open` needs on-device verification. Android requires a separate app-link/deep-link implementation; this loopback listener is intentionally desktop-only. This work does not change downloads or Library ingestion.
+Verification pending: GitHub Actions frontend typecheck/test/build and Linux/Windows Rust tests are queued. Local Windows/Tauri Dropbox OAuth smoke must be performed with a registered Dropbox app key and matching `http://127.0.0.1:53682/dropbox/callback` redirect URI. Browser launching now uses the official Tauri Opener plugin with a Dropbox authorization URL scope; on-device verification remains necessary. Android requires a separate app-link/deep-link implementation; this loopback listener is intentionally desktop-only. This work does not change downloads or Library ingestion.
 
 Next: resolve any CI failures, exercise native Windows callback and end-to-end book import, then implement Android callback as a separate slice.
 
