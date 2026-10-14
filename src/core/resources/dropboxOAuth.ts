@@ -3,6 +3,7 @@ export interface DropboxPkceAuthorization {
   codeVerifier: string;
   codeChallenge: string;
   authorizeUrl: string;
+  state?: string;
 }
 
 function base64Url(bytes: Uint8Array): string {
@@ -20,6 +21,8 @@ function base64Url(bytes: Uint8Array): string {
 export function buildDropboxAuthorizeUrl(
   appKey: string,
   codeChallenge: string,
+  redirectUri?: string,
+  state?: string,
 ): string {
   const normalizedAppKey = appKey.trim();
   const normalizedChallenge = codeChallenge.trim();
@@ -37,11 +40,14 @@ export function buildDropboxAuthorizeUrl(
   url.searchParams.set("token_access_type", "offline");
   url.searchParams.set("code_challenge", normalizedChallenge);
   url.searchParams.set("code_challenge_method", "S256");
+  if (redirectUri) url.searchParams.set("redirect_uri", redirectUri);
+  if (state) url.searchParams.set("state", state);
   return url.toString();
 }
 
 export async function createDropboxPkceAuthorization(
   appKey: string,
+  redirectUri?: string,
 ): Promise<DropboxPkceAuthorization> {
   const normalizedAppKey = appKey.trim();
   if (!normalizedAppKey) {
@@ -63,14 +69,20 @@ export async function createDropboxPkceAuthorization(
     new TextEncoder().encode(codeVerifier),
   );
   const codeChallenge = base64Url(new Uint8Array(digest));
+  const stateBytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(stateBytes);
+  const state = base64Url(stateBytes);
 
   return {
     appKey: normalizedAppKey,
     codeVerifier,
     codeChallenge,
+    state,
     authorizeUrl: buildDropboxAuthorizeUrl(
       normalizedAppKey,
       codeChallenge,
+      redirectUri,
+      state,
     ),
   };
 }
