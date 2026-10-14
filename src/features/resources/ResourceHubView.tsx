@@ -152,6 +152,7 @@ import {
   searchEd2kEngine,
   startEd2kLinkAcquisition,
   startEd2kSearchResultAcquisition,
+  startManagedEd2kLinkAcquisition,
   type Ed2kEngineAccount,
 } from "../../core/resources/ed2kAdapter";
 import {
@@ -2897,9 +2898,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
   }
 
   async function acquireCurrentEd2kLink() {
-    const engine = activeEd2kEngine();
     if (
-      !engine ||
       !classification ||
       classification.kind !== "ed2k"
     ) {
@@ -2910,12 +2909,11 @@ export function ResourceHubView({ onOpenBook }: Props) {
     setMessage("");
 
     try {
-      await startEd2kLinkAcquisition(
-        engine,
+      await startManagedEd2kLinkAcquisition(
         classification.normalizedInput,
       );
       setMessage(
-        "ED2K link added to aMule. LexiPane will import the completed book from the configured Incoming directory.",
+        "ED2K download started with LexiPane's bundled aMule runtime.",
       );
       setTab("downloads");
       await refreshResourceCore();
@@ -2923,7 +2921,7 @@ export function ResourceHubView({ onOpenBook }: Props) {
       setMessage(
         error instanceof Error
           ? error.message
-          : "Unable to add the ED2K link.",
+          : "Unable to start the bundled aMule ED2K runtime.",
       );
     } finally {
       setEd2kBusy(false);
@@ -3480,12 +3478,11 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       className="primary-button compact"
                       disabled={
                         ed2kBusy ||
-                        ed2kEngines.length === 0 ||
                         !ed2kLinkMetadata?.bookCandidate
                       }
                       onClick={() => void acquireCurrentEd2kLink()}
                     >
-                      {ed2kBusy ? "Adding…" : "Add ED2K book"}
+                      {ed2kBusy ? "Starting…" : "Download ED2K book"}
                     </button>
                   )}
 
@@ -3637,23 +3634,15 @@ export function ResourceHubView({ onOpenBook }: Props) {
                       </div>
                       <div>
                         <dt>Engine</dt>
-                        <dd>
-                          {activeEd2kEngine()?.displayName ??
-                            (ed2kEngines.length
-                              ? "Configured"
-                              : "Not configured")}
-                        </dd>
+                        <dd>LexiPane bundled aMule runtime</dd>
                       </div>
                     </dl>
-                    {ed2kEngines.length === 0 && (
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => setTab("accounts")}
-                      >
-                        Configure aMule
-                      </button>
-                    )}
+                    <small>
+                      LexiPane starts and controls the bundled headless aMule
+                      runtime automatically. If the runtime has not been
+                      prepared yet, the download action will show the exact
+                      preparation/readiness error.
+                    </small>
                   </div>
                 )}
               </div>
