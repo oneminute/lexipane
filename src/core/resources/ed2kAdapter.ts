@@ -13,6 +13,7 @@ import {
   pauseEd2kJob,
   resumeEd2kJob,
   searchEd2k,
+  startManagedAmuleLinkJob,
   type Ed2kAutoConfigureResult,
   type Ed2kConnectionConfig,
   type Ed2kEnvironment,
@@ -289,7 +290,7 @@ export async function searchEd2kEngine(
 }
 
 function makeBundle(
-  account: Ed2kEngineAccount,
+  account: Ed2kEngineAccount | null,
   input: {
     sourceKey: string;
     name: string;
@@ -319,7 +320,9 @@ function makeBundle(
       remoteAvailable: true,
     },
     metadata: {
-      ed2kEngineAccountId: account.id,
+      ...(account
+        ? { ed2kEngineAccountId: account.id }
+        : { ed2kRuntime: "managed" }),
       ...input.metadata,
     },
     rightsStatus: "unknown",
@@ -335,7 +338,7 @@ function makeBundle(
     sourceType: "p2p",
     uri: input.sourceUri,
     metadata: {
-      accountId: account.id,
+      ...(account ? { accountId: account.id } : {}),
       hash: input.hash,
       ...input.metadata,
     },
@@ -453,6 +456,90 @@ export async function startEd2kLinkAcquisition(
   };
 }
 
+export async function startManagedEd2kLinkAcquisition(
+  link: string,
+): Promise<TransferJob> {
+  const metadata = parseEd2kLink(link);
+  if (!metadata.bookCandidate) {
+    throw new Error(
+      "LexiPane imports Reader-supported PDF, EPUB, MOBI, AZW, and AZW3 files from ED2K.",
+    );
+  }
+
+  const sourceKey = metadata.hash.toLowerCase();
+  let bundle = await findResourceBundleBySource(
+    "ed2k",
+    sourceKey,
+  );
+
+  if (!bundle) {
+    bundle = makeBundle(null, {
+      sourceKey,
+      name: metadata.name,
+      size: metadata.size,
+      hash: metadata.hash,
+      sourceUri: link,
+      metadata: {
+        mode: "link",
+        runtime: "managed",
+      },
+    });
+    await saveResourceBundle(bundle);
+  }
+
+  const source = bundle.sources[0];
+  const file = bundle.files[0];
+  if (!source || !file) {
+    throw new Error("ED2K resource persistence is incomplete.");
+  }
+
+  const job = await createDraftTransferJob({
+    providerId: "ed2k",
+    transportType: "ed2k",
+    resourceItemId: bundle.item.id,
+    sourceId: source.id,
+    fileId: file.id,
+    resumeData: {
+      ed2kRuntime: "managed",
+      mode: "link",
+      resourceInput: link,
+      name: metadata.name,
+      size: metadata.size,
+      hash: metadata.hash,
+    },
+  });
+
+  if (!job) throw new Error("Unable to create ED2K transfer job.");
+
+  await updateTransferJob(job.id, {
+    state: "queued",
+    progress: 0,
+    bytesTotal: metadata.size,
+    bytesCompleted: 0,
+    error: null,
+  });
+
+  try {
+    await startManagedAmuleLinkJob(job.id, link);
+  } catch (error) {
+    await updateTransferJob(job.id, {
+      state: "failed",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to start the bundled aMule ED2K runtime.",
+      completedAt: new Date().toISOString(),
+    });
+    throw error;
+  }
+
+  return (await getTransferJob(job.id)) ?? {
+    ...job,
+    state: "queued",
+    bytesTotal: metadata.size,
+  };
+}
+
 export async function startEd2kSearchResultAcquisition(
   account: Ed2kEngineAccount,
   query: string,
@@ -548,6 +635,17 @@ export async function startEd2kSearchResultAcquisition(
   };
 }
 
+function isManagedRuntimeJob(job: TransferJob): boolean {
+  return job.resumeData?.ed2kRuntime === "managed";
+}
+
+function managedJobUnavailableMessage(): string {
+  return (
+    "This managed ED2K job is no longer attached to the current LexiPane " +
+    "runtime session. Restart recovery will be added in a later milestone."
+  );
+}
+
 async function accountForJob(
   job: TransferJob,
 ): Promise<Ed2kEngineAccount> {
@@ -597,6 +695,14 @@ export async function reattachEd2kTransfer(
 export async function pauseEd2kTransfer(
   job: TransferJob,
 ): Promise<void> {
+  if (isManagedRuntimeJob(job)) {
+    const paused = await pauseEd2kJob(job.id);
+    if (!paused) {
+      throw new Error(managedJobUnavailableMessage());
+    }
+    return;
+  }
+
   const attached = await reattachEd2kTransfer(job, false);
   if (!attached) {
     throw new Error("The ED2K job is no longer present in aMule.");
@@ -607,14 +713,21 @@ export async function pauseEd2kTransfer(
 export async function resumeEd2kTransfer(
   job: TransferJob,
 ): Promise<void> {
-  const attached = await reattachEd2kTransfer(job, true);
-  if (!attached) {
-    throw new Error(
-      "The ED2K job is no longer present in aMule. Re-add the link or search result.",
-    );
+  if (isManagedRuntimeJob(job)) {
+    const resumed = await resumeEd2kJob(job.id);
+    if (!resumed) {
+      throw new Error(managedJobUnavailableMessage());
+    }
+  } else {
+    const attached = await reattachEd2kTransfer(job, true);
+    if (!attached) {
+      throw new Error(
+        "The ED2K job is no longer present in aMule. Re-add the link or search result.",
+      );
+    }
+    await resumeEd2kJob(job.id);
   }
 
-  await resumeEd2kJob(job.id);
   await updateTransferJob(job.id, {
     state: "running",
     error: null,
@@ -625,9 +738,16 @@ export async function resumeEd2kTransfer(
 export async function cancelEd2kTransfer(
   job: TransferJob,
 ): Promise<void> {
-  const attached = await reattachEd2kTransfer(job, false);
-  if (attached) {
-    await cancelEd2kJob(job.id);
+  if (isManagedRuntimeJob(job)) {
+    const canceled = await cancelEd2kJob(job.id);
+    if (!canceled) {
+      throw new Error(managedJobUnavailableMessage());
+    }
+  } else {
+    const attached = await reattachEd2kTransfer(job, false);
+    if (attached) {
+      await cancelEd2kJob(job.id);
+    }
   }
 
   await updateTransferJob(job.id, {
