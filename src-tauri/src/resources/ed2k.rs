@@ -1155,24 +1155,13 @@ pub async fn resource_ed2k_search(
 }
 
 #[tauri::command]
-pub async fn resource_ed2k_add_link(
+pub(crate) async fn attach_started_ed2k_link(
     app: AppHandle,
-    manager: State<'_, Ed2kManager>,
+    manager: Ed2kManager,
     job_id: String,
     config: Ed2kConnectionConfig,
-    link: String,
+    metadata: Ed2kLinkMetadata,
 ) -> Result<Ed2kStartResult, String> {
-    let metadata = parse_ed2k_file_link(&link)?;
-    if !metadata.book_candidate {
-        return Err(
-            "LexiPane currently imports PDF/EPUB files from ED2K."
-                .to_string(),
-        );
-    }
-
-    run_amulecmd(&config, &format!("Add {}", link.trim())).await?;
-
-    let manager = manager.inner().clone();
     manager
         .insert(
             job_id.clone(),
@@ -1201,6 +1190,34 @@ pub async fn resource_ed2k_add_link(
         hash: Some(metadata.hash),
         started: true,
     })
+}
+
+#[tauri::command]
+pub async fn resource_ed2k_add_link(
+    app: AppHandle,
+    manager: State<'_, Ed2kManager>,
+    job_id: String,
+    config: Ed2kConnectionConfig,
+    link: String,
+) -> Result<Ed2kStartResult, String> {
+    let metadata = parse_ed2k_file_link(&link)?;
+    if !metadata.book_candidate {
+        return Err(
+            "LexiPane currently imports PDF/EPUB files from ED2K."
+                .to_string(),
+        );
+    }
+
+    run_amulecmd(&config, &format!("Add {}", link.trim())).await?;
+
+    attach_started_ed2k_link(
+        app,
+        manager.inner().clone(),
+        job_id,
+        config,
+        metadata,
+    )
+    .await
 }
 
 #[tauri::command]
