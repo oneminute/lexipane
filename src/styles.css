@@ -5419,3 +5419,52 @@ button { cursor: pointer; }
     max-height: calc(100% - 28px);
   }
 }
+
+
+/* Android/phone reader: show either document or AI in the available viewport. */
+.mobile-reader-tabs { display: none; }
+@media (max-width: 760px) {
+  .reader-page {
+    grid-template-rows: 56px 44px minmax(0, 1fr);
+    padding-bottom: 0;
+  }
+  .mobile-reader-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 5px 12px;
+    background: #fff;
+    border-bottom: 1px solid #dfe1e6;
+    min-height: 0;
+  }
+  .mobile-reader-tabs button {
+    border: 0;
+    border-radius: 8px;
+    color: #545969;
+    background: #f0f1f5;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .mobile-reader-tabs button.active { color: #fff; background: #4e5384; }
+  .reader-page .split-reader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+  .mobile-reader-book .ai-pane,
+  .mobile-reader-ai .document-pane { display: none; }
+  .mobile-reader-ai .ai-pane {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    border-left: 0;
+    border-top: 0;
+  }
+  .mobile-reader-book .document-pane {
+    height: 100%;
+    min-height: 0;
+  }
+  .mobile-reader-ai .ai-pane-header { padding: 9px 12px; }
+}
