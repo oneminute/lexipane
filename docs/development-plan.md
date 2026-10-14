@@ -141,7 +141,8 @@ Implementation summary:
 - added `reattachManagedAmuleLinkJob` to the TypeScript transport;
 - `reattachEd2kTransfer` now detects `resumeData.ed2kRuntime === "managed"` and uses managed recovery instead of looking for an external aMule account;
 - Pause/Resume/Cancel again share one frontend reattach path: after restart, managed recovery occurs first and then the already-validated common backend control command runs;
-- Resource Hub performs a one-attempt-per-job automatic recovery for persisted managed ED2K jobs in `queued`, `running`, or `paused` state. Repeated transfer refresh events do not repeatedly restart recovery because attempted job ids are tracked for the current UI session;
+- Resource Hub performs a one-attempt-per-job automatic recovery for persisted managed ED2K jobs in `queued`, `running`, or `paused` state. Recovery is serialized so multiple persisted jobs do not race the same daemon startup, and attempted job ids are marked before recovery begins so transfer events cannot trigger duplicate work;
+- paused persisted jobs re-issue `Pause <hash>` when the hash is still queued so daemon state matches the persisted UI state; if the file is already complete in managed Incoming, recovery attaches it unpaused so the existing monitor can validate/import it immediately;
 - automatic recovery failures are non-destructive: the persisted TransferJob is not silently marked failed or canceled, and a later explicit control action can retry recovery;
 - deterministic tests cover persisted hash normalization and completed managed Incoming-file detection.
 
@@ -160,6 +161,8 @@ Validation / evidence:
 - `551e9530` routes managed frontend reattach through the new recovery path;
 - `fd1266ce` handles already-completed files in managed Incoming;
 - `c35e0d33` automatically attempts active managed-job recovery when Resource Hub initializes;
+- `3395bac2` serializes multi-job recovery;
+- `b5a9d110` restores real paused state and lets completed Incoming files finish validation/import;
 - CI for the R4.5 commits is queued behind the existing repository workflow backlog; no failure has been reported.
 
 Remaining verification:
