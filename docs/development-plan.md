@@ -86,15 +86,37 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 **RESOURCE-006R3 — Managed aMule runtime readiness/control handshake**
 
-Status: **IN_PROGRESS**
+Status: **VERIFYING**
 
-Selected scope:
+Implementation summary:
 
-- use the staged bundled `amulecmd` to prove the managed `amuled` External Connections endpoint is actually ready after process start;
-- execute `Status` with the same ephemeral control password used to generate the managed `amule.conf`;
-- expose readiness and the latest bounded status output through the existing runtime status response;
-- stop the managed core with the official `Shutdown` command first, then fall back to terminating the tracked child only when graceful shutdown does not complete;
-- keep this milestone strictly at lifecycle/control readiness: do not add ED2K links, searches, queue control, or normal download routing.
+- managed runtime availability now requires both bundled `amuled` and bundled `amulecmd`, because lifecycle readiness cannot be proven without the control client;
+- the same ephemeral plaintext control password used to write the MD5 `ECPassword` into the isolated managed `amule.conf` is retained only in the tracked runtime-process state for local EC control;
+- after spawning `amuled`, LexiPane polls bundled `amulecmd -h 127.0.0.1 -p 4712 -P <password> -c Status` for up to roughly six seconds and returns `ready=true` only after the External Connections handshake succeeds;
+- successful bounded `Status` output is cached in `ManagedAmuleRuntimeStatus.statusOutput` for diagnostics; control output is capped to avoid unbounded UI/API payloads;
+- if the daemon exits before readiness or EC never becomes ready, startup fails and the tracked child is terminated instead of leaving an unmanaged background process;
+- runtime stop now sends the official `Shutdown` command through bundled `amulecmd`, waits briefly for the tracked daemon to exit, and falls back to child-process termination only if graceful shutdown does not complete;
+- deterministic tests now verify that both runtime executables are required, readiness fields are represented correctly, and oversized control output is bounded.
+
+Current boundary:
+
+- no ordinary ED2K search/download command has been rerouted to the managed runtime;
+- R3 proves lifecycle/control readiness only;
+- the real Windows runtime still needs to be staged locally with the R2 preparation script before a live readiness smoke test can be performed.
+
+Validation / evidence:
+
+- commit `b9bf3cdb` contains the R3 readiness/control implementation;
+- active CI has begun for the final code commit; frontend typecheck/tests are passing so far, while frontend build and Linux/Windows Rust gates are still running.
+
+Remaining verification:
+
+- final Frontend, Linux Rust, and Windows Rust CI gates must complete successfully;
+- on Windows, run the R2 preparation script, start the managed runtime through LexiPane, confirm `ready=true` and a real `Status` response, then stop it and confirm the daemon exits without fallback termination.
+
+Next selected task after R3 live verification:
+
+- **RESOURCE-006R4 — managed transfer adapter**: reuse the existing ED2K transfer UI/contracts but construct its control configuration from the managed runtime, beginning with adding one known ED2K link and reading its queue state. Do not remove the native discovery path.
 
 **RESOURCE-006R2 — Reproducible aMule runtime packaging**
 
