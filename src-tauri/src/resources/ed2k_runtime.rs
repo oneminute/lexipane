@@ -1,5 +1,6 @@
 use crate::resources::ed2k::{
-    attach_started_ed2k_link, parse_ed2k_file_link, Ed2kConnectionConfig,
+    attach_existing_ed2k_job, attach_started_ed2k_link,
+    ed2k_job_is_attached, parse_ed2k_file_link, Ed2kConnectionConfig,
     Ed2kLinkMetadata, Ed2kManager, Ed2kStartResult,
 };
 use md5::{Digest, Md5};
@@ -220,6 +221,16 @@ fn write_managed_config(
         .map_err(|error| format!("Unable to write managed aMule configuration: {error}"))
 }
 
+fn normalized_ed2k_hash(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.len() != 32
+        || !trimmed.chars().all(|ch| ch.is_ascii_hexdigit())
+    {
+        return Err("Managed ED2K recovery requires a valid 32-character file hash.".to_string());
+    }
+    Ok(trimmed.to_ascii_lowercase())
+}
+
 fn queue_contains_hash(output: &str, hash: &str) -> bool {
     let target = hash.trim().to_ascii_lowercase();
     output
@@ -401,7 +412,8 @@ impl ManagedAmuleRuntimeManager {
             .current_dir(&layout.runtime_dir)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
 
         #[cfg(windows)]
         {
@@ -798,6 +810,52 @@ pub async fn resource_ed2k_runtime_start_link_job(
     .await
 }
 
+#[tauri::command]
+pub async fn resource_ed2k_runtime_reattach_link_job(
+    app: AppHandle,
+    runtime_manager: State<'_, ManagedAmuleRuntimeManager>,
+    ed2k_manager: State<'_, Ed2kManager>,
+    job_id: String,
+    name: String,
+    size: Option<u64>,
+    hash: String,
+    paused: Option<bool>,
+) -> Result<bool, String> {
+    let manager = ed2k_manager.inner().clone();
+    if ed2k_job_is_attached(&manager, &job_id).await {
+        return Ok(true);
+    }
+
+    let normalized_hash = normalized_ed2k_hash(&hash)?;
+    if name.trim().is_empty() {
+        return Err(
+            "Managed ED2K recovery requires the persisted file name."
+                .to_string(),
+        );
+    }
+
+    runtime_manager.start(&app).await?;
+    let queue_output = runtime_manager
+        .run_ready_command(&app, "Show DL")
+        .await?;
+    if !queue_contains_hash(&queue_output, &normalized_hash) {
+        return Ok(false);
+    }
+
+    let config = runtime_manager.connection_config(&app).await?;
+    attach_existing_ed2k_job(
+        app,
+        manager,
+        job_id,
+        config,
+        name,
+        size,
+        Some(normalized_hash),
+        paused.unwrap_or(false),
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -821,6 +879,24 @@ mod tests {
         let bounded = bounded_text(large);
         assert!(bounded.len() < 4200);
         assert!(bounded.contains("output truncated"));
+    }
+
+    #[test]
+    fn normalizes_persisted_recovery_hashes() {
+        assert_eq!(
+            normalized_ed2k_hash(
+                "0123456789ABCDEF0123456789ABCDEF"
+            )
+            .unwrap(),
+            "0123456789abcdef0123456789abcdef"
+        );
+        assert!(normalized_ed2k_hash("1234").is_err());
+        assert!(
+            normalized_ed2k_hash(
+                "0123456789abcdef0123456789abcdeg"
+            )
+            .is_err()
+        );
     }
 
     #[test]
