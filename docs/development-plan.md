@@ -84,6 +84,18 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 ### Active product priority
 
+**RESOURCE-006R4.3 — Managed ED2K pause/resume/cancel control**
+
+Status: **IN_PROGRESS**
+
+Selected scope:
+
+- keep using the existing `resource_ed2k_pause`, `resource_ed2k_resume`, and `resource_ed2k_cancel` commands for managed jobs rather than creating duplicate managed-only commands;
+- harden and deterministically test the shared selector/control-command path;
+- prove that hash-backed managed jobs use the stable ED2K hash directly and never depend on queue position;
+- preserve the legacy numeric queue-index fallback only for older/search-result jobs that do not have a hash;
+- do not reroute Resource Hub UI or implement restart recovery in this slice.
+
 **RESOURCE-006R4.2 — Managed ED2K job attach/monitor bridge**
 
 Status: **VERIFYING**
