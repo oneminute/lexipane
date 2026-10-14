@@ -126,6 +126,45 @@ Next selected task:
 Previous active ED2K work (paused by user priority) remains below:
 
 
+**RESOURCE-006R4.4 — Managed ED2K link UI routing**
+
+Status: **VERIFYING**
+
+Implementation summary:
+
+- added `startManagedEd2kLinkAcquisition(link)` to the existing ED2K adapter so bundled-runtime downloads still create normal persisted Resource Bundle / TransferJob records instead of bypassing the acquisition pipeline;
+- managed link jobs persist `resumeData.ed2kRuntime = "managed"` plus the canonical name, size, hash, and source link; no external aMule account/password is persisted;
+- the managed acquisition path calls the R4.2 `startManagedAmuleLinkJob(jobId, link)` bridge after marking the transfer queued, and converts runtime preparation/readiness failures into the normal failed TransferJob state;
+- generalized ED2K bundle creation only enough to permit an accountless managed source while preserving existing account metadata for legacy external-aMule paths;
+- Resource Hub's direct ED2K-link action now calls the managed acquisition path and no longer requires a configured external aMule engine;
+- the direct-link button is now labeled **Download ED2K book**, and its preview identifies **LexiPane bundled aMule runtime** as the engine;
+- runtime preparation/readiness errors from the backend are surfaced directly through the existing Resource Hub message area;
+- native ED2K/Kad search, native-result fallback behavior, external aMule search, and aMule search-result downloading remain unchanged;
+- because Resource Hub transfer controls are immediately visible after routing, managed jobs now bypass external-account reattach in the frontend adapter for same-session Pause/Resume/Cancel and call the already-validated shared backend controls directly;
+- if a persisted managed job survives an application restart but is no longer attached to the in-memory runtime manager, controls return an explicit restart-recovery-not-yet-implemented message instead of silently mutating the persisted state.
+
+Current boundary:
+
+- only the **direct ED2K file-link** download entrypoint has been routed to bundled aMule;
+- native search results and configured external-aMule search results are intentionally not rerouted in this milestone;
+- managed restart recovery / reattach after a new ephemeral EC password is still not implemented;
+- no attempt is made here to automatically download/stage third-party aMule binaries at application runtime; the R2 preparation/package path remains the source of the bundled runtime.
+
+Validation / evidence:
+
+- commit `5596561a` adds the persisted managed-link acquisition adapter and same-session managed control branch;
+- commit `100b2ea3` switches the Resource Hub direct-link UI to the managed adapter and removes the external-engine requirement for that action;
+- CI for these commits is currently queued behind the repository's existing workflow backlog; no failure has been reported.
+
+Remaining verification:
+
+- final Frontend, Linux Rust, and Windows Rust gates must pass;
+- live Windows smoke: stage the pinned runtime, paste a real supported ED2K file link, click **Download ED2K book**, confirm the managed daemon becomes ready, the transfer appears in Downloads, progress events arrive, and same-session Pause/Resume/Cancel operate on the hash-backed job.
+
+Next selected task after R4.4 verification:
+
+- **RESOURCE-006R4.5 — managed runtime restart/reattach recovery**: persist enough non-secret managed-runtime identity to restart bundled `amuled`, rediscover a persisted hash in `Show DL`, rebuild the in-memory `Ed2kManager` job with the new ephemeral EC password, and resume controls after app restart. Keep native search routing unchanged.
+
 **RESOURCE-006R4.3 — Managed ED2K pause/resume/cancel control**
 
 Status: **VERIFYING**
