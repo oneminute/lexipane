@@ -65,7 +65,7 @@ Schema/network/native-engine changes should add targeted tests or validation bey
 
 # Current Development Status
 
-Last updated: **2026-10-07**
+Last updated: **2026-10-13**
 
 ## Active program
 
@@ -83,6 +83,32 @@ Two workstreams are tracked in this batch:
 RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **IN_PROGRESS**. RESOURCE-006K remains **VERIFYING** only for a local Windows/Tauri live-network smoke test and no longer blocks implementation of the next native ED2K phase.
 
 ### Active product priority
+
+**RESOURCE-003D1 — Dropbox OAuth + book loading first-class path**
+
+Status: **IN_PROGRESS**
+
+Priority change requested **2026-10-13**: pause new ED2K expansion work and make Dropbox the next user-facing acquisition priority. Existing ED2K work remains recorded below and can resume after this Dropbox slice.
+
+Intended scope for this slice:
+
+- reuse the existing RESOURCE-003 cloud browse/search/download/ingestion pipeline rather than creating a Reader-specific Dropbox path;
+- add a Dropbox authorization-code + PKCE connection flow that does not require a client secret in the desktop app;
+- request offline access so the existing secure credential bundle can retain a refresh token and renew short-lived access tokens;
+- use Dropbox's no-redirect authorization-code presentation for this first slice, avoiding a localhost callback/deep-link dependency;
+- after connection, immediately browse the Dropbox root and keep Reader-supported PDF/EPUB/MOBI/AZW/AZW3 acquisition on the existing verified Library ingestion path;
+- preserve the existing manual access-token / refresh-token connection controls as an advanced fallback;
+- add targeted tests for the PKCE authorization and token-exchange helpers where practical.
+
+Dependencies / risks:
+
+- Dropbox OAuth requires an application key (client id). The app key is public configuration, not a secret; the UI/configuration must make the missing-key state explicit.
+- access/refresh tokens must remain in the operating-system credential store and must not be written to SQLite or logs.
+- this slice deliberately avoids introducing a local callback listener; a later slice can make authorization one-click by adding a registered loopback/deep-link callback if needed.
+- no new cloud schema is expected; existing RESOURCE-003 account metadata and transfer provenance should be reused.
+
+Previous active ED2K work (paused by user priority) remains below:
+
 
 **RESOURCE-006R4.3 — Managed ED2K pause/resume/cancel control**
 
