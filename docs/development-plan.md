@@ -84,6 +84,13 @@ RESOURCE-002 and Reader AI persistence are **COMPLETE**. RESOURCE-004 remains **
 
 ### Active product priority
 
+**RESOURCE-003D2 — Dropbox automatic desktop OAuth callback**
+
+Status: **IN_PROGRESS**
+
+Requested 2026-10-13: replace manual authorization-code copying with browser OAuth PKCE and automatic desktop callback. Scope: native loopback callback listener, state verification, PKCE code exchange, UI one-click flow and manual fallback; document Dropbox redirect registration and app-key dependency. Risk: registered fixed loopback URI / occupied port, browser-opening behavior, Android requires separate app-link flow. No changes to existing download/Library pipeline.
+
+
 **RESOURCE-003D1 — Dropbox OAuth + book loading first-class path**
 
 Status: **VERIFYING**
