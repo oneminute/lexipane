@@ -148,6 +148,7 @@ import {
   listEd2kEngines,
   parseEd2kLink,
   pauseEd2kTransfer,
+  reattachEd2kTransfer,
   resumeEd2kTransfer,
   searchEd2kEngine,
   startEd2kLinkAcquisition,
@@ -414,6 +415,9 @@ export function ResourceHubView({ onOpenBook }: Props) {
   const [resourceSourceFilter, setResourceSourceFilter] =
     useState<"all" | "local" | "storage" | "public" | "p2p">("all");
   const resourceSearchTokenRef = useRef(0);
+  const managedEd2kRestoreAttemptedRef = useRef<Set<string>>(
+    new Set(),
+  );
 
   const [catalogName, setCatalogName] = useState("");
   const [catalogUrl, setCatalogUrl] = useState("");
@@ -692,6 +696,53 @@ export function ResourceHubView({ onOpenBook }: Props) {
       .length;
   }, [nativeCapabilities]);
 
+  async function restoreManagedEd2kJobs(
+    jobs: TransferJob[],
+  ) {
+    const candidates = jobs.filter((job) => {
+      if (
+        job.providerId !== "ed2k" ||
+        job.resumeData?.ed2kRuntime !== "managed"
+      ) {
+        return false;
+      }
+
+      if (
+        job.state !== "queued" &&
+        job.state !== "running" &&
+        job.state !== "paused"
+      ) {
+        return false;
+      }
+
+      return !managedEd2kRestoreAttemptedRef.current.has(job.id);
+    });
+
+    await Promise.all(
+      candidates.map(async (job) => {
+        managedEd2kRestoreAttemptedRef.current.add(job.id);
+        try {
+          const attached = await reattachEd2kTransfer(
+            job,
+            job.state === "paused",
+          );
+          if (!attached) {
+            console.warn(
+              "Managed ED2K job could not be recovered from queue or Incoming:",
+              job.id,
+            );
+          }
+        } catch (error) {
+          console.warn(
+            "Unable to restore managed ED2K job after restart:",
+            job.id,
+            error,
+          );
+        }
+      }),
+    );
+  }
+
   async function refreshResourceCore() {
     const [
       native,
@@ -720,6 +771,8 @@ export function ResourceHubView({ onOpenBook }: Props) {
       listSftpAccounts(),
       loadResourceTransferConcurrency(),
     ]);
+
+    await restoreManagedEd2kJobs(jobs);
 
     setNativeCapabilities(native);
     setProviders(
