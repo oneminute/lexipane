@@ -22,6 +22,21 @@ describe("Dropbox OAuth PKCE", () => {
     expect(url.searchParams.has("redirect_uri")).toBe(false);
   });
 
+  it("sets the registered localhost callback and CSRF state", () => {
+    const url = new URL(
+      buildDropboxAuthorizeUrl(
+        "app-key",
+        "challenge-value",
+        "http://127.0.0.1:53682/dropbox/callback",
+        "random-state",
+      ),
+    );
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "http://127.0.0.1:53682/dropbox/callback",
+    );
+    expect(url.searchParams.get("state")).toBe("random-state");
+  });
+
   it("creates a URL-safe PKCE verifier and challenge", async () => {
     const authorization =
       await createDropboxPkceAuthorization(" app-key ");
