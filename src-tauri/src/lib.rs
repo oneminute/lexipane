@@ -36,6 +36,7 @@ pub fn run() {
             resources::resource_transfer_set_concurrency,
             resources::resource_transfer_concurrency,
             resources::cloud::resource_cloud_refresh_token,
+            resources::cloud::resource_cloud_exchange_authorization_code,
             resources::cloud::resource_cloud_list,
             resources::cloud::resource_cloud_search,
             resources::cloud::resource_cloud_start_download,
